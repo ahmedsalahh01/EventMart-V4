@@ -74,7 +74,7 @@ function requireAuth(req, res, next) {
 }
 
 async function ensureSchema() {
-  const schemaPath = path.resolve(__dirname, "../../schema.sql");
+  const schemaPath = path.resolve(__dirname, "../schema.sql");
   const schemaSql = fs.readFileSync(schemaPath, "utf8");
   await pool.query(schemaSql);
 }
