@@ -1,16 +1,24 @@
-export async function apiRequest(path, options = {}) {
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:4000").trim();
 
+function buildUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path;
+
+  const normalizedBase = API_URL.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+export async function apiRequest(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
 
-  const normalizedPath = path.startsWith("http")
-    ? path
-    : `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = buildUrl(path);
+  console.log("Frontend API URL:", url);
 
-  const response = await fetch(normalizedPath, {
+  const response = await fetch(url, {
     method: options.method || "GET",
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined
