@@ -8,13 +8,19 @@ const pool = require("./db");
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || "eventmart_dev_secret_change_me";
 const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const FRONTEND_URL = process.env.FRONTEND_URL || "";
 
-app.use(cors());
+app.use(
+  cors({
+    origin: FRONTEND_URL ? [FRONTEND_URL] : true,
+    credentials: true
+  })
+);
 app.use(express.json());
 
 function normalizeEmail(email) {
@@ -74,9 +80,26 @@ function requireAuth(req, res, next) {
 }
 
 async function ensureSchema() {
-  const schemaPath = path.resolve(__dirname, "../schema.sql");
-  const schemaSql = fs.readFileSync(schemaPath, "utf8");
-  await pool.query(schemaSql);
+  try {
+    const schemaPath = path.resolve(__dirname, "../schema.sql");
+    console.log("Looking for schema at:", schemaPath);
+
+    if (!fs.existsSync(schemaPath)) {
+      console.error("schema.sql not found. Skipping schema setup.");
+      return;
+    }
+
+    const schemaSql = fs.readFileSync(schemaPath, "utf8");
+    if (!schemaSql.trim()) {
+      console.error("schema.sql is empty. Skipping schema setup.");
+      return;
+    }
+
+    await pool.query(schemaSql);
+    console.log("Schema applied successfully.");
+  } catch (error) {
+    console.error("Schema setup failed:", error.message);
+  }
 }
 
 function formatUsd(value) {
@@ -419,7 +442,7 @@ function sendProductError(res, error, logPrefix) {
   });
 }
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("EventMart API running");
 });
 
@@ -892,8 +915,20 @@ app.get("/api/me/orders", requireAuth, async (req, res) => {
 
 async function start() {
   try {
+    console.log("Starting EventMart backend...");
+    console.log("PORT:", PORT);
+    console.log("PGHOST:", process.env.PGHOST || "(missing)");
+    console.log("PGPORT:", process.env.PGPORT || "(missing)");
+    console.log("PGDATABASE:", process.env.PGDATABASE || "(missing)");
+    console.log("PGUSER:", process.env.PGUSER || "(missing)");
+    console.log("PGPASSWORD exists:", Boolean(process.env.PGPASSWORD));
+
+    await pool.query("SELECT 1");
+    console.log("Database connected.");
+
     await ensureSchema();
-    app.listen(PORT, () => {
+
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on port ${PORT}`);
     });
   } catch (err) {
@@ -901,5 +936,13 @@ async function start() {
     process.exit(1);
   }
 }
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+});
+
+process.on("unhandledRejection", (error) => {
+  console.error("Unhandled Rejection:", error);
+});
 
 start();
