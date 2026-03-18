@@ -913,20 +913,11 @@ app.get("/api/me/orders", requireAuth, async (req, res) => {
   }
 });
 
+
 async function start() {
   try {
     console.log("Starting EventMart backend...");
     console.log("PORT:", PORT);
-    console.log("PGHOST:", process.env.PGHOST || "(missing)");
-    console.log("PGPORT:", process.env.PGPORT || "(missing)");
-    console.log("PGDATABASE:", process.env.PGDATABASE || "(missing)");
-    console.log("PGUSER:", process.env.PGUSER || "(missing)");
-    console.log("PGPASSWORD exists:", Boolean(process.env.PGPASSWORD));
-
-    await pool.query("SELECT 1");
-    console.log("Database connected.");
-
-    await ensureSchema();
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on port ${PORT}`);
@@ -936,6 +927,8 @@ async function start() {
     process.exit(1);
   }
 }
+
+
 
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
