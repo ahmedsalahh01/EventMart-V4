@@ -1,6 +1,7 @@
+import { apiRequest } from "./api";
+
 const STORAGE_KEY = "eventmart_products_v1";
 const METRICS_KEY = "eventmart_product_metrics_v1";
-const API_CANDIDATES = ["/api/products", "/products"];
 
 export function formatMoney(value, currency = "USD") {
   if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) return "-";
@@ -51,6 +52,22 @@ function toNum(value, fallback = null) {
 
 export function normalizeProduct(row) {
   const localId = String(row.id);
+  const qualityPoints = Array.isArray(row.quality_points)
+    ? row.quality_points
+    : typeof row.quality_points === "string"
+      ? row.quality_points
+          .split(/\r?\n|,/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+  const quantityAvailable =
+    row.quantity_available !== undefined
+      ? toNum(row.quantity_available, 0)
+      : row.stock !== undefined
+        ? toNum(row.stock, 0)
+        : 0;
+
   const product = {
     id: localId,
     product_id: String(row.product_id || fallbackProductId(localId)),
@@ -59,14 +76,15 @@ export function normalizeProduct(row) {
     subcategory: String(row.subcategory || "General"),
     image_url: row.image_url || "",
     description: String(row.description || ""),
-    quality_points: Array.isArray(row.quality_points) ? row.quality_points : [],
+    quality_points: qualityPoints,
     buy_enabled: Boolean(row.buy_enabled),
     rent_enabled: Boolean(row.rent_enabled),
     buy_price: toNum(row.buy_price, null),
     rent_price_per_day: toNum(row.rent_price_per_day, null),
     currency: String(row.currency || "USD"),
     active: row.active !== false,
-    quantity_available: toNum(row.quantity_available, 0)
+    quantity_available: quantityAvailable,
+    stock: quantityAvailable
   };
 
   return {
@@ -84,26 +102,38 @@ export function clearStoredProducts() {
 }
 
 export function readStoredProducts() {
-  return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizeProduct) : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeStoredProducts(products) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+  } catch (_error) {
+    // Ignore storage write failures.
+  }
 }
 
 export async function loadProducts() {
-  clearStoredProducts();
+  try {
+    const rows = await apiRequest("/api/products");
+    if (!Array.isArray(rows)) return [];
 
-  for (const url of API_CANDIDATES) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-      const rows = await response.json();
-      if (!Array.isArray(rows)) continue;
-      const products = rows.map(normalizeProduct);
-      return products.filter((product) => product.active !== false);
-    } catch (_error) {
-      // Try next endpoint.
-    }
+    const products = rows
+      .map(normalizeProduct)
+      .filter((product) => product.active !== false);
+
+    writeStoredProducts(products);
+    return products;
+  } catch (_error) {
+    return readStoredProducts();
   }
-
-  return [];
 }
 
 export function getMetricsMap() {
@@ -144,4 +174,3 @@ export function getProductRating(product) {
   const rating = Math.min(5, 4.5 + spread);
   return rating.toFixed(1);
 }
-
