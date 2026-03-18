@@ -15,12 +15,42 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      "https://event-mart-v4.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:5174",
+      FRONTEND_URL
+    ].filter(Boolean)
+  )
+);
+
+app.use((req, _res, next) => {
+  console.log("Request Origin:", req.headers.origin || "(none)");
+  next();
+});
+
 app.use(
   cors({
-    origin: FRONTEND_URL ? [FRONTEND_URL] : true,
-    credentials: true
+    origin(origin, callback) {
+      console.log("CORS Origin Check:", origin || "(none)");
+      console.log("Allowed Origins:", allowedOrigins);
+
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
+
+app.options("*", cors());
+
 app.use(express.json());
 
 function normalizeEmail(email) {
@@ -114,7 +144,15 @@ function formatUsd(value) {
 
 function summarizeProductCatalog(rows) {
   return rows.slice(0, 45).map((row) => {
-    const mode = row.buy_enabled && row.rent_enabled ? "buy/rent" : row.buy_enabled ? "buy" : row.rent_enabled ? "rent" : "n/a";
+    const mode =
+      row.buy_enabled && row.rent_enabled
+        ? "buy/rent"
+        : row.buy_enabled
+          ? "buy"
+          : row.rent_enabled
+            ? "rent"
+            : "n/a";
+
     return {
       id: row.id,
       product_id: row.product_id,
@@ -170,6 +208,7 @@ function fallbackPlannerReply(prompt, context, products) {
         : Number.isFinite(Number(item.rent_price_per_day))
           ? `${formatUsd(item.rent_price_per_day)}/day`
           : "Price unavailable";
+
       lines.push(`- **${item.name}** (${item.mode}) - ${price}`);
     });
   }
@@ -205,6 +244,7 @@ function extractResponseText(payload) {
 
   const chunks = [];
   const output = Array.isArray(payload?.output) ? payload.output : [];
+
   output.forEach((item) => {
     const content = Array.isArray(item?.content) ? item.content : [];
     content.forEach((part) => {
@@ -212,10 +252,11 @@ function extractResponseText(payload) {
       if (typeof part?.output_text === "string") chunks.push(part.output_text);
     });
   });
+
   return formatPlannerReplyText(chunks.join("\n"));
 }
 
-const PRODUCT_ID_REGEX = /^[A-Z0-9][A-Z0-9-_]{1,31}$/;
+const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
 const CURRENCY_REGEX = /^[A-Z]{3}$/;
 
 const PRODUCT_SELECT_SQL = `
@@ -260,6 +301,7 @@ function createHttpError(status, message) {
 
 function parseOptionalNumber(value, fieldLabel) {
   if (value === null || value === undefined || value === "") return null;
+
   const num = Number(value);
   if (!Number.isFinite(num)) {
     throw createHttpError(400, `${fieldLabel} must be a valid number.`);
@@ -267,26 +309,31 @@ function parseOptionalNumber(value, fieldLabel) {
   if (num < 0) {
     throw createHttpError(400, `${fieldLabel} cannot be negative.`);
   }
+
   return num;
 }
 
 function parseWholeNumber(value, fieldLabel) {
   if (value === null || value === undefined || value === "") return 0;
+
   const num = Number(value);
   if (!Number.isInteger(num) || num < 0) {
     throw createHttpError(400, `${fieldLabel} must be a non-negative whole number.`);
   }
+
   return num;
 }
 
 function parseBoolean(value, fallback = false) {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
+
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if (["true", "1", "yes", "on"].includes(normalized)) return true;
     if (["false", "0", "no", "off", ""].includes(normalized)) return false;
   }
+
   return fallback;
 }
 
@@ -308,9 +355,14 @@ function normalizeQualityPoints(value) {
 }
 
 function normalizeProductPayload(body) {
-  const productId = String(body?.product_id || "")
-    .trim()
-    .toUpperCase();
+  const rawProductId = String(body?.product_id || "").trim();
+  const digitsOnlyProductId = rawProductId.replace(/\D/g, "");
+  const productId = PRODUCT_ID_REGEX.test(rawProductId)
+    ? rawProductId
+    : PRODUCT_ID_REGEX.test(digitsOnlyProductId)
+      ? digitsOnlyProductId
+      : "";
+
   const name = String(body?.name || "").trim();
   const category = String(body?.category || "").trim();
   const subcategory = String(body?.subcategory || "").trim();
@@ -321,7 +373,7 @@ function normalizeProductPayload(body) {
   const imageUrl = String(body?.image_url || "").trim();
 
   if (!PRODUCT_ID_REGEX.test(productId)) {
-    throw createHttpError(400, "Product ID must be 2-32 chars using letters, numbers, '-' or '_'.");
+    throw createHttpError(400, "Product ID must be exactly 5 digits like 00001.");
   }
   if (!name) throw createHttpError(400, "Product name is required.");
   if (!category) throw createHttpError(400, "Category is required.");
@@ -332,6 +384,7 @@ function normalizeProductPayload(body) {
 
   const buyEnabled = parseBoolean(body?.buy_enabled, true);
   const rentEnabled = parseBoolean(body?.rent_enabled, false);
+
   if (!buyEnabled && !rentEnabled) {
     throw createHttpError(400, "Enable at least Buy or Rent.");
   }
@@ -403,6 +456,7 @@ async function syncProductRelations(client, productId, product) {
   );
 
   await client.query("DELETE FROM product_images WHERE product_id = $1", [productId]);
+
   if (product.image_url) {
     await client.query(
       "INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, 0)",
@@ -436,6 +490,7 @@ function sendProductError(res, error, logPrefix) {
   }
 
   console.error(logPrefix, error.message);
+
   return res.status(500).json({
     error: "Server error",
     details: error.message
@@ -663,6 +718,7 @@ app.post("/api/ai-planner", async (req, res) => {
 
     const payload = await aiRes.json();
     const reply = extractResponseText(payload);
+
     if (!reply) {
       return res.json({
         message: fallbackPlannerReply(prompt, context, catalog),
@@ -702,6 +758,7 @@ app.post("/api/auth/register", async (req, res) => {
       "SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
       [email]
     );
+
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: "Email is already registered." });
     }
@@ -735,13 +792,18 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required." });
     }
 
-    const result = await pool.query("SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1", [email]);
+    const result = await pool.query(
+      "SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
+      [email]
+    );
     const userRow = result.rows[0];
+
     if (!userRow) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
     const ok = await bcrypt.compare(password, userRow.password_hash);
+
     if (!ok) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
@@ -794,6 +856,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
     );
 
     const user = result.rows[0];
+
     if (!user) {
       return res.status(404).json({ error: "User not found." });
     }
@@ -815,16 +878,25 @@ app.put("/api/me", requireAuth, async (req, res) => {
     const currentPassword = String(req.body?.currentPassword || "");
     const newPassword = String(req.body?.newPassword || "");
 
-    const currentResult = await pool.query("SELECT * FROM users WHERE id = $1 LIMIT 1", [req.auth.userId]);
+    const currentResult = await pool.query(
+      "SELECT * FROM users WHERE id = $1 LIMIT 1",
+      [req.auth.userId]
+    );
     const currentUser = currentResult.rows[0];
+
     if (!currentUser) {
       return res.status(404).json({ error: "User not found." });
     }
 
     const nextName =
-      typeof incomingName === "string" ? incomingName.trim() : String(currentUser.name || "").trim();
+      typeof incomingName === "string"
+        ? incomingName.trim()
+        : String(currentUser.name || "").trim();
+
     const nextEmail =
-      typeof incomingEmail === "string" ? normalizeEmail(incomingEmail) : normalizeEmail(currentUser.email);
+      typeof incomingEmail === "string"
+        ? normalizeEmail(incomingEmail)
+        : normalizeEmail(currentUser.email);
 
     if (!nextName || !nextEmail) {
       return res.status(400).json({ error: "Name and email are required." });
@@ -835,21 +907,25 @@ app.put("/api/me", requireAuth, async (req, res) => {
         "SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1",
         [nextEmail, req.auth.userId]
       );
+
       if (existing.rows.length > 0) {
         return res.status(409).json({ error: "Email is already registered." });
       }
     }
 
     let nextPasswordHash = currentUser.password_hash;
+
     if (newPassword) {
       if (newPassword.length < 6) {
         return res.status(400).json({ error: "New password must be at least 6 characters." });
       }
+
       if (!currentPassword) {
         return res.status(400).json({ error: "Current password is required to set a new password." });
       }
 
       const passwordOk = await bcrypt.compare(currentPassword, currentUser.password_hash);
+
       if (!passwordOk) {
         return res.status(401).json({ error: "Current password is incorrect." });
       }
@@ -869,6 +945,7 @@ app.put("/api/me", requireAuth, async (req, res) => {
 
     const user = sanitizeUser(updated.rows[0]);
     const token = createAuthToken(user);
+
     return res.json({ user, token });
   } catch (err) {
     console.error("UPDATE ME ROUTE ERROR:", err.message);
@@ -913,7 +990,6 @@ app.get("/api/me/orders", requireAuth, async (req, res) => {
   }
 });
 
-
 async function start() {
   try {
     console.log("Starting EventMart backend...");
@@ -937,8 +1013,6 @@ async function start() {
     process.exit(1);
   }
 }
-
-
 
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
