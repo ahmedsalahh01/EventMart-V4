@@ -2,8 +2,8 @@ export const METRICS_KEY = "eventmart_product_metrics_v1";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const PRODUCTS_PATH = "/api/products";
-const PRODUCT_IMAGE_UPLOAD_PATH = "/api/product-images/upload";
-const PRODUCT_IMAGE_DELETE_PATH = "/api/product-images";
+const PRODUCT_IMAGE_UPLOAD_PATHS = ["/api/product-images/upload", "/product-images/upload"];
+const PRODUCT_IMAGE_DELETE_PATHS = ["/api/product-images", "/product-images"];
 const USERS_PATH = "/api/users";
 
 const ISO_CURRENCY_ALPHA_REGEX = /^[A-Z]{3}$/;
@@ -121,6 +121,11 @@ export function getImagePreviewKey(value, fallback) {
   return fallback;
 }
 
+export function isMissingImageUploadEndpointError(error) {
+  const message = String(error?.message || "");
+  return Number(error?.status) === 404 || /cannot (post|delete)\s+\/?(api\/)?product-images/i.test(message);
+}
+
 function resolveImageCollections(row) {
   const lightImages = normalizeImageList(row?.light_images);
   const darkImages = normalizeImageList(row?.dark_images);
@@ -195,40 +200,65 @@ export async function uploadProductImage(file, { productId, themeMode }) {
     filename: String(file?.name || "image")
   });
 
-  const response = await fetch(resolveApiUrl(`${PRODUCT_IMAGE_UPLOAD_PATH}?${params.toString()}`), {
-    method: "POST",
-    headers: {
-      "Content-Type": file?.type || "application/octet-stream"
-    },
-    body: file
-  });
+  let lastError = null;
 
-  const text = await response.text();
-  let payload = null;
+  for (const path of PRODUCT_IMAGE_UPLOAD_PATHS) {
+    const response = await fetch(resolveApiUrl(`${path}?${params.toString()}`), {
+      method: "POST",
+      headers: {
+        "Content-Type": file?.type || "application/octet-stream"
+      },
+      body: file
+    });
 
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text ? { error: text } : null;
-  }
+    const text = await response.text();
+    let payload = null;
 
-  if (!response.ok) {
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = text ? { error: text } : null;
+    }
+
+    if (response.ok) {
+      return String(payload?.url || "").trim();
+    }
+
     const error = new Error(apiErrorMessage(payload, response.status));
     error.status = response.status;
-    throw error;
+    lastError = error;
+
+    if (!isMissingImageUploadEndpointError(error)) {
+      throw error;
+    }
   }
 
-  return String(payload?.url || "").trim();
+  throw lastError || new Error("Product image upload endpoint is unavailable.");
 }
 
 export async function deleteUploadedImages(urls) {
   const cleanUrls = normalizeImageList(urls);
   if (!cleanUrls.length) return;
+  let lastError = null;
 
-  await apiRequestJson(PRODUCT_IMAGE_DELETE_PATH, {
-    body: { urls: cleanUrls },
-    method: "DELETE"
-  });
+  for (const path of PRODUCT_IMAGE_DELETE_PATHS) {
+    try {
+      await apiRequestJson(path, {
+        body: { urls: cleanUrls },
+        method: "DELETE"
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isMissingImageUploadEndpointError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastError && !isMissingImageUploadEndpointError(lastError)) {
+    throw lastError;
+  }
 }
 
 export function normalizeProductIdInput(value) {

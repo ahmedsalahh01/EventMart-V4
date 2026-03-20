@@ -10,6 +10,7 @@ import {
   deleteUploadedImages,
   generateNextProductId,
   isLocalImageEntry,
+  isMissingImageUploadEndpointError,
   normalizeCurrencyCodeInput,
   normalizeProductIdInput,
   productMatchesSearch,
@@ -26,6 +27,98 @@ function revokeFormPreviewUrls(form) {
   (form?.dark_images || []).forEach(revokeLocalImageEntry);
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Unable to read ${file.name}.`));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to process the selected image."));
+    image.src = src;
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+        return;
+      }
+      reject(new Error("Unable to compress the selected image."));
+    }, type, quality);
+  });
+}
+
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Unable to encode the selected image."));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressFileForInlineFallback(file) {
+  if (String(file?.type || "").toLowerCase() === "image/svg+xml") {
+    return readFileAsDataUrl(file);
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageElement(objectUrl);
+    let width = image.naturalWidth || image.width || 1;
+    let height = image.naturalHeight || image.height || 1;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      return readFileAsDataUrl(file);
+    }
+
+    const maxDimension = 720;
+    const initialScale = Math.min(1, maxDimension / Math.max(width, height));
+    width = Math.max(1, Math.round(width * initialScale));
+    height = Math.max(1, Math.round(height * initialScale));
+
+    const targetBytes = 24 * 1024;
+    let quality = 0.82;
+    let blob = null;
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      canvas.width = width;
+      canvas.height = height;
+      context.clearRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+
+      blob = await canvasToBlob(canvas, "image/webp", quality);
+
+      if (blob.size <= targetBytes) {
+        break;
+      }
+
+      if (quality > 0.46) {
+        quality -= 0.08;
+      } else {
+        width = Math.max(320, Math.round(width * 0.85));
+        height = Math.max(320, Math.round(height * 0.85));
+      }
+    }
+
+    return blobToDataUrl(blob || file);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function createValidationForm(form) {
   const mapImages = (images) =>
     (images || []).map((image) => (isLocalImageEntry(image) ? "__LOCAL_UPLOAD__" : image));
@@ -34,6 +127,28 @@ function createValidationForm(form) {
     ...form,
     dark_images: mapImages(form.dark_images),
     light_images: mapImages(form.light_images)
+  };
+}
+
+async function createInlineFallbackForm(form) {
+  async function mapImages(images) {
+    const nextImages = [];
+
+    for (const image of images || []) {
+      if (isLocalImageEntry(image)) {
+        nextImages.push(await compressFileForInlineFallback(image.file));
+      } else {
+        nextImages.push(image);
+      }
+    }
+
+    return nextImages;
+  }
+
+  return {
+    ...form,
+    dark_images: await mapImages(form.dark_images),
+    light_images: await mapImages(form.light_images)
   };
 }
 
@@ -210,14 +325,28 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
         return nextUrls;
       };
 
-      const payload = buildProductPayload(
-        {
+      let preparedForm = null;
+
+      try {
+        preparedForm = {
           ...form,
           dark_images: await uploadImages("dark", form.dark_images),
           light_images: await uploadImages("light", form.light_images)
-        },
-        { editingId, products }
-      );
+        };
+      } catch (uploadError) {
+        if (!isMissingImageUploadEndpointError(uploadError)) {
+          throw uploadError;
+        }
+
+        if (uploadedUrls.length) {
+          await deleteUploadedImages(uploadedUrls).catch(() => {});
+          uploadedUrls.length = 0;
+        }
+
+        preparedForm = await createInlineFallbackForm(form);
+      }
+
+      const payload = buildProductPayload(preparedForm, { editingId, products });
 
       await saveProduct(payload, editingId);
       productSaved = true;
