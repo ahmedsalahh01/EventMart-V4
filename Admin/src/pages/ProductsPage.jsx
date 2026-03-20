@@ -1,0 +1,325 @@
+import { useDeferredValue, useEffect, useState } from "react";
+import ProductForm from "../components/ProductForm";
+import ProductList from "../components/ProductList";
+import {
+  MAX_IMAGES_PER_MODE,
+  buildFormFromProduct,
+  buildProductPayload,
+  createEmptyProductForm,
+  createLocalImageEntry,
+  deleteUploadedImages,
+  generateNextProductId,
+  isLocalImageEntry,
+  normalizeCurrencyCodeInput,
+  normalizeProductIdInput,
+  productMatchesSearch,
+  revokeLocalImageEntry,
+  removeProduct,
+  saveProduct,
+  uploadProductImage
+} from "../lib/admin";
+
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function revokeFormPreviewUrls(form) {
+  (form?.light_images || []).forEach(revokeLocalImageEntry);
+  (form?.dark_images || []).forEach(revokeLocalImageEntry);
+}
+
+function createValidationForm(form) {
+  const mapImages = (images) =>
+    (images || []).map((image) => (isLocalImageEntry(image) ? "__LOCAL_UPLOAD__" : image));
+
+  return {
+    ...form,
+    dark_images: mapImages(form.dark_images),
+    light_images: mapImages(form.light_images)
+  };
+}
+
+function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(createEmptyProductForm(products));
+  const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+
+  useEffect(() => {
+    if (editingId) return;
+
+    setForm((current) => {
+      const isPristine =
+        !current.name &&
+        !current.category &&
+        !current.subcategory &&
+        !current.description &&
+        current.light_images.length === 0 &&
+        current.dark_images.length === 0 &&
+        !current.quality_points &&
+        current.buy_price === "" &&
+        current.rent_price_per_day === "" &&
+        String(current.quantity_available) === "0" &&
+        String(current.reorder_level) === "0" &&
+        String(current.unit_cost) === "0" &&
+        String(current.overhead_cost) === "0" &&
+        current.buy_enabled === true &&
+        current.rent_enabled === false &&
+        current.active === true;
+
+      if (!isPristine) {
+        return current;
+      }
+
+      const nextProductId = generateNextProductId(products);
+      if (current.product_id === nextProductId) {
+        return current;
+      }
+
+      return {
+        ...current,
+        product_id: nextProductId
+      };
+    });
+  }, [editingId, products]);
+
+  function resetForm(nextProducts = products) {
+    revokeFormPreviewUrls(form);
+    setEditingId(null);
+    setForm(createEmptyProductForm(nextProducts));
+    setPageError("");
+  }
+
+  function handleChange(event) {
+    const { checked, name, type, value } = event.target;
+    let nextValue = type === "checkbox" ? checked : value;
+
+    if (name === "product_id") {
+      nextValue = normalizeProductIdInput(nextValue);
+    }
+
+    if (name === "currency") {
+      nextValue = normalizeCurrencyCodeInput(nextValue);
+    }
+
+    setForm((current) => ({
+      ...current,
+      [name]: nextValue
+    }));
+  }
+
+  async function handleImageSelect(themeMode, fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    const fieldName = themeMode === "dark" ? "dark_images" : "light_images";
+    const currentCount = form[fieldName]?.length || 0;
+
+    if (currentCount + files.length > MAX_IMAGES_PER_MODE) {
+      setPageError(`You can upload up to ${MAX_IMAGES_PER_MODE} ${themeMode} mode images per product.`);
+      return;
+    }
+
+    const invalidFile = files.find((file) => !String(file.type || "").startsWith("image/"));
+    if (invalidFile) {
+      setPageError("Only image files can be uploaded for product galleries.");
+      return;
+    }
+
+    const oversizedFile = files.find((file) => Number(file.size || 0) > MAX_PRODUCT_IMAGE_BYTES);
+    if (oversizedFile) {
+      setPageError("Each uploaded image must be 5 MB or smaller.");
+      return;
+    }
+
+    try {
+      setForm((current) => ({
+        ...current,
+        [fieldName]: [...current[fieldName], ...files.map(createLocalImageEntry)]
+      }));
+      setNotice("");
+      setPageError("");
+    } catch (uploadError) {
+      setPageError(uploadError?.message || "Unable to read the selected image files.");
+    }
+  }
+
+  function handleImageRemove(themeMode, indexToRemove) {
+    const fieldName = themeMode === "dark" ? "dark_images" : "light_images";
+    const removedImage = form[fieldName]?.[indexToRemove];
+
+    revokeLocalImageEntry(removedImage);
+
+    setForm((current) => ({
+      ...current,
+      [fieldName]: current[fieldName].filter((_, index) => index !== indexToRemove)
+    }));
+    setNotice("");
+    setPageError("");
+  }
+
+  function handleBlur(event) {
+    const { name } = event.target;
+
+    if (name === "product_id" && !form.product_id.trim()) {
+      setForm((current) => ({
+        ...current,
+        product_id: generateNextProductId(products)
+      }));
+    }
+
+    if (name === "currency" && !form.currency.trim()) {
+      setForm((current) => ({
+        ...current,
+        currency: "EGP"
+      }));
+    }
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const wasEditing = Boolean(editingId);
+    let productSaved = false;
+    const uploadedUrls = [];
+
+    setIsSaving(true);
+    setNotice("");
+    setPageError("");
+
+    try {
+      buildProductPayload(createValidationForm(form), { editingId, products });
+
+      const uploadImages = async (themeMode, images) => {
+        const nextUrls = [];
+
+        for (const image of images || []) {
+          if (isLocalImageEntry(image)) {
+            const uploadedUrl = await uploadProductImage(image.file, {
+              productId: form.product_id,
+              themeMode
+            });
+            uploadedUrls.push(uploadedUrl);
+            nextUrls.push(uploadedUrl);
+            continue;
+          }
+
+          nextUrls.push(image);
+        }
+
+        return nextUrls;
+      };
+
+      const payload = buildProductPayload(
+        {
+          ...form,
+          dark_images: await uploadImages("dark", form.dark_images),
+          light_images: await uploadImages("light", form.light_images)
+        },
+        { editingId, products }
+      );
+
+      await saveProduct(payload, editingId);
+      productSaved = true;
+      const nextProducts = await onProductsRefresh();
+      resetForm(nextProducts);
+      setNotice(wasEditing ? "Product updated successfully." : "Product created successfully.");
+    } catch (submitError) {
+      if (!productSaved && uploadedUrls.length) {
+        await deleteUploadedImages(uploadedUrls).catch(() => {});
+      }
+      setPageError(submitError?.message || "Unable to save product.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function handleEdit(product) {
+    revokeFormPreviewUrls(form);
+    setEditingId(product.id);
+    setForm(buildFormFromProduct(product));
+    setNotice("");
+    setPageError("");
+    window.scrollTo({ behavior: "smooth", top: 0 });
+  }
+
+  async function handleDelete(product) {
+    const confirmed = window.confirm(`Delete "${product.name}"?`);
+    if (!confirmed) return;
+
+    setNotice("");
+    setPageError("");
+
+    try {
+      await removeProduct(product.id);
+      const nextProducts = await onProductsRefresh();
+      if (editingId === product.id) {
+        resetForm(nextProducts);
+      }
+      setNotice("Product deleted successfully.");
+    } catch (deleteError) {
+      setPageError(deleteError?.message || "Unable to delete product.");
+    }
+  }
+
+  const filteredProducts = products.filter((product) =>
+    productMatchesSearch(product, deferredSearch)
+  );
+
+  return (
+    <section className="admin-section">
+      <div className="section-head">
+        <div>
+          <h2>Products</h2>
+          <p className="muted">Add, update, or delete products with the shared API.</p>
+        </div>
+      </div>
+
+      <div className="section-stack">
+        {error ? (
+          <div className="feedback-panel error">
+            <strong>Products could not be refreshed.</strong>
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        {pageError ? (
+          <div className="feedback-panel error">
+            <strong>There was a problem with the last product action.</strong>
+            <span>{pageError}</span>
+          </div>
+        ) : null}
+
+        {notice ? (
+          <div className="feedback-panel success">
+            <strong>Catalog updated.</strong>
+            <span>{notice}</span>
+          </div>
+        ) : null}
+
+        <ProductForm
+          form={form}
+          isEditing={Boolean(editingId)}
+          isSaving={isSaving}
+          onBlur={handleBlur}
+          onChange={handleChange}
+          onImageRemove={handleImageRemove}
+          onImageSelect={handleImageSelect}
+          onReset={() => resetForm()}
+          onSubmit={handleSubmit}
+        />
+
+        <ProductList
+          isLoading={isLoading}
+          onDelete={handleDelete}
+          onEdit={handleEdit}
+          onSearchChange={setSearch}
+          products={filteredProducts}
+          search={search}
+        />
+      </div>
+    </section>
+  );
+}
+
+export default ProductsPage;
