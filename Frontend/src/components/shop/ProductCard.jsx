@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-import { formatMoney, getMode, getModeLabel, getProductImages, getProductRating } from "../../lib/products";
+import { formatMoney, getProductImages, getProductRating } from "../../lib/products";
 import { useTheme } from "../../contexts/ThemeContext";
 
-function ProductCard({ product, onView, onQuickAdd, isFeatured = true }) {
+function ProductCard({ product, onView, onQuickAdd, isFeatured = false }) {
   const { theme } = useTheme();
   const gallery = getProductImages(product, theme);
   const buyExists = product.buy_enabled && product.buy_price !== null;
   const rentExists = product.rent_enabled && product.rent_price_per_day !== null;
   const canCart = (buyExists || rentExists) && product.quantity_available !== 0;
-  const mode = getMode(product);
   const hasSlideshow = gallery.length > 1;
   const gallerySignature = gallery.join("|");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -78,7 +77,6 @@ function ProductCard({ product, onView, onQuickAdd, isFeatured = true }) {
           </div>
         ) : null}
         <div className="product-badges">
-          <span className="badge badge-mode">{getModeLabel(mode)}</span>
           {isFeatured ? <span className="badge badge-featured">Featured</span> : null}
         </div>
       </div>

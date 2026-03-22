@@ -150,6 +150,7 @@ export function normalizeProduct(row) {
     buy_price: toNum(row.buy_price, null),
     rent_price_per_day: toNum(row.rent_price_per_day, null),
     currency: String(row.currency || "USD"),
+    featured: Boolean(row.featured),
     active: row.active !== false,
     quantity_available: quantityAvailable,
     stock: quantityAvailable

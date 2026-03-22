@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -16,19 +16,44 @@ const navItems = [
 function Navbar() {
   const location = useLocation();
   const [hoveredPath, setHoveredPath] = useState(null);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated, firstName } = useAuth();
   const { itemCount } = useCart();
+  const isHomeRoute = location.pathname === "/";
+
+  useEffect(() => {
+    if (!isHomeRoute) {
+      setIsScrolled(false);
+      return undefined;
+    }
+
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 36);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [isHomeRoute]);
 
   const activePath = navItems.find((item) => item.to === location.pathname)?.to ?? null;
   const highlightedPath = hoveredPath ?? activePath;
+  const navClassName = `navbar${isHomeRoute ? " navbar-home" : ""}${isHomeRoute && isScrolled ? " navbar-home-scrolled" : ""}`;
 
   return (
-    <nav className="navbar">
+    <nav className={navClassName}>
       <NavLink to="/" className="brand-link" aria-label="EventMart Home">
-        <span className="brand-text">
-          Event<span>Mart</span>
-        </span>
+        {isHomeRoute ? (
+          <img className="brand-logo" src="/assets/eventmart-footer-logo.png" alt="" />
+        ) : (
+          <span className="brand-text">
+            Event<span>Mart</span>
+          </span>
+        )}
       </NavLink>
 
       <ul className="navlist" aria-label="Main navigation" onMouseLeave={() => setHoveredPath(null)}>

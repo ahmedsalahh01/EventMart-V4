@@ -63,18 +63,18 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
             <div className="modal-prices">
               {product.buy_enabled && product.buy_price !== null ? (
                 <div className="modal-price">
-                  <span>
-                    {formatMoney(product.buy_price, product.currency)} <small>buy</small>
-                  </span>
-                  <small>one-time</small>
+                  <span className="modal-price-type">Buy</span>
+                  <strong className="modal-price-value">
+                    {formatMoney(product.buy_price, product.currency)}
+                  </strong>
                 </div>
               ) : null}
               {product.rent_enabled && product.rent_price_per_day !== null ? (
                 <div className="modal-price">
-                  <span>
-                    {formatMoney(product.rent_price_per_day, product.currency)} <small>/day rent</small>
-                  </span>
-                  <small>per day</small>
+                  <span className="modal-price-type">Rent / Day</span>
+                  <strong className="modal-price-value">
+                    {formatMoney(product.rent_price_per_day, product.currency)}
+                  </strong>
                 </div>
               ) : null}
             </div>

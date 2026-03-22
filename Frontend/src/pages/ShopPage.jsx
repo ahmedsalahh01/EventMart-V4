@@ -7,7 +7,6 @@ import { useCart } from "../contexts/CartContext";
 import {
   bumpMetric,
   getMode,
-  getProductMetric,
   loadProducts,
   metricScore
 } from "../lib/products";
@@ -67,7 +66,7 @@ function ShopPage() {
       if (sortMode === "low") return a.startingPrice - b.startingPrice;
       if (sortMode === "high") return b.startingPrice - a.startingPrice;
       if (sortMode === "name") return a.name.localeCompare(b.name);
-      return metricScore(b.id) - metricScore(a.id);
+      return Number(b.featured) - Number(a.featured) || metricScore(b.id) - metricScore(a.id);
     });
   }, [products, searchQuery, selectedCategory, selectedMode, sortMode]);
 
@@ -148,7 +147,7 @@ function ShopPage() {
                 product={product}
                 onView={openModal}
                 onQuickAdd={quickAdd}
-                isFeatured={getProductMetric(product.id, "purchase") * 5 + getProductMetric(product.id, "add_to_cart") * 2 + getProductMetric(product.id, "product_view") >= 0}
+                isFeatured={Boolean(product.featured)}
               />
             ))
           ) : (
