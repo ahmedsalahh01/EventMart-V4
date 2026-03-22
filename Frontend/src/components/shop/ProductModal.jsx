@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { fallbackImage, formatMoney, getMode, getModeLabel } from "../../lib/products";
+import { formatMoney, getMode, getModeLabel, getProductImage } from "../../lib/products";
+import { useTheme } from "../../contexts/ThemeContext";
 
 function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
+  const { theme } = useTheme();
   const [quantity, setQuantity] = useState(1);
   const [message, setMessage] = useState("");
 
@@ -10,6 +12,7 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
   const qualityPoints = Array.isArray(product.quality_points) && product.quality_points.length
     ? product.quality_points
     : ["No quality points added yet."];
+  const imageSrc = getProductImage(product, theme);
 
   function handleCart() {
     onAddToCart(product, quantity);
@@ -34,7 +37,7 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
 
         <div className="modal-body">
           <div className="modal-media">
-            <img src={product.image_url || fallbackImage(product.name)} alt="Product image" />
+            <img src={imageSrc} alt="Product image" />
           </div>
 
           <div className="modal-info">

@@ -52,7 +52,15 @@ function CartProvider({ children }) {
             rental_days: item.mode === "rent" ? Math.max(1, Number(item.rental_days || 1)) : 1,
             unit_price: unitPrice,
             stock,
-            image_url: product.image_url || item.image_url
+            dark_images:
+              Array.isArray(product.dark_images) && product.dark_images.length
+                ? product.dark_images
+                : item.dark_images,
+            image_url: product.image_url || item.image_url,
+            light_images:
+              Array.isArray(product.light_images) && product.light_images.length
+                ? product.light_images
+                : item.light_images
           };
         });
       }
@@ -63,7 +71,9 @@ function CartProvider({ children }) {
           id: String(product.id),
           product_id: String(product.product_id || ""),
           name: product.name,
+          dark_images: Array.isArray(product.dark_images) ? product.dark_images : [],
           image_url: product.image_url || "",
+          light_images: Array.isArray(product.light_images) ? product.light_images : [],
           mode,
           quantity,
           rental_days: mode === "rent" ? 1 : 1,

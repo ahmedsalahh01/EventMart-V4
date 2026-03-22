@@ -1,7 +1,8 @@
-import { apiRequest } from "./api";
+import { apiRequest, buildApiUrl } from "./api";
 
 const STORAGE_KEY = "eventmart_products_v1";
 const METRICS_KEY = "eventmart_product_metrics_v1";
+const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
 
 export function formatMoney(value, currency = "USD") {
   if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) return "-";
@@ -16,12 +17,67 @@ export function fallbackImage() {
   return "/assets/equipment-collage.jpg";
 }
 
+function normalizeImageList(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === null || value === undefined || value === ""
+      ? []
+      : [value];
+
+  return list
+    .flatMap((item) => {
+      if (Array.isArray(item)) return normalizeImageList(item);
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (!trimmed) return [];
+
+        if (
+          (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+          (trimmed.startsWith("{") && trimmed.endsWith("}"))
+        ) {
+          try {
+            return normalizeImageList(JSON.parse(trimmed));
+          } catch (_error) {
+            return [trimmed];
+          }
+        }
+
+        return [trimmed];
+      }
+      if (item && typeof item === "object") {
+        return normalizeImageList(item.value || item.url || item.src || item.preview_url || "");
+      }
+      return [];
+    });
+}
+
+export function resolveProductImageUrl(source) {
+  const value = String(source || "").trim();
+  if (!value) return fallbackImage();
+
+  if (/^(?:https?:|data:|blob:)/i.test(value)) {
+    return value;
+  }
+
+  if (value.startsWith("/uploads/")) {
+    return buildApiUrl(value);
+  }
+
+  return value;
+}
+
+export function normalizeProductIdInput(value) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 5);
+}
+
 export function fallbackProductId(id) {
-  const clean = String(id ?? "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-  if (clean) return `P-${clean.slice(-5).padStart(5, "0")}`;
-  return `P-${Date.now().toString().slice(-5)}`;
+  const digits = String(id ?? "").replace(/\D/g, "");
+  if (!digits) return "00001";
+
+  const candidate = digits.slice(-5).padStart(5, "0");
+  return PRODUCT_ID_REGEX.test(candidate) ? candidate : "00001";
 }
 
 export function getMode(product) {
@@ -52,6 +108,10 @@ function toNum(value, fallback = null) {
 
 export function normalizeProduct(row) {
   const localId = String(row.id);
+  const normalizedProductId = normalizeProductIdInput(row.product_id);
+  const lightImages = normalizeImageList(row.light_images);
+  const darkImages = normalizeImageList(row.dark_images);
+  const legacyImageUrl = String(row.image_url || "").trim();
   const qualityPoints = Array.isArray(row.quality_points)
     ? row.quality_points
     : typeof row.quality_points === "string"
@@ -66,15 +126,23 @@ export function normalizeProduct(row) {
       ? toNum(row.quantity_available, 0)
       : row.stock !== undefined
         ? toNum(row.stock, 0)
-        : 0;
+      : 0;
+
+  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
+    lightImages.push(legacyImageUrl);
+  }
 
   const product = {
     id: localId,
-    product_id: String(row.product_id || fallbackProductId(localId)),
+    product_id: PRODUCT_ID_REGEX.test(normalizedProductId)
+      ? normalizedProductId
+      : fallbackProductId(row.product_id || localId),
     name: String(row.name || "Unnamed Product"),
     category: String(row.category || "General"),
     subcategory: String(row.subcategory || "General"),
-    image_url: row.image_url || "",
+    dark_images: darkImages,
+    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
+    light_images: lightImages,
     description: String(row.description || ""),
     quality_points: qualityPoints,
     buy_enabled: Boolean(row.buy_enabled),
@@ -91,6 +159,25 @@ export function normalizeProduct(row) {
     ...product,
     startingPrice: getStartingPrice(product)
   };
+}
+
+export function getProductImages(product, theme = "light") {
+  const lightImages = normalizeImageList(product?.light_images).map(resolveProductImageUrl);
+  const darkImages = normalizeImageList(product?.dark_images).map(resolveProductImageUrl);
+  const legacyImages = normalizeImageList(product?.image_url).map(resolveProductImageUrl);
+  const preferredImages = theme === "dark" ? darkImages : lightImages;
+  const fallbackImages = theme === "dark" ? lightImages : darkImages;
+
+  if (preferredImages.length) return preferredImages;
+  if (fallbackImages.length) return fallbackImages;
+  if (legacyImages.length) return legacyImages;
+  return [fallbackImage()];
+}
+
+export function getProductImage(product, theme = "light", index = 0) {
+  const images = getProductImages(product, theme);
+  const safeIndex = Number.isInteger(index) && index >= 0 ? index : 0;
+  return images[safeIndex] || images[0] || fallbackImage();
 }
 
 export function clearStoredProducts() {

@@ -1,10 +1,33 @@
-import { fallbackImage, formatMoney, getMode, getModeLabel, getProductRating } from "../../lib/products";
+import { useEffect, useState } from "react";
+import { formatMoney, getMode, getModeLabel, getProductImages, getProductRating } from "../../lib/products";
+import { useTheme } from "../../contexts/ThemeContext";
 
 function ProductCard({ product, onView, onQuickAdd, isFeatured = true }) {
+  const { theme } = useTheme();
+  const gallery = getProductImages(product, theme);
   const buyExists = product.buy_enabled && product.buy_price !== null;
   const rentExists = product.rent_enabled && product.rent_price_per_day !== null;
   const canCart = (buyExists || rentExists) && product.quantity_available !== 0;
   const mode = getMode(product);
+  const hasSlideshow = gallery.length > 1;
+  const gallerySignature = gallery.join("|");
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+    setIsHovered(false);
+  }, [gallerySignature, product.id, theme]);
+
+  useEffect(() => {
+    if (!isHovered || !hasSlideshow) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setActiveImageIndex((current) => (current + 1) % gallery.length);
+    }, 900);
+
+    return () => window.clearInterval(intervalId);
+  }, [gallery.length, hasSlideshow, isHovered]);
 
   function renderPrice() {
     if (buyExists && rentExists) {
@@ -26,11 +49,34 @@ function ProductCard({ product, onView, onQuickAdd, isFeatured = true }) {
       ? product.description
       : `${product.description.slice(0, 58).trim()}...`
     : "No description provided.";
+  const imageSrc = gallery[activeImageIndex] || gallery[0];
 
   return (
-    <article className="product-card">
+    <article
+      className={`product-card${isHovered && hasSlideshow ? " is-slideshow-active" : ""}`}
+      onMouseEnter={() => hasSlideshow && setIsHovered(true)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setActiveImageIndex(0);
+      }}
+    >
       <div className="product-media">
-        <img src={product.image_url || fallbackImage(product.name)} alt={product.name} />
+        <img key={imageSrc} src={imageSrc} alt={product.name} />
+        {hasSlideshow ? (
+          <div className="product-gallery-meta" aria-hidden="true">
+            <span className="product-gallery-count">
+              {activeImageIndex + 1}/{gallery.length}
+            </span>
+            <span className="product-gallery-dots">
+              {gallery.map((image, index) => (
+                <span
+                  className={`product-gallery-dot${index === activeImageIndex ? " is-active" : ""}`}
+                  key={`${product.id}-${image}-${index}`}
+                />
+              ))}
+            </span>
+          </div>
+        ) : null}
         <div className="product-badges">
           <span className="badge badge-mode">{getModeLabel(mode)}</span>
           {isFeatured ? <span className="badge badge-featured">Featured</span> : null}

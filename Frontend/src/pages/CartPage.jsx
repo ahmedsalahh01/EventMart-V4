@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
 import Footer from "../components/Footer";
-import { formatMoney } from "../lib/products";
+import { formatMoney, getProductImage } from "../lib/products";
 import "./../styles/cart.css";
 
 function CartPage() {
@@ -24,10 +24,6 @@ function CartPage() {
 
   function navLinkClassName({ isActive }) {
     return isActive ? "active" : undefined;
-  }
-
-  function fallbackImage(item) {
-    return item.image_url || "/assets/EVE4.png";
   }
 
   return (
@@ -136,7 +132,7 @@ function CartPage() {
 
                   return (
                     <article key={`${item.id}-${item.mode}`} className="cart-item">
-                      <img className="item-image" src={fallbackImage(item)} alt={item.name} />
+                      <img className="item-image" src={getProductImage(item, theme)} alt={item.name} />
 
                       <div className="item-body">
                         <h3 className="item-title">{item.name}</h3>

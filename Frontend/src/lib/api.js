@@ -1,6 +1,6 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:4000").trim();
 
-function buildUrl(path) {
+export function buildApiUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
 
   const normalizedBase = API_URL.replace(/\/+$/, "");
@@ -15,7 +15,7 @@ export async function apiRequest(path, options = {}) {
     ...(options.headers || {})
   };
 
-  const url = buildUrl(path);
+  const url = buildApiUrl(path);
   console.log("Frontend API URL:", url);
 
   const response = await fetch(url, {
