@@ -532,6 +532,7 @@ const PRODUCT_SELECT_SQL = `
     p.buy_price,
     p.rent_price_per_day,
     p.currency,
+    p.featured,
     p.active,
     p.created_at,
     p.updated_at,
@@ -699,6 +700,7 @@ function normalizeProductPayload(body) {
     buy_price: parseOptionalNumber(body?.buy_price, "Buy price"),
     rent_price_per_day: parseOptionalNumber(body?.rent_price_per_day, "Rent price / day"),
     currency,
+    featured: parseBoolean(body?.featured, false),
     active: parseBoolean(body?.active, true),
     quantity_available: parseWholeNumber(body?.quantity_available, "Quantity available"),
     reorder_level: parseWholeNumber(body?.reorder_level, "Reorder level"),
@@ -930,10 +932,11 @@ app.post(["/products", "/api/products"], async (req, res) => {
           buy_price,
           rent_price_per_day,
           currency,
+          featured,
           active,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, NOW())
         RETURNING id
         `,
         [
@@ -948,6 +951,7 @@ app.post(["/products", "/api/products"], async (req, res) => {
           product.buy_price,
           product.rent_price_per_day,
           product.currency,
+          product.featured,
           product.active
         ]
       );
@@ -984,9 +988,10 @@ app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
             buy_price = $9,
             rent_price_per_day = $10,
             currency = $11,
-            active = $12,
+            featured = $12,
+            active = $13,
             updated_at = NOW()
-        WHERE id = $13
+        WHERE id = $14
         RETURNING id
         `,
         [
@@ -1001,6 +1006,7 @@ app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
           product.buy_price,
           product.rent_price_per_day,
           product.currency,
+          product.featured,
           product.active,
           routeProductId
         ]

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS products (
   buy_price NUMERIC(12,2),
   rent_price_per_day NUMERIC(12,2),
   currency TEXT NOT NULL DEFAULT 'USD',
+  featured BOOLEAN NOT NULL DEFAULT false,
   active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -29,12 +30,25 @@ CREATE TABLE IF NOT EXISTS products (
 ALTER TABLE products
 ADD COLUMN IF NOT EXISTS product_id TEXT;
 
+ALTER TABLE products
+ADD COLUMN IF NOT EXISTS featured BOOLEAN;
+
 UPDATE products
 SET product_id = LPAD(id::text, 5, '0')
 WHERE product_id IS NULL;
 
+UPDATE products
+SET featured = false
+WHERE featured IS NULL;
+
 ALTER TABLE products
 ALTER COLUMN product_id SET NOT NULL;
+
+ALTER TABLE products
+ALTER COLUMN featured SET DEFAULT false;
+
+ALTER TABLE products
+ALTER COLUMN featured SET NOT NULL;
 
 DO $$
 BEGIN
