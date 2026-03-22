@@ -75,14 +75,30 @@ function normalizeImageList(value) {
       : [value];
 
   return list
-    .map((item) => {
-      if (typeof item === "string") return item.trim();
-      if (item && typeof item === "object") {
-        return String(item.value || item.url || item.src || "").trim();
+    .flatMap((item) => {
+      if (Array.isArray(item)) return normalizeImageList(item);
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (!trimmed) return [];
+
+        if (
+          (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+          (trimmed.startsWith("{") && trimmed.endsWith("}"))
+        ) {
+          try {
+            return normalizeImageList(JSON.parse(trimmed));
+          } catch (_error) {
+            return [trimmed];
+          }
+        }
+
+        return [trimmed];
       }
-      return "";
-    })
-    .filter(Boolean);
+      if (item && typeof item === "object") {
+        return normalizeImageList(item.value || item.url || item.src || item.preview_url || "");
+      }
+      return [];
+    });
 }
 
 export function isLocalImageEntry(value) {
@@ -688,12 +704,19 @@ export function userMatchesSearch(user, query) {
   return `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(query);
 }
 
-export function getProductImage(product) {
+export function getProductImage(product, theme = "light", index = 0) {
   const lightImages = normalizeImageList(product?.light_images);
   const darkImages = normalizeImageList(product?.dark_images);
+  const preferredImages = theme === "dark" ? darkImages : lightImages;
+  const fallbackImages = theme === "dark" ? lightImages : darkImages;
+  const images = preferredImages.length
+    ? preferredImages
+    : fallbackImages.length
+      ? fallbackImages
+      : normalizeImageList(product?.image_url);
 
   return resolveAssetUrl(
-    lightImages[0] || darkImages[0] || product?.image_url || "",
+    images[index] || images[0] || product?.image_url || "",
     PLACEHOLDER_IMAGE_URL
   );
 }
