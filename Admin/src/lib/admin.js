@@ -421,6 +421,7 @@ function mapApiProduct(row) {
     dark_images: imageCollections.dark_images,
     name: String(row.name ?? ""),
     overhead_cost: toNum(row.overhead_cost, 0),
+    featured: Boolean(row.featured),
     product_id: PRODUCT_ID_REGEX.test(normalizedProductId)
       ? normalizedProductId
       : fallbackProductId(row.product_id || mappedId),
@@ -510,6 +511,7 @@ export function createEmptyProductForm(products) {
     currency: DEFAULT_CURRENCY_ALPHA,
     description: "",
     dark_images: [],
+    featured: false,
     light_images: [],
     name: "",
     overhead_cost: "0",
@@ -540,6 +542,7 @@ export function buildFormFromProduct(product) {
     currency: getSafeCurrencyAlpha(product.currency, DEFAULT_CURRENCY_ALPHA),
     description: product.description || "",
     dark_images: darkImages,
+    featured: Boolean(product.featured),
     light_images: lightImages.length ? lightImages : legacyImages,
     name: product.name,
     overhead_cost: product.overhead_cost ?? 0,
@@ -613,6 +616,7 @@ export function buildProductPayload(form, { editingId, products }) {
     currency: normalizedCurrency,
     description: String(form.description || "").trim(),
     dark_images: darkImages,
+    featured: Boolean(form.featured),
     image_url: lightImages[0] || darkImages[0] || "",
     light_images: lightImages,
     name,

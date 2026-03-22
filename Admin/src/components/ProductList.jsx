@@ -59,6 +59,7 @@ function ProductList({
                   Qty: {product.quantity_available} | Reorder: {product.reorder_level} |{" "}
                   {product.active ? "Active" : "Inactive"}
                 </p>
+                <p className="meta">Featured badge: {product.featured ? "On" : "Off"}</p>
                 <p className="meta">
                   Light images: {lightCount} | Dark images: {darkCount}
                 </p>

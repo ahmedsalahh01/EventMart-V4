@@ -181,6 +181,7 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
         String(current.overhead_cost) === "0" &&
         current.buy_enabled === true &&
         current.rent_enabled === false &&
+        current.featured === false &&
         current.active === true;
 
       if (!isPristine) {

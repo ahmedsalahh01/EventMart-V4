@@ -296,6 +296,10 @@ function ProductForm({
             Rent Enabled
           </label>
           <label>
+            <input checked={form.featured} name="featured" onChange={onChange} type="checkbox" />
+            Featured Badge
+          </label>
+          <label>
             <input checked={form.active} name="active" onChange={onChange} type="checkbox" />
             Active
           </label>
