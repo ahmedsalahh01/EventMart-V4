@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatMoney, getMode, getModeLabel, getProductImage } from "../../lib/products";
+import { formatMoney, getProductImage } from "../../lib/products";
 import { useTheme } from "../../contexts/ThemeContext";
 
 function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
@@ -13,6 +13,15 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
     ? product.quality_points
     : ["No quality points added yet."];
   const imageSrc = getProductImage(product, theme);
+  const stockLimit = product.quantity_available > 0 ? Number(product.quantity_available) : Number.POSITIVE_INFINITY;
+
+  function decreaseQuantity() {
+    setQuantity((current) => Math.max(1, current - 1));
+  }
+
+  function increaseQuantity() {
+    setQuantity((current) => Math.min(stockLimit, current + 1));
+  }
 
   function handleCart() {
     onAddToCart(product, quantity);
@@ -44,14 +53,6 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
             <h2>{product.name}</h2>
             <p className="muted">{product.description || "No description provided."}</p>
 
-            <div className="tags">
-              {[product.category, product.subcategory, getModeLabel(getMode(product)), `Stock: ${product.quantity_available}`, `ID: ${product.product_id || "-"}`].map((tag) => (
-                <span className="tag" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
-
             <h3 className="small-title">Quality</h3>
             <ul className="quality">
               {qualityPoints.map((point) => (
@@ -79,15 +80,30 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
             </div>
 
             <div className="qty-row">
-              <label htmlFor="modalQty">Quantity</label>
-              <input
-                id="modalQty"
-                type="number"
-                min="1"
-                max={product.quantity_available > 0 ? product.quantity_available : undefined}
-                value={quantity}
-                onChange={(event) => setQuantity(Math.max(1, Number(event.target.value || 1)))}
-              />
+              <span className="qty-label">Quantity</span>
+              <div className="qty-stepper" aria-label="Quantity controls">
+                <button
+                  className="qty-stepper-btn"
+                  type="button"
+                  aria-label="Increase quantity"
+                  disabled={quantity >= stockLimit}
+                  onClick={increaseQuantity}
+                >
+                  +
+                </button>
+                <span className="qty-stepper-value" aria-live="polite">
+                  {quantity}
+                </span>
+                <button
+                  className="qty-stepper-btn"
+                  type="button"
+                  aria-label="Decrease quantity"
+                  disabled={quantity <= 1}
+                  onClick={decreaseQuantity}
+                >
+                  -
+                </button>
+              </div>
             </div>
 
             <div className="modal-actions">

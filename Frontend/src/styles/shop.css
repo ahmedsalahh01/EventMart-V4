@@ -513,29 +513,64 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
 }
 
 .qty-row {
-  display: flex;
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 16px;
+}
+
+.qty-label {
+  color: var(--c-39);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.qty-stepper {
+  width: fit-content;
+  min-width: 172px;
+  display: inline-grid;
+  grid-template-columns: 48px minmax(44px, 1fr) 48px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 12px 0;
-  padding: 10px 12px;
-  border-radius: 16px;
+  padding: 6px;
+  border-radius: 999px;
   background: var(--c-22);
   border: 1px solid var(--c-28);
+  box-shadow: var(--c-33);
 }
 
-.qty-row label {
-  color: var(--c-39);
-  font-weight: 600;
+.qty-stepper-btn {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--c-25);
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
-.qty-row input {
-  width: 110px;
-  padding: 8px 10px;
-  border-radius: 14px;
-  border: 1px solid var(--c-28);
-  background: var(--c-31);
-  color: var(--c-24);
+.qty-stepper-btn:hover {
+  background: var(--c-37);
+  color: var(--c-29);
+  transform: translateY(-1px);
+}
+
+.qty-stepper-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.qty-stepper-value {
+  min-width: 40px;
+  text-align: center;
+  color: var(--c-25);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
 }
 
 .modal-actions {
