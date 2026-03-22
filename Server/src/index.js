@@ -7,6 +7,8 @@ const path = require("path");
 const pool = require("./db");
 require("dotenv").config();
 
+const fsp = fs.promises;
+
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || "eventmart_dev_secret_change_me";
@@ -14,6 +16,12 @@ const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
+const UPLOADS_DIR = path.resolve(__dirname, "../uploads");
+const PRODUCT_UPLOADS_DIR = path.join(UPLOADS_DIR, "products");
+const MAX_PRODUCT_IMAGES_PER_MODE = 10;
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+const DATA_IMAGE_URL_REGEX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)$/;
+const PRODUCT_IMAGE_UPLOAD_PARSER = express.raw({ limit: "10mb", type: () => true });
 
 const allowedOrigins = Array.from(
   new Set(
@@ -51,7 +59,17 @@ app.use(
 
 app.options("*", cors());
 
-app.use(express.json());
+app.use(express.json({ limit: "120mb" }));
+app.use("/uploads", express.static(UPLOADS_DIR));
+app.use((error, _req, res, next) => {
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "Uploaded images are too large. Keep each image under 5 MB."
+    });
+  }
+
+  return next(error);
+});
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -259,6 +277,247 @@ function extractResponseText(payload) {
 const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
 const CURRENCY_REGEX = /^[A-Z]{3}$/;
 
+function normalizeImageSourceList(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === null || value === undefined || value === ""
+      ? []
+      : [value];
+
+  return list
+    .flatMap((item) => {
+      if (Array.isArray(item)) return normalizeImageSourceList(item);
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (!trimmed) return [];
+
+        if (
+          (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+          (trimmed.startsWith("{") && trimmed.endsWith("}"))
+        ) {
+          try {
+            return normalizeImageSourceList(JSON.parse(trimmed));
+          } catch (_error) {
+            return [trimmed];
+          }
+        }
+
+        return [trimmed];
+      }
+      if (item && typeof item === "object") {
+        return normalizeImageSourceList(
+          item.value || item.url || item.src || item.preview_url || ""
+        );
+      }
+      return [];
+    });
+}
+
+function resolveProductImageCollections(row) {
+  const lightImages = normalizeImageSourceList(row?.light_images);
+  const darkImages = normalizeImageSourceList(row?.dark_images);
+  const legacyImageUrl = String(row?.image_url || "").trim();
+
+  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
+    lightImages.push(legacyImageUrl);
+  }
+
+  return {
+    dark_images: darkImages,
+    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
+    light_images: lightImages
+  };
+}
+
+function getImageExtensionForMimeType(mimeType) {
+  const normalized = String(mimeType || "").toLowerCase();
+
+  if (normalized === "image/jpeg") return "jpg";
+  if (normalized === "image/png") return "png";
+  if (normalized === "image/webp") return "webp";
+  if (normalized === "image/gif") return "gif";
+  if (normalized === "image/svg+xml") return "svg";
+  if (normalized === "image/avif") return "avif";
+  if (normalized === "image/bmp") return "bmp";
+
+  return "bin";
+}
+
+function getImageExtensionFromFilename(fileName) {
+  const extension = path.extname(String(fileName || "")).toLowerCase().replace(/^\./, "");
+  return extension.replace(/[^a-z0-9]/g, "").slice(0, 10);
+}
+
+function isSupportedImageExtension(extension) {
+  return ["avif", "bmp", "gif", "jpg", "jpeg", "png", "svg", "webp"].includes(
+    String(extension || "").toLowerCase()
+  );
+}
+
+function getPreferredImageExtension({ fileName, mimeType }) {
+  const fromMimeType = getImageExtensionForMimeType(mimeType);
+  if (fromMimeType !== "bin") return fromMimeType;
+
+  const fromFileName = getImageExtensionFromFilename(fileName);
+  return fromFileName || "bin";
+}
+
+function parseThemeMode(value) {
+  const themeMode = String(value || "").trim().toLowerCase();
+  if (themeMode === "light" || themeMode === "dark") return themeMode;
+  throw createHttpError(400, "theme_mode must be either 'light' or 'dark'.");
+}
+
+function parseProductCode(value) {
+  const rawValue = String(value || "").trim();
+  const digitsOnly = rawValue.replace(/\D/g, "");
+  const productCode = PRODUCT_ID_REGEX.test(rawValue)
+    ? rawValue
+    : PRODUCT_ID_REGEX.test(digitsOnly)
+      ? digitsOnly
+      : "";
+
+  if (!PRODUCT_ID_REGEX.test(productCode)) {
+    throw createHttpError(400, "product_id must be exactly 5 digits like 00001.");
+  }
+
+  return productCode;
+}
+
+function decodeImageDataUrl(dataUrl) {
+  const match = String(dataUrl || "").match(DATA_IMAGE_URL_REGEX);
+  if (!match) {
+    throw createHttpError(400, "Uploaded product images must be valid image files.");
+  }
+
+  const mimeType = match[1];
+  const buffer = Buffer.from(match[2], "base64");
+
+  if (!buffer.length) {
+    throw createHttpError(400, "Uploaded product images cannot be empty.");
+  }
+
+  if (buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
+    throw createHttpError(400, "Each uploaded product image must be 5 MB or smaller.");
+  }
+
+  return {
+    buffer,
+    extension: getImageExtensionForMimeType(mimeType),
+    mimeType
+  };
+}
+
+function isManagedProductUploadUrl(url) {
+  return String(url || "").startsWith("/uploads/products/");
+}
+
+function getManagedUploadPathFromUrl(url) {
+  const normalized = String(url || "").trim();
+  if (!normalized.startsWith("/uploads/")) return null;
+
+  const relativePath = normalized.replace(/^\/uploads\//, "");
+  const absolutePath = path.resolve(UPLOADS_DIR, relativePath);
+
+  if (!absolutePath.startsWith(UPLOADS_DIR)) {
+    return null;
+  }
+
+  return absolutePath;
+}
+
+async function pruneEmptyUploadDirectories(filePath) {
+  let currentDir = path.dirname(filePath);
+
+  while (currentDir.startsWith(PRODUCT_UPLOADS_DIR) && currentDir !== PRODUCT_UPLOADS_DIR) {
+    try {
+      await fsp.rmdir(currentDir);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        currentDir = path.dirname(currentDir);
+        continue;
+      }
+
+      if (error?.code === "ENOTEMPTY" || error?.code === "EPERM") {
+        break;
+      }
+
+      break;
+    }
+
+    currentDir = path.dirname(currentDir);
+  }
+}
+
+async function removeManagedProductUploadUrl(url) {
+  const absolutePath = getManagedUploadPathFromUrl(url);
+  if (!absolutePath) return;
+
+  try {
+    await fsp.unlink(absolutePath);
+    await pruneEmptyUploadDirectories(absolutePath);
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      console.warn("IMAGE CLEANUP WARNING:", error.message);
+    }
+  }
+}
+
+async function saveUploadedProductImageBuffer(productCode, themeMode, buffer, { fileName, mimeType }) {
+  const themeDir = path.join(PRODUCT_UPLOADS_DIR, "catalog", productCode, themeMode);
+  const extension = getPreferredImageExtension({ fileName, mimeType });
+
+  await fsp.mkdir(themeDir, { recursive: true });
+
+  const storedFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+  const filePath = path.join(themeDir, storedFileName);
+
+  await fsp.writeFile(filePath, buffer);
+
+  return `/uploads/products/catalog/${productCode}/${themeMode}/${storedFileName}`;
+}
+
+async function saveProductImageDataUrl(productId, themeMode, sortOrder, dataUrl) {
+  const { buffer, extension } = decodeImageDataUrl(dataUrl);
+  const themeDir = path.join(PRODUCT_UPLOADS_DIR, String(productId), themeMode);
+
+  await fsp.mkdir(themeDir, { recursive: true });
+
+  const fileName = `${Date.now()}-${sortOrder}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+  const filePath = path.join(themeDir, fileName);
+
+  await fsp.writeFile(filePath, buffer);
+
+  return `/uploads/products/${productId}/${themeMode}/${fileName}`;
+}
+
+async function materializeProductImages(productId, themeMode, imageSources, createdUploadUrls) {
+  const resolvedUrls = [];
+
+  for (let index = 0; index < imageSources.length; index += 1) {
+    const source = imageSources[index];
+    if (DATA_IMAGE_URL_REGEX.test(source)) {
+      const storedUrl = await saveProductImageDataUrl(productId, themeMode, index, source);
+      createdUploadUrls.push(storedUrl);
+      resolvedUrls.push(storedUrl);
+      continue;
+    }
+
+    resolvedUrls.push(source);
+  }
+
+  return resolvedUrls;
+}
+
+async function cleanupUnusedProductUploads(previousUrls, nextUrls) {
+  const nextSet = new Set(nextUrls);
+  const staleUrls = previousUrls.filter(
+    (url) => isManagedProductUploadUrl(url) && !nextSet.has(url)
+  );
+
+  await Promise.all(staleUrls.map(removeManagedProductUploadUrl));
+}
+
 const PRODUCT_SELECT_SQL = `
   SELECT
     p.id,
@@ -280,16 +539,41 @@ const PRODUCT_SELECT_SQL = `
     COALESCE(inv.reorder_level, 0)::INT AS reorder_level,
     COALESCE(cost.unit_cost, 0) AS unit_cost,
     COALESCE(cost.overhead_cost, 0) AS overhead_cost,
-    COALESCE(img.url, '') AS image_url
+    COALESCE(img.light_images, '[]'::json) AS light_images,
+    COALESCE(img.dark_images, '[]'::json) AS dark_images,
+    COALESCE(img.image_url, '') AS image_url
   FROM products p
   LEFT JOIN product_inventory inv ON inv.product_id = p.id
   LEFT JOIN product_costs cost ON cost.product_id = p.id
   LEFT JOIN LATERAL (
-    SELECT url
+    SELECT
+      COALESCE(
+        JSON_AGG(url ORDER BY sort_order ASC, id ASC) FILTER (WHERE theme_mode = 'light'),
+        '[]'::json
+      ) AS light_images,
+      COALESCE(
+        JSON_AGG(url ORDER BY sort_order ASC, id ASC) FILTER (WHERE theme_mode = 'dark'),
+        '[]'::json
+      ) AS dark_images,
+      COALESCE(
+        (
+          SELECT url
+          FROM product_images pi_primary
+          WHERE pi_primary.product_id = p.id AND pi_primary.theme_mode = 'light'
+          ORDER BY pi_primary.sort_order ASC, pi_primary.id ASC
+          LIMIT 1
+        ),
+        (
+          SELECT url
+          FROM product_images pi_fallback
+          WHERE pi_fallback.product_id = p.id AND pi_fallback.theme_mode = 'dark'
+          ORDER BY pi_fallback.sort_order ASC, pi_fallback.id ASC
+          LIMIT 1
+        ),
+        ''
+      ) AS image_url
     FROM product_images
     WHERE product_id = p.id
-    ORDER BY sort_order ASC, id ASC
-    LIMIT 1
   ) img ON TRUE
 `;
 
@@ -370,7 +654,13 @@ function normalizeProductPayload(body) {
   const currency = String(body?.currency || "USD")
     .trim()
     .toUpperCase();
-  const imageUrl = String(body?.image_url || "").trim();
+  const legacyImageUrl = String(body?.image_url || "").trim();
+  const lightImages = normalizeImageSourceList(body?.light_images);
+  const darkImages = normalizeImageSourceList(body?.dark_images);
+
+  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
+    lightImages.push(legacyImageUrl);
+  }
 
   if (!PRODUCT_ID_REGEX.test(productId)) {
     throw createHttpError(400, "Product ID must be exactly 5 digits like 00001.");
@@ -387,6 +677,14 @@ function normalizeProductPayload(body) {
 
   if (!buyEnabled && !rentEnabled) {
     throw createHttpError(400, "Enable at least Buy or Rent.");
+  }
+
+  if (lightImages.length > MAX_PRODUCT_IMAGES_PER_MODE) {
+    throw createHttpError(400, "A product can have up to 10 light mode images.");
+  }
+
+  if (darkImages.length > MAX_PRODUCT_IMAGES_PER_MODE) {
+    throw createHttpError(400, "A product can have up to 10 dark mode images.");
   }
 
   return {
@@ -406,7 +704,9 @@ function normalizeProductPayload(body) {
     reorder_level: parseWholeNumber(body?.reorder_level, "Reorder level"),
     unit_cost: parseOptionalNumber(body?.unit_cost, "Unit cost") ?? 0,
     overhead_cost: parseOptionalNumber(body?.overhead_cost, "Overhead cost") ?? 0,
-    image_url: imageUrl
+    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
+    light_images: lightImages,
+    dark_images: darkImages
   };
 }
 
@@ -420,15 +720,32 @@ function parseProductRouteId(rawId) {
 
 async function listProducts() {
   const result = await pool.query(`${PRODUCT_SELECT_SQL} ORDER BY p.id ASC`);
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...row,
+    ...resolveProductImageCollections(row)
+  }));
 }
 
 async function getProductById(productId) {
   const result = await pool.query(`${PRODUCT_SELECT_SQL} WHERE p.id = $1 LIMIT 1`, [productId]);
-  return result.rows[0] || null;
+  if (!result.rows[0]) return null;
+
+  return {
+    ...result.rows[0],
+    ...resolveProductImageCollections(result.rows[0])
+  };
 }
 
 async function syncProductRelations(client, productId, product) {
+  const existingImagesResult = await client.query(
+    "SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order ASC, id ASC",
+    [productId]
+  );
+  const previousUrls = existingImagesResult.rows
+    .map((row) => String(row.url || "").trim())
+    .filter(Boolean);
+  const createdUploadUrls = [];
+
   await client.query(
     `
     INSERT INTO product_inventory (product_id, quantity_available, reorder_level, updated_at)
@@ -455,13 +772,49 @@ async function syncProductRelations(client, productId, product) {
     [productId, product.unit_cost, product.overhead_cost]
   );
 
-  await client.query("DELETE FROM product_images WHERE product_id = $1", [productId]);
-
-  if (product.image_url) {
-    await client.query(
-      "INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, 0)",
-      [productId, product.image_url]
+  try {
+    const lightImageUrls = await materializeProductImages(
+      productId,
+      "light",
+      product.light_images,
+      createdUploadUrls
     );
+    const darkImageUrls = await materializeProductImages(
+      productId,
+      "dark",
+      product.dark_images,
+      createdUploadUrls
+    );
+
+    await client.query("DELETE FROM product_images WHERE product_id = $1", [productId]);
+
+    for (let index = 0; index < lightImageUrls.length; index += 1) {
+      await client.query(
+        `
+        INSERT INTO product_images (product_id, url, sort_order, theme_mode)
+        VALUES ($1, $2, $3, 'light')
+        `,
+        [productId, lightImageUrls[index], index]
+      );
+    }
+
+    for (let index = 0; index < darkImageUrls.length; index += 1) {
+      await client.query(
+        `
+        INSERT INTO product_images (product_id, url, sort_order, theme_mode)
+        VALUES ($1, $2, $3, 'dark')
+        `,
+        [productId, darkImageUrls[index], index]
+      );
+    }
+
+    await cleanupUnusedProductUploads(previousUrls, [
+      ...lightImageUrls,
+      ...darkImageUrls
+    ]);
+  } catch (error) {
+    await Promise.all(createdUploadUrls.map(removeManagedProductUploadUrl));
+    throw error;
   }
 }
 
@@ -499,6 +852,54 @@ function sendProductError(res, error, logPrefix) {
 
 app.get("/", (_req, res) => {
   res.send("EventMart API running");
+});
+
+app.post(["/product-images/upload", "/api/product-images/upload"], PRODUCT_IMAGE_UPLOAD_PARSER, async (req, res) => {
+  try {
+    const productCode = parseProductCode(req.query.product_id);
+    const themeMode = parseThemeMode(req.query.theme_mode);
+    const mimeType = String(req.headers["content-type"] || "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    const fileName = String(req.query.filename || "image");
+    const fileExtension = getImageExtensionFromFilename(fileName);
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+
+    if (!mimeType.startsWith("image/") && !isSupportedImageExtension(fileExtension)) {
+      throw createHttpError(400, "Only image files can be uploaded.");
+    }
+
+    if (!buffer.length) {
+      throw createHttpError(400, "Uploaded product images cannot be empty.");
+    }
+
+    if (buffer.length > MAX_PRODUCT_IMAGE_BYTES) {
+      throw createHttpError(400, "Each uploaded product image must be 5 MB or smaller.");
+    }
+
+    const url = await saveUploadedProductImageBuffer(productCode, themeMode, buffer, {
+      fileName,
+      mimeType
+    });
+
+    return res.status(201).json({ url });
+  } catch (err) {
+    return sendProductError(res, err, "PRODUCT IMAGE UPLOAD ERROR:");
+  }
+});
+
+app.delete(["/product-images", "/api/product-images"], async (req, res) => {
+  try {
+    const urls = normalizeImageSourceList(req.body?.urls);
+    await Promise.all(
+      urls.filter((url) => isManagedProductUploadUrl(url)).map(removeManagedProductUploadUrl)
+    );
+
+    return res.status(204).send();
+  } catch (err) {
+    return sendProductError(res, err, "PRODUCT IMAGE DELETE ERROR:");
+  }
 });
 
 app.get(["/products", "/api/products"], async (_req, res) => {
@@ -622,11 +1023,22 @@ app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
 app.delete(["/products/:id", "/api/products/:id"], async (req, res) => {
   try {
     const routeProductId = parseProductRouteId(req.params.id);
+    const existingImagesResult = await pool.query(
+      "SELECT url FROM product_images WHERE product_id = $1 ORDER BY id ASC",
+      [routeProductId]
+    );
+    const existingUrls = existingImagesResult.rows
+      .map((row) => String(row.url || "").trim())
+      .filter(Boolean);
     const result = await pool.query("DELETE FROM products WHERE id = $1 RETURNING id", [routeProductId]);
 
     if (!result.rows.length) {
       return res.status(404).json({ error: "Product not found." });
     }
+
+    await Promise.all(
+      existingUrls.filter((url) => isManagedProductUploadUrl(url)).map(removeManagedProductUploadUrl)
+    );
 
     return res.status(204).send();
   } catch (err) {

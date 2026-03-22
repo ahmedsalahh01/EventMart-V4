@@ -30,7 +30,7 @@ ALTER TABLE products
 ADD COLUMN IF NOT EXISTS product_id TEXT;
 
 UPDATE products
-SET product_id = CONCAT('P-', LPAD(id::text, 5, '0'))
+SET product_id = LPAD(id::text, 5, '0')
 WHERE product_id IS NULL;
 
 ALTER TABLE products
@@ -69,6 +69,27 @@ CREATE TABLE IF NOT EXISTS product_images (
   url TEXT NOT NULL,
   sort_order INT NOT NULL DEFAULT 0
 );
+
+ALTER TABLE product_images
+ADD COLUMN IF NOT EXISTS theme_mode TEXT NOT NULL DEFAULT 'light';
+
+UPDATE product_images
+SET theme_mode = 'light'
+WHERE theme_mode IS NULL OR theme_mode = '';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'product_images_theme_mode_check'
+  ) THEN
+    ALTER TABLE product_images
+    ADD CONSTRAINT product_images_theme_mode_check
+    CHECK (theme_mode IN ('light', 'dark'));
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS orders (
   id BIGSERIAL PRIMARY KEY,
