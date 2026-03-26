@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import "./../styles/about.css";
+import { Analytics } from "@vercel/analytics/next"
 
 function AboutPage() {
   useEffect(() => {
