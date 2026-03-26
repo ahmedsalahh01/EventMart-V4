@@ -377,6 +377,12 @@ ul {
   border-radius: 18px;
 }
 
+.navbar .icon-btn[data-theme-toggle],
+.navbar .icon-btn[data-theme-toggle]:hover,
+.navbar .icon-btn[data-theme-toggle]:focus-visible {
+  color: var(--page-accent-ink);
+}
+
 .navbar-home:not(.navbar-home-scrolled) .icon-btn:hover,
 .navbar-home:not(.navbar-home-scrolled) .icon-btn:focus-visible {
   color: var(--c-1);

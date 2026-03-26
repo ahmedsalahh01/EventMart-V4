@@ -171,8 +171,16 @@ function ProfilePage() {
               </div>
             </div>
 
-            <label htmlFor="confirmNewPassword">Confirm New Password</label>
-            <input id="confirmNewPassword" name="confirmNewPassword" type="password" value={form.confirmNewPassword} onChange={(event) => setForm((current) => ({ ...current, confirmNewPassword: event.target.value }))} />
+            <div className="password-confirm-field">
+              <label htmlFor="confirmNewPassword">Confirm New Password</label>
+              <input
+                id="confirmNewPassword"
+                name="confirmNewPassword"
+                type="password"
+                value={form.confirmNewPassword}
+                onChange={(event) => setForm((current) => ({ ...current, confirmNewPassword: event.target.value }))}
+              />
+            </div>
 
             <button className="btn-primary-submit" type="submit">
               Save Changes

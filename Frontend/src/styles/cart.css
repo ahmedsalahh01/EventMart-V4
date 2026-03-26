@@ -210,6 +210,12 @@ html[data-interface-theme="dark"] [data-theme-scope="cart"] {
   border-radius: 18px;
 }
 
+.cart-navbar .icon-btn[data-theme-toggle],
+.cart-navbar .icon-btn[data-theme-toggle]:hover,
+.cart-navbar .icon-btn[data-theme-toggle]:focus-visible {
+  color: var(--page-accent-ink);
+}
+
 .cart-navbar .icon-btn svg,
 .cart-navbar .signin-link svg {
   width: 23px;

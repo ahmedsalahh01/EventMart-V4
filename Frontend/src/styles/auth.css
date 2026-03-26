@@ -125,6 +125,7 @@ html[data-interface-theme="dark"] [data-theme-scope="auth"] {
 .field {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
+  position: relative;
   align-items: center;
   gap: 12px;
   min-height: 56px;
@@ -159,6 +160,45 @@ html[data-interface-theme="dark"] [data-theme-scope="auth"] {
 
 .field input::placeholder {
   color: color-mix(in srgb, var(--auth-muted) 84%, #9db5cf);
+}
+
+.field-date::after {
+  content: attr(data-placeholder);
+  position: absolute;
+  top: 50%;
+  left: 48px;
+  right: 52px;
+  transform: translateY(-50%);
+  color: color-mix(in srgb, var(--auth-muted) 84%, #9db5cf);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.field-date.is-empty::after {
+  opacity: 1;
+}
+
+.field-date.is-empty input[type="date"] {
+  color: transparent;
+  caret-color: transparent;
+}
+
+.field-date.is-empty input[type="date"]::-webkit-datetime-edit {
+  color: transparent;
+}
+
+.field-date:focus-within::after {
+  opacity: 0;
+}
+
+.field-date:focus-within input[type="date"] {
+  color: var(--auth-field-text);
+  caret-color: var(--auth-field-text);
+}
+
+.field-date:focus-within input[type="date"]::-webkit-datetime-edit {
+  color: var(--auth-field-text);
 }
 
 .sign-btn {

@@ -251,7 +251,11 @@ function AuthPage() {
                   </label>
                 </div>
 
-                <label className="field" htmlFor="registerBirthDate">
+                <label
+                  className={`field field-date ${registerForm.birthDate ? "" : "is-empty"}`.trim()}
+                  htmlFor="registerBirthDate"
+                  data-placeholder="Date of birth"
+                >
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <rect x="4" y="5.5" width="16" height="14" rx="2.6" stroke="currentColor" strokeWidth="1.8" />
                     <path d="M8 3.8v3.4M16 3.8v3.4M4 9.5h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -260,6 +264,8 @@ function AuthPage() {
                     id="registerBirthDate"
                     name="birthDate"
                     type="date"
+                    aria-label="Date of birth"
+                    placeholder="Date of birth"
                     required
                     value={registerForm.birthDate}
                     onChange={(event) => updateRegisterField("birthDate", event.target.value)}

@@ -214,6 +214,13 @@ html[data-interface-theme="dark"] [data-theme-scope="profile"] {
   grid-template-columns: 1fr 1fr;
 }
 
+.password-confirm-field {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  width: min(100%, 440px);
+}
+
 .btn-primary-submit,
 .btn-ghost,
 .btn-danger {

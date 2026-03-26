@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { loadProducts } from "../lib/products";
 import "./../styles/ai-planner.css";
 import { sendAIPlannerMessage } from "../lib/api";
@@ -431,17 +431,6 @@ function AIPlannerPage() {
     };
   }, []);
 
-  const isQuickFormComplete = useMemo(
-    () =>
-      Boolean(
-        planner.eventType &&
-          Number(planner.attendees) > 0 &&
-          Number(planner.budget) > 0 &&
-          planner.venue
-      ),
-    [planner]
-  );
-
   function addMessage(role, content, structured = null) {
     setMessages((current) => [
       ...current,
@@ -498,7 +487,7 @@ function AIPlannerPage() {
 
   async function handleQuickPlannerSubmit(event) {
     event.preventDefault();
-    if (!isQuickFormComplete || isTyping) return;
+    if (isTyping) return;
 
     const context = {
       eventType: planner.eventType,
@@ -636,8 +625,8 @@ function AIPlannerPage() {
                 ))}
               </select>
 
-              <button id="generatePlanBtn" type="submit" disabled={isTyping || !isQuickFormComplete}>
-                Generate Plan
+              <button id="generatePlanBtn" type="submit" disabled={isTyping}>
+                {isTyping ? "Generating..." : "Generate Plan"}
               </button>
             </form>
           </aside>
