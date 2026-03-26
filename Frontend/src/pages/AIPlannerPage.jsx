@@ -3,7 +3,6 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { loadProducts } from "../lib/products";
 import "./../styles/ai-planner.css";
 import { sendAIPlannerMessage } from "../lib/api";
-import { Analytics } from "@vercel/analytics/next"
 
 const EVENT_TYPES = ["Wedding", "Conference", "Concert", "Birthday", "Corporate", "Festival", "Exhibition"];
 const VENUE_TYPES = ["Indoor", "Outdoor", "Hybrid", "Rooftop", "Open Hall"];
