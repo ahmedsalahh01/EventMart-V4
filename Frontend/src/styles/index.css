@@ -3,6 +3,10 @@
 }
 
 :root {
+  --app-scale: 0.8;
+  --app-scale-inverse: 1.25;
+  --app-viewport-width: calc(100vw * var(--app-scale-inverse));
+  --app-viewport-height: calc(100svh * var(--app-scale-inverse));
   --page-hero-bg: linear-gradient(145deg, #071a28 0%, #0a2635 46%, #0f4957 100%);
   --page-heading-bg: linear-gradient(
     98deg,
@@ -23,6 +27,7 @@
 
 html {
   scroll-behavior: auto;
+  overflow-x: clip;
 }
 
 html[data-interface-theme="dark"] {
@@ -47,6 +52,7 @@ html[data-interface-theme="dark"] {
 body {
   margin: 0;
   min-width: 320px;
+  overflow-x: hidden;
 }
 
 body,
@@ -72,8 +78,29 @@ button {
 }
 
 #root,
-.app-shell {
+.app-shell,
+.app-scale-frame {
   min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  overflow-x: clip;
+}
+
+.app-scale-frame {
+  position: relative;
+  min-height: max(100vh, var(--app-frame-height, 100vh));
+  overflow-x: clip;
+}
+
+#app-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% * var(--app-scale-inverse));
+  transform: scale(var(--app-scale));
+  transform-origin: top left;
 }
 
 [data-theme-scope="not-found"] {
@@ -109,6 +136,8 @@ html[data-interface-theme="dark"] [data-theme-scope="not-found"] {
 .placeholder-page {
   width: min(var(--max-width, 1760px), calc(100% - var(--page-inline, 48px)));
   margin: 0 auto;
+  padding-top: calc(var(--nav-height, 0px) + 32px);
+  padding-bottom: 40px;
   color: var(--c-24);
 }
 
@@ -136,6 +165,24 @@ html[data-interface-theme="dark"] [data-theme-scope="not-found"] {
 
 .placeholder-text {
   color: var(--page-hero-copy);
+}
+
+@media (max-width: 980px) {
+  :root {
+    --app-scale: 0.86;
+    --app-scale-inverse: 1.1627906977;
+    --app-viewport-width: calc(100vw * var(--app-scale-inverse));
+    --app-viewport-height: calc(100svh * var(--app-scale-inverse));
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --app-scale: 0.92;
+    --app-scale-inverse: 1.0869565217;
+    --app-viewport-width: calc(100vw * var(--app-scale-inverse));
+    --app-viewport-height: calc(100svh * var(--app-scale-inverse));
+  }
 }
 
 

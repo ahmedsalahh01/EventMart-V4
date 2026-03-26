@@ -422,6 +422,8 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
   box-shadow: var(--c-32);
   position: relative;
   overflow: hidden;
+  transform: scale(var(--app-scale));
+  transform-origin: center;
 }
 
 .modal-close {

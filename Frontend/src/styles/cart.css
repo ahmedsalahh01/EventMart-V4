@@ -756,6 +756,16 @@ html[data-interface-theme="dark"] .checkout-btn {
   content: none;
 }
 
+.summary-note {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--c-18) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-18) 18%, transparent);
+  color: color-mix(in srgb, var(--c-18) 82%, #8b1d38);
+  line-height: 1.5;
+}
+
 .empty-state[hidden],
 .filled-state[hidden] {
   display: none !important;

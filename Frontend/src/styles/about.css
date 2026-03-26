@@ -77,7 +77,7 @@ html.about-snap-page {
 .about-band {
   position: relative;
   width: 100%;
-  min-height: calc(100svh - var(--nav-height));
+  min-height: calc(var(--app-viewport-height) - var(--nav-height));
   scroll-snap-align: start;
   scroll-snap-stop: always;
   scroll-margin-top: var(--nav-height);
@@ -136,7 +136,7 @@ html.about-snap-page {
   position: relative;
   z-index: 1;
   width: min(var(--max-width), calc(100% - var(--page-inline)));
-  min-height: calc(100svh - var(--nav-height));
+  min-height: calc(var(--app-viewport-height) - var(--nav-height));
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr);
@@ -297,13 +297,13 @@ html.about-snap-page {
   }
 
   .about-band {
-    min-height: calc(100svh - var(--nav-height));
+    min-height: calc(var(--app-viewport-height) - var(--nav-height));
   }
 
   .band-inner {
     width: min(var(--max-width), calc(100% - var(--page-inline)));
     grid-template-columns: 1fr;
-    min-height: calc(100svh - var(--nav-height));
+    min-height: calc(var(--app-viewport-height) - var(--nav-height));
     padding: 30px 22px;
   }
 
@@ -351,12 +351,12 @@ html.about-snap-page {
   }
 
   .about-band {
-    min-height: calc(100svh - var(--nav-height));
+    min-height: calc(var(--app-viewport-height) - var(--nav-height));
   }
 
   .band-inner {
     width: min(var(--max-width), calc(100% - var(--page-inline)));
-    min-height: calc(100svh - var(--nav-height));
+    min-height: calc(var(--app-viewport-height) - var(--nav-height));
     padding: 24px 16px;
   }
 

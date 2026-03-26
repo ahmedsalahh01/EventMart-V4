@@ -1,4 +1,5 @@
 import { useLocation } from "react-router-dom";
+import AppScaleFrame from "./AppScaleFrame";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
@@ -9,22 +10,30 @@ function AppShell({ children }) {
 
   if (isAuthRoute) {
     return (
-      <>
-        {children}
-        <Footer />
-      </>
+      <div className="app-shell app-shell-auth">
+        <AppScaleFrame>
+          {children}
+          <Footer />
+        </AppScaleFrame>
+      </div>
     );
   }
 
   if (isCartRoute) {
-    return <div className="app-shell">{children}</div>;
+    return (
+      <div className="app-shell app-shell-cart">
+        <AppScaleFrame>{children}</AppScaleFrame>
+      </div>
+    );
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-shell-default">
       <Navbar />
-      <div className="app-body">{children}</div>
-      <Footer />
+      <AppScaleFrame>
+        <div className="app-body">{children}</div>
+        <Footer />
+      </AppScaleFrame>
     </div>
   );
 }

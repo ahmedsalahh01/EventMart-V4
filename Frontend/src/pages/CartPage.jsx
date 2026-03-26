@@ -1,18 +1,23 @@
 import { motion } from "framer-motion";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
 import Footer from "../components/Footer";
+import useRequireAuth from "../hooks/useRequireAuth";
 import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
 import { formatMoney, getProductImage } from "../lib/products";
 import "./../styles/cart.css";
 
 function CartPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, firstName } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { items, itemCount, updateQuantity, updateRentalDays, removeItem, clearCart } = useCart();
+  const { requireAuth } = useRequireAuth();
+  const [checkoutMessage, setCheckoutMessage] = useState("");
 
   const subtotal = items.reduce((total, item) => {
     const multiplier = item.mode === "rent" ? Number(item.rental_days || 1) : 1;
@@ -24,8 +29,30 @@ function CartPage() {
   const cartTitle = "Shopping Cart";
   const showCartIcon = shouldShowCartIcon(isAuthenticated);
 
+  useEffect(() => {
+    const incomingMessage = location.state?.checkoutError;
+    if (typeof incomingMessage === "string" && incomingMessage.trim()) {
+      setCheckoutMessage(incomingMessage);
+    }
+  }, [location.state]);
+
   function navLinkClassName({ isActive }) {
     return isActive ? "active" : undefined;
+  }
+
+  function handleCheckout() {
+    if (!hasItems) {
+      setCheckoutMessage("Your cart is empty. Add items before checkout.");
+      return;
+    }
+
+    setCheckoutMessage("");
+
+    if (!requireAuth({ returnTo: "/checkout" })) {
+      return;
+    }
+
+    navigate("/checkout");
   }
 
   return (
@@ -239,11 +266,12 @@ function CartPage() {
               id="checkoutBtn"
               className="checkout-btn"
               disabled={!hasItems}
-              onClick={() => navigate("/auth?tab=signin")}
+              onClick={handleCheckout}
             >
               <span>Checkout</span>
               <span aria-hidden="true">&rarr;</span>
             </button>
+            {checkoutMessage ? <p className="summary-note">{checkoutMessage}</p> : null}
           </aside>
         </div>
       </main>

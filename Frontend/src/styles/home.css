@@ -34,7 +34,7 @@
   --c-48: #f9fcff;
   --c-49: #32b68b;
 
-  --navbar-height: 88px;
+  --nav-base-height: 88px;
   --page-x: 50px;
   --content-max: 1760px;
   --page-inline: 48px;
@@ -44,7 +44,7 @@
   --radius-md: 16px;
   --radius-sm: 12px;
   --max-width: var(--content-max);
-  --nav-height: var(--navbar-height);
+  --nav-height: calc(var(--nav-base-height) * var(--app-scale));
 }
 
 html[data-interface-theme="dark"] .app-shell {
@@ -226,7 +226,8 @@ ul {
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 1000;
-  height: var(--nav-height);
+  width: calc(100% * var(--app-scale-inverse));
+  height: var(--nav-base-height);
   background: var(--c-35);
   border-bottom: 1px solid var(--c-36);
   display: grid;
@@ -234,6 +235,8 @@ ul {
   align-items: center;
   gap: 28px;
   padding: 0 clamp(16px, 3vw, 42px);
+  transform: scale(var(--app-scale));
+  transform-origin: top left;
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, backdrop-filter 0.2s ease;
 }
 
@@ -472,9 +475,9 @@ html[data-interface-theme="dark"] #themeIconMoon {
   border: 1px solid var(--c-52);
   border-radius: 0 0 36px 36px;
   box-shadow: var(--c-53);
-  width: 100vw;
+  width: var(--app-viewport-width);
   max-width: none;
-  margin-inline: calc(50% - 50vw);
+  margin-inline: calc(50% - (var(--app-viewport-width) / 2));
   min-height: clamp(820px, 84vw, 980px);
   padding: calc(var(--nav-height) + 8px) clamp(12px, 2.4vw, 34px) clamp(348px, 31vw, 412px);
   display: grid;
@@ -515,6 +518,7 @@ html[data-interface-theme="dark"] #themeIconMoon {
   position: relative;
   z-index: 4;
   margin-inline: auto;
+  margin-top: 24px;
 }
 
 .hero-search-shell {
@@ -1812,7 +1816,7 @@ html[data-interface-theme="dark"] .footer-bottom p {
 
 @media (max-width: 980px) {
   .app-shell {
-    --navbar-height: 118px;
+    --nav-base-height: 118px;
     --page-inline: 32px;
   }
 
@@ -1846,6 +1850,10 @@ html[data-interface-theme="dark"] .footer-bottom p {
   .home-main {
     width: min(var(--max-width), calc(100% - var(--page-inline)));
     padding-top: 0;
+  }
+
+  .hero-search {
+    margin-top: 18px;
   }
 
   .market-hero {
@@ -1907,7 +1915,7 @@ html[data-interface-theme="dark"] .footer-bottom p {
 
 @media (max-width: 640px) {
   .app-shell {
-    --navbar-height: 148px;
+    --nav-base-height: 148px;
     --page-inline: 22px;
   }
 
@@ -1925,6 +1933,10 @@ html[data-interface-theme="dark"] .footer-bottom p {
 
   .reg-text .auth-label {
     display: none;
+  }
+
+  .hero-search {
+    margin-top: 12px;
   }
 
   .market-hero {

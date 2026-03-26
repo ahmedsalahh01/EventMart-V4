@@ -10,7 +10,9 @@ import ProfilePage from "./pages/ProfilePage";
 import AIPlannerPage from "./pages/AIPlannerPage";
 import AboutPage from "./pages/AboutPage";
 import ContactPage from "./pages/ContactPage";
+import CheckoutPage from "./pages/CheckoutPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import OrderConfirmationPage from "./pages/OrderConfirmationPage";
 
 function App() {
   const location = useLocation();
@@ -23,6 +25,22 @@ function App() {
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route
+            path="/checkout"
+            element={(
+              <ProtectedRoute>
+                <CheckoutPage />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/orders/:orderId/confirmation"
+            element={(
+              <ProtectedRoute>
+                <OrderConfirmationPage />
+              </ProtectedRoute>
+            )}
+          />
           <Route
             path="/profile"
             element={(

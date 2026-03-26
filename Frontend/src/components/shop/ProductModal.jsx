@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { formatMoney, getProductImage } from "../../lib/products";
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -47,8 +48,13 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
     setMessage(`Purchase confirmed: ${quantity} x ${product.name}`);
   }
 
-  return (
-    <div className="modal-backdrop show" aria-hidden="false" onClick={(event) => event.target === event.currentTarget && onClose()}>
+  const modal = (
+    <div
+      className="modal-backdrop show"
+      data-theme-scope="shop"
+      aria-hidden="false"
+      onClick={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div className="modal">
         <button className="modal-close" type="button" onClick={onClose}>
           X
@@ -130,6 +136,8 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }
 
 export default ProductModal;

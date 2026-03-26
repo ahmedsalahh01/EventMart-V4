@@ -20,7 +20,10 @@ runTest("should hide cart icon for signed-out users and show it for signed-in us
 runTest("should build sign-in auth paths with protected return destinations", () => {
   assert.equal(buildAuthPath(), "/auth?tab=signin");
   assert.equal(buildAuthPath("/ai-planner"), "/auth?tab=signin&returnTo=%2Fai-planner");
-  assert.equal(buildAuthPath("/shop?category=Stages#featured"), "/auth?tab=signin&returnTo=%2Fshop%3Fcategory%3DStages%23featured");
+  assert.equal(
+    buildAuthPath("/shop?category=Stages#featured"),
+    "/auth?tab=signin&returnTo=%2Fshop%3Fcategory%3DStages%23featured"
+  );
 });
 
 runTest("should resolve post-auth return paths safely", () => {

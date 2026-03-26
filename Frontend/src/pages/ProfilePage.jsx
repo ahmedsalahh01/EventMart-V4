@@ -253,13 +253,15 @@ function ProfilePage() {
               return (
                 <article key={order.id} className="order-card">
                   <div className="order-head">
-                    <span className="order-id">Order #{order.id}</span>
+                    <span className="order-id">{order.public_order_id || `Order #${order.id}`}</span>
                     <span className={`status-pill status-${normalizedStatus}`}>{normalizedStatus}</span>
                   </div>
                   <div className="order-meta">
                     <span>Created: {formatDateTime(order.created_at)}</span>
                     <span>Items: {Number(order.total_items || 0)}</span>
                     <span>Total: {formatMoney(order.total)}</span>
+                    <span>Deposit: {String(order.deposit_status || "unpaid")}</span>
+                    <span>ETA: {order.delivery_estimate || "Pending"}</span>
                   </div>
                   <div className="order-progress">
                     <span style={{ width: `${getStatusProgress(normalizedStatus)}%` }}></span>
