@@ -5,6 +5,18 @@ const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 const pool = require("./db");
+const {
+  authorizeAdvancePayment,
+  buildPublicOrderId,
+  buildShippingSummary,
+  calculateDeliveryEstimate,
+  calculateTotals,
+  extractEgyptAddressFromReversePayload,
+  isCoordinateWithinEgypt,
+  normalizeOrderCartItems,
+  roundCurrency,
+  validateCheckoutSubmission
+} = require("./lib/checkout");
 require("dotenv").config();
 
 const fsp = fs.promises;
@@ -34,30 +46,65 @@ const allowedOrigins = Array.from(
   )
 );
 
+function isLocalOriginHost(hostname) {
+  const normalized = String(hostname || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "[::1]";
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  try {
+    const { hostname, protocol } = new URL(origin);
+
+    if (protocol !== "http:" && protocol !== "https:") {
+      return false;
+    }
+
+    if (isLocalOriginHost(hostname)) {
+      return true;
+    }
+
+    if (hostname.endsWith(".vercel.app")) {
+      return true;
+    }
+  } catch (_error) {
+    return false;
+  }
+
+  return false;
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    console.log("CORS Origin Check:", origin || "(none)");
+    console.log("Allowed Origins:", allowedOrigins);
+
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+
 app.use((req, _res, next) => {
   console.log("Request Origin:", req.headers.origin || "(none)");
   next();
 });
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      console.log("CORS Origin Check:", origin || "(none)");
-      console.log("Allowed Origins:", allowedOrigins);
+app.use(cors(corsOptions));
 
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(null, false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
-
-app.options("*", cors());
+app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "120mb" }));
 app.use("/uploads", express.static(UPLOADS_DIR));
@@ -852,8 +899,302 @@ function sendProductError(res, error, logPrefix) {
   });
 }
 
+function sendCheckoutError(res, error, logPrefix) {
+  if (error?.fieldErrors) {
+    return res.status(error.status || 400).json({
+      error: error.message || "Checkout validation failed.",
+      fieldErrors: error.fieldErrors
+    });
+  }
+
+  if (error?.status) {
+    return res.status(error.status).json({ error: error.message });
+  }
+
+  console.error(logPrefix, error.message);
+
+  return res.status(500).json({
+    error: "Server error",
+    details: error.message
+  });
+}
+
+async function fetchProductsForCheckout(productIds) {
+  const ids = Array.from(new Set(productIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+
+  if (!ids.length) {
+    return [];
+  }
+
+  const result = await pool.query(
+    `
+    SELECT
+      p.id,
+      p.name,
+      p.active,
+      p.buy_enabled,
+      p.rent_enabled,
+      p.buy_price,
+      p.rent_price_per_day,
+      p.currency,
+      COALESCE(inv.quantity_available, 0)::INT AS quantity_available,
+      COALESCE(cost.unit_cost, 0) AS unit_cost
+    FROM products p
+    LEFT JOIN product_inventory inv ON inv.product_id = p.id
+    LEFT JOIN product_costs cost ON cost.product_id = p.id
+    WHERE p.id = ANY($1::BIGINT[])
+    `,
+    [ids]
+  );
+
+  return result.rows;
+}
+
+async function buildCheckoutLineItems(rawItems) {
+  const items = normalizeOrderCartItems(rawItems);
+  if (!items.length) {
+    const error = new Error("Your cart is empty.");
+    error.status = 400;
+    error.fieldErrors = { items: "Your cart is empty." };
+    throw error;
+  }
+
+  const productRows = await fetchProductsForCheckout(items.map((item) => item.id));
+  const productMap = new Map(productRows.map((row) => [Number(row.id), row]));
+  const lineItems = [];
+  const itemErrors = {};
+
+  items.forEach((item, index) => {
+    const product = productMap.get(Number(item.id));
+
+    if (!product) {
+      itemErrors[`items.${index}`] = "One of the selected products no longer exists.";
+      return;
+    }
+
+    if (product.active === false) {
+      itemErrors[`items.${index}`] = `${product.name} is currently unavailable.`;
+      return;
+    }
+
+    if (item.mode === "buy" && !product.buy_enabled) {
+      itemErrors[`items.${index}`] = `${product.name} is not available for purchase right now.`;
+      return;
+    }
+
+    if (item.mode === "rent" && !product.rent_enabled) {
+      itemErrors[`items.${index}`] = `${product.name} is not available for rent right now.`;
+      return;
+    }
+
+    const availableQuantity = Number(product.quantity_available || 0);
+    if (availableQuantity > 0 && Number(item.quantity) > availableQuantity) {
+      itemErrors[`items.${index}`] = `Only ${availableQuantity} units of ${product.name} are currently available.`;
+      return;
+    }
+
+    const unitPrice = item.mode === "rent" ? Number(product.rent_price_per_day) : Number(product.buy_price);
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      itemErrors[`items.${index}`] = `${product.name} does not have a valid checkout price.`;
+      return;
+    }
+
+    const multiplier = item.mode === "rent" ? Number(item.rentalDays || 1) : 1;
+    const lineTotal = roundCurrency(unitPrice * Number(item.quantity || 0) * multiplier);
+
+    lineItems.push({
+      productId: Number(product.id),
+      productName: String(product.name || "Unnamed Product"),
+      quantity: Number(item.quantity || 1),
+      mode: item.mode,
+      rentalDays: item.mode === "rent" ? Number(item.rentalDays || 1) : null,
+      unitPrice: roundCurrency(unitPrice),
+      unitCostSnapshot: roundCurrency(Number(product.unit_cost || 0)),
+      lineTotal,
+      currency: String(product.currency || "USD")
+    });
+  });
+
+  if (Object.keys(itemErrors).length > 0) {
+    const error = new Error("One or more cart items could not be checked out.");
+    error.status = 400;
+    error.fieldErrors = itemErrors;
+    throw error;
+  }
+
+  const currencies = Array.from(new Set(lineItems.map((item) => item.currency)));
+  if (currencies.length > 1) {
+    const error = new Error("Your cart contains multiple currencies, which is not supported at checkout.");
+    error.status = 400;
+    error.fieldErrors = {
+      items: "Your cart contains multiple currencies, which is not supported at checkout."
+    };
+    throw error;
+  }
+
+  return lineItems;
+}
+
+function normalizeOrderResponse(row) {
+  if (!row) return null;
+
+  const shippingDetails = row.shipping_details && typeof row.shipping_details === "object" ? row.shipping_details : {};
+  const billingDetails = row.billing_details && typeof row.billing_details === "object" ? row.billing_details : {};
+  const items = (Array.isArray(row.items) ? row.items : []).map((item) => ({
+    id: Number(item?.id),
+    productId: Number(item?.productId),
+    name: String(item?.name || "Product"),
+    quantity: Number(item?.quantity || 0),
+    mode: String(item?.mode || "buy"),
+    rentalDays: item?.rentalDays === null || item?.rentalDays === undefined ? null : Number(item.rentalDays),
+    unitPrice: Number(item?.unitPrice || 0),
+    lineTotal: Number(item?.lineTotal || 0)
+  }));
+
+  return {
+    id: Number(row.id),
+    orderId: String(row.public_order_id || ""),
+    status: String(row.status || "pending"),
+    currency: String(row.currency || "USD"),
+    subtotal: Number(row.subtotal || 0),
+    tax: Number(row.tax || 0),
+    discount: Number(row.discount || 0),
+    shipping: Number(row.shipping || 0),
+    total: Number(row.total || 0),
+    depositRequired: Number(row.deposit_required || 0),
+    depositPaid: Number(row.deposit_paid || 0),
+    depositStatus: String(row.deposit_status || "unpaid"),
+    deliveryEstimate: String(row.delivery_estimate || ""),
+    createdAt: row.created_at,
+    paidAt: row.paid_at,
+    name: String(shippingDetails.fullName || ""),
+    phoneNumber: String(shippingDetails.phoneNumber || ""),
+    shipmentAddress: buildShippingSummary(shippingDetails),
+    shippingDetails,
+    billingDetails,
+    items
+  };
+}
+
+async function getConfirmedOrderForUser(userId, publicOrderId) {
+  const result = await pool.query(
+    `
+    SELECT
+      o.id,
+      o.public_order_id,
+      o.status,
+      o.currency,
+      o.subtotal,
+      o.tax,
+      o.discount,
+      o.shipping,
+      o.total,
+      o.delivery_estimate,
+      o.deposit_required,
+      o.deposit_paid,
+      o.deposit_status,
+      o.shipping_details,
+      o.billing_details,
+      o.created_at,
+      o.paid_at,
+      COALESCE(
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'id', oi.id,
+            'productId', oi.product_id,
+            'name', COALESCE(p.name, 'Product'),
+            'quantity', oi.quantity,
+            'mode', oi.type,
+            'rentalDays', oi.rent_days,
+            'unitPrice', oi.unit_price,
+            'lineTotal', oi.line_total
+          )
+          ORDER BY oi.id ASC
+        ) FILTER (WHERE oi.id IS NOT NULL),
+        '[]'::json
+      ) AS items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN products p ON p.id = oi.product_id
+    WHERE o.user_id = $1
+      AND o.public_order_id = $2
+      AND o.deposit_status = 'paid'
+      AND o.status IN ('confirmed', 'processing', 'shipped', 'delivered', 'completed')
+    GROUP BY o.id
+    LIMIT 1
+    `,
+    [userId, publicOrderId]
+  );
+
+  return normalizeOrderResponse(result.rows[0] || null);
+}
+
 app.get("/", (_req, res) => {
   res.send("EventMart API running");
+});
+
+app.post("/api/geolocation/reverse-egypt", async (req, res) => {
+  try {
+    const latitude = Number(req.body?.latitude);
+    const longitude = Number(req.body?.longitude ?? req.body?.lng);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return res.status(400).json({ error: "Valid latitude and longitude are required." });
+    }
+
+    if (!isCoordinateWithinEgypt(latitude, longitude)) {
+      return res.status(400).json({ error: "This service is currently available in Egypt only." });
+    }
+
+    if (typeof fetch !== "function") {
+      return res.status(503).json({
+        error: "We couldn't auto-fill your location right now. Please enter the address manually."
+      });
+    }
+
+    const url = new URL("https://nominatim.openstreetmap.org/reverse");
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("lat", String(latitude));
+    url.searchParams.set("lon", String(longitude));
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("accept-language", "en");
+
+    const geoResponse = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "EventMart Checkout Geolocation"
+      }
+    });
+
+    if (!geoResponse.ok) {
+      throw createHttpError(
+        502,
+        "We couldn't auto-fill your location right now. Please enter the address manually."
+      );
+    }
+
+    const payload = await geoResponse.json();
+    const address = extractEgyptAddressFromReversePayload(payload);
+
+    if (address.countryCode !== "eg") {
+      return res.status(400).json({ error: "This service is currently available in Egypt only." });
+    }
+
+    return res.json({
+      latitude,
+      longitude,
+      ...address
+    });
+  } catch (err) {
+    if (err?.status) {
+      return res.status(err.status).json({ error: err.message });
+    }
+
+    console.error("EGYPT GEOLOCATION ROUTE ERROR:", err.message);
+    return res.status(500).json({
+      error: "We couldn't auto-fill your location right now. Please enter the address manually."
+    });
+  }
 });
 
 app.post(["/product-images/upload", "/api/product-images/upload"], PRODUCT_IMAGE_UPLOAD_PARSER, async (req, res) => {
@@ -1374,18 +1715,175 @@ app.put("/api/me", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/api/checkout/orders", requireAuth, async (req, res) => {
+  try {
+    const checkoutInput = validateCheckoutSubmission(req.body);
+    const lineItems = await buildCheckoutLineItems(checkoutInput.items);
+    const totals = calculateTotals(lineItems);
+    const currency = String(lineItems[0]?.currency || "USD");
+    const deliveryEstimate = calculateDeliveryEstimate(lineItems);
+
+    checkoutInput.billingDetails.advancePaymentRequiredPercentage = 30;
+
+    const paymentResult = authorizeAdvancePayment({
+      billingDetails: checkoutInput.billingDetails,
+      paymentDetails: checkoutInput.paymentDetails,
+      total: totals.total
+    });
+
+    checkoutInput.billingDetails.depositRequired = paymentResult.depositRequired;
+    checkoutInput.billingDetails.depositPaid = paymentResult.depositPaid;
+    checkoutInput.billingDetails.depositStatus = paymentResult.depositStatus;
+
+    const publicOrderId = buildPublicOrderId();
+    const paidAt = paymentResult.paidAt;
+
+    await runProductTransaction(async (client) => {
+      const orderInsert = await client.query(
+        `
+        INSERT INTO orders (
+          user_id,
+          status,
+          public_order_id,
+          subtotal,
+          tax,
+          discount,
+          shipping,
+          total,
+          currency,
+          shipping_details,
+          billing_details,
+          delivery_estimate,
+          deposit_required,
+          deposit_paid,
+          deposit_status,
+          deposit_paid_at,
+          paid_at
+        )
+        VALUES (
+          $1,
+          'confirmed',
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9::jsonb,
+          $10::jsonb,
+          $11,
+          $12,
+          $13,
+          $14,
+          $15,
+          $16
+        )
+        RETURNING id
+        `,
+        [
+          req.auth.userId,
+          publicOrderId,
+          totals.subtotal,
+          totals.tax,
+          totals.discount,
+          totals.shipping,
+          totals.total,
+          currency,
+          JSON.stringify(checkoutInput.shippingDetails),
+          JSON.stringify(checkoutInput.billingDetails),
+          deliveryEstimate.label,
+          paymentResult.depositRequired,
+          paymentResult.depositPaid,
+          paymentResult.depositStatus,
+          paidAt,
+          paidAt
+        ]
+      );
+
+      const orderId = orderInsert.rows[0].id;
+
+      for (const item of lineItems) {
+        await client.query(
+          `
+          INSERT INTO order_items (
+            order_id,
+            product_id,
+            quantity,
+            type,
+            rent_days,
+            unit_price,
+            unit_cost_snapshot,
+            line_total
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `,
+          [
+            orderId,
+            item.productId,
+            item.quantity,
+            item.mode,
+            item.mode === "rent" ? item.rentalDays : null,
+            item.unitPrice,
+            item.unitCostSnapshot,
+            item.lineTotal
+          ]
+        );
+      }
+    });
+
+    const order = await getConfirmedOrderForUser(req.auth.userId, publicOrderId);
+
+    if (!order) {
+      throw createHttpError(500, "The order was created but could not be loaded afterward.");
+    }
+
+    return res.status(201).json({ order });
+  } catch (err) {
+    return sendCheckoutError(res, err, "CHECKOUT ROUTE ERROR:");
+  }
+});
+
+app.get("/api/orders/:publicOrderId/confirmation", requireAuth, async (req, res) => {
+  try {
+    const publicOrderId = String(req.params.publicOrderId || "").trim().toUpperCase();
+
+    if (!publicOrderId) {
+      return res.status(400).json({ error: "Order ID is required." });
+    }
+
+    const order = await getConfirmedOrderForUser(req.auth.userId, publicOrderId);
+
+    if (!order) {
+      return res.status(404).json({
+        error: "We couldn't find a confirmed order for that confirmation page."
+      });
+    }
+
+    return res.json({ order });
+  } catch (err) {
+    return sendCheckoutError(res, err, "ORDER CONFIRMATION ROUTE ERROR:");
+  }
+});
+
 app.get("/api/me/orders", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `
       SELECT
         o.id,
+        o.public_order_id,
         o.status,
+        o.delivery_estimate,
         o.subtotal,
         o.tax,
         o.discount,
         o.shipping,
         o.total,
+        o.currency,
+        o.deposit_required,
+        o.deposit_paid,
+        o.deposit_status,
         o.created_at,
         o.paid_at,
         COALESCE(SUM(oi.quantity), 0)::INT AS total_items

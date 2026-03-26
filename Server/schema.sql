@@ -109,14 +109,81 @@ CREATE TABLE IF NOT EXISTS orders (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  public_order_id TEXT,
   subtotal NUMERIC(12,2) NOT NULL DEFAULT 0,
   tax NUMERIC(12,2) NOT NULL DEFAULT 0,
   discount NUMERIC(12,2) NOT NULL DEFAULT 0,
   shipping NUMERIC(12,2) NOT NULL DEFAULT 0,
   total NUMERIC(12,2) NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  shipping_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  billing_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  delivery_estimate TEXT,
+  deposit_required NUMERIC(12,2) NOT NULL DEFAULT 0,
+  deposit_paid NUMERIC(12,2) NOT NULL DEFAULT 0,
+  deposit_status TEXT NOT NULL DEFAULT 'unpaid',
+  deposit_paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   paid_at TIMESTAMPTZ
 );
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS public_order_id TEXT;
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD';
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS shipping_details JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS billing_details JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS delivery_estimate TEXT;
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS deposit_required NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS deposit_paid NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS deposit_status TEXT NOT NULL DEFAULT 'unpaid';
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS deposit_paid_at TIMESTAMPTZ;
+
+UPDATE orders
+SET public_order_id = CONCAT('EM-', TO_CHAR(created_at, 'YYYYMMDD'), '-', LPAD(id::text, 6, '0'))
+WHERE public_order_id IS NULL OR public_order_id = '';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'orders_public_order_id_key'
+  ) THEN
+    ALTER TABLE orders
+    ADD CONSTRAINT orders_public_order_id_key UNIQUE (public_order_id);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'orders_deposit_status_check'
+  ) THEN
+    ALTER TABLE orders
+    ADD CONSTRAINT orders_deposit_status_check
+    CHECK (deposit_status IN ('unpaid', 'paid', 'failed'));
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS order_items (
   id BIGSERIAL PRIMARY KEY,
