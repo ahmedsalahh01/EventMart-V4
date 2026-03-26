@@ -11,7 +11,6 @@ import AIPlannerPage from "./pages/AIPlannerPage";
 import AboutPage from "./pages/AboutPage";
 import ContactPage from "./pages/ContactPage";
 import NotFoundPage from "./pages/NotFoundPage";
-import { Analytics } from "@vercel/analytics/next"
 
 function App() {
   const location = useLocation();

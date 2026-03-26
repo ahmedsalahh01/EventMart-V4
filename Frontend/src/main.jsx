@@ -8,7 +8,6 @@ import { CartProvider } from "./contexts/CartContext";
 import "./styles/theme.css";
 import "./styles/index.css";
 import "./styles/home.css";
-import { Analytics } from "@vercel/analytics/next"
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
