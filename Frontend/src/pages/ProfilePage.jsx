@@ -50,10 +50,7 @@ function ProfilePage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    if (!token || !user) {
-      navigate("/auth?returnTo=Profile.html", { replace: true });
-      return;
-    }
+    if (!token) return undefined;
 
     let cancelled = false;
 
@@ -79,7 +76,7 @@ function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, token, updateSession, user]);
+  }, [token, updateSession]);
 
   const filteredOrders = useMemo(
     () => (statusFilter === "all" ? orders : orders.filter((order) => String(order.status || "").toLowerCase() === statusFilter)),

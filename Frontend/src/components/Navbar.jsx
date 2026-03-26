@@ -4,6 +4,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
+import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
 
 const navItems = [
   { to: "/", label: "Home" },
@@ -21,6 +22,7 @@ function Navbar() {
   const { isAuthenticated, firstName } = useAuth();
   const { itemCount } = useCart();
   const isHomeRoute = location.pathname === "/";
+  const showCartIcon = shouldShowCartIcon(isAuthenticated);
 
   useEffect(() => {
     if (!isHomeRoute) {
@@ -47,13 +49,7 @@ function Navbar() {
   return (
     <nav className={navClassName}>
       <NavLink to="/" className="brand-link" aria-label="EventMart Home">
-        {isHomeRoute ? (
-          <img className="brand-logo" src="/assets/eventmart-footer-logo.png" alt="" />
-        ) : (
-          <span className="brand-text">
-            Event<span>Mart</span>
-          </span>
-        )}
+        <img className="brand-logo" src="/assets/eventmart-navbar-logo.png" alt="" />
       </NavLink>
 
       <ul className="navlist" aria-label="Main navigation" onMouseLeave={() => setHoveredPath(null)}>
@@ -101,24 +97,26 @@ function Navbar() {
           </svg>
         </button>
 
-        <NavLink to="/cart" className="icon-btn cart-link" aria-label="Shopping cart">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M4 5H6L7.7 14.2A1 1 0 0 0 8.68 15H17.4A1 1 0 0 0 18.36 14.26L20 8H7"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="9.6" cy="19" r="1.2" fill="currentColor" />
-            <circle cx="16.8" cy="19" r="1.2" fill="currentColor" />
-          </svg>
-          <span className="cart-badge" style={{ display: itemCount > 0 ? "inline-block" : "none" }}>
-            {itemCount}
-          </span>
-        </NavLink>
+        {showCartIcon ? (
+          <NavLink to="/cart" className="icon-btn cart-link" aria-label="Shopping cart">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 5H6L7.7 14.2A1 1 0 0 0 8.68 15H17.4A1 1 0 0 0 18.36 14.26L20 8H7"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="9.6" cy="19" r="1.2" fill="currentColor" />
+              <circle cx="16.8" cy="19" r="1.2" fill="currentColor" />
+            </svg>
+            <span className="cart-badge" style={{ display: itemCount > 0 ? "inline-block" : "none" }}>
+              {itemCount}
+            </span>
+          </NavLink>
+        ) : null}
 
-        <NavLink to={isAuthenticated ? "/profile" : "/auth?tab=signin"} className="reg-text" title={isAuthenticated ? `Signed in as ${firstName}` : undefined}>
+        <NavLink to={isAuthenticated ? "/profile" : buildAuthPath()} className="reg-text" title={isAuthenticated ? `Signed in as ${firstName}` : undefined}>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.8" />
             <path d="M5 20c.9-3.2 3.72-5 7-5s6.1 1.8 7 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />

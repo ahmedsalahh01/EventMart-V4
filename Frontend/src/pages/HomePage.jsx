@@ -56,14 +56,14 @@ function HomePage() {
           </form>
 
           <div className="market-hero-copy">
-            <h1 id="hero-title">Get Your Event Simple!</h1>
+            <h1 id="hero-title">Get Your Event- SIMPLE.</h1>
             <p className="hero-text">
               Shop or rent curated event equipment in minutes. Compare products, discover recommendations, unlock deals,
               and build a full setup package for your event from one place.
             </p>
             <div className="hero-actions">
               <Link to="/shop" className="btn-primary">
-                Shop Now
+                <span className="cta-orbit-label">Explore Shop</span>
               </Link>
               <Link to="/ai-planner" className="btn-secondary btn-secondary-ai">
                 <span className="hero-planner-link-mark" aria-hidden="true">
@@ -82,7 +82,7 @@ function HomePage() {
                     <circle cx="13" cy="32.5" r="2.5" fill="currentColor" />
                   </svg>
                 </span>
-                Try AI Planner
+                <span className="cta-orbit-label">Try AI Planner</span>
               </Link>
             </div>
           </div>
@@ -157,12 +157,11 @@ function HomePage() {
               ["Stage Lighting Starter Kit", "4.8 rating â€¢ 96 reviews", "$360", "or rent from $62/day"],
               ["LED Backdrop Display Panel", "4.7 rating â€¢ 84 reviews", "$590", "or rent from $95/day"],
               ["DJ Booth Performance Set", "4.9 rating â€¢ 142 reviews", "$510", "or rent from $88/day"]
-            ].map(([title, meta, price, sub]) => (
+            ].map(([title, , price, sub]) => (
               <article key={title} className="market-card">
                 <img src="/assets/equipment-collage.jpg" alt={title} />
                 <div className="market-card-body">
                   <h3>{title}</h3>
-                  <p className="card-meta">{meta}</p>
                   <p className="card-price">
                     {price} <span>{sub}</span>
                   </p>
@@ -184,10 +183,10 @@ function HomePage() {
             </p>
             <div className="package-actions">
               <Link to="/shop" className="btn-primary-pack">
-                Start Building
+                <span className="cta-orbit-label">Start Building</span>
               </Link>
               <Link to="/shop" className="btn-secondary-pack">
-                Browse Packages
+                <span className="cta-orbit-label">Browse Packages</span>
               </Link>
             </div>
           </div>

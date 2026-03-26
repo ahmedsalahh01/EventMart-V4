@@ -24,7 +24,12 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
   }
 
   function handleCart() {
-    onAddToCart(product, quantity);
+    const added = onAddToCart(product, quantity);
+    if (!added) {
+      setMessage("");
+      return;
+    }
+
     setMessage(
       <>
         Added to cart: {quantity} x {product.name}. <a href="/cart">View cart</a>
@@ -33,7 +38,12 @@ function ProductModal({ product, onClose, onAddToCart, onBuyNow }) {
   }
 
   function handleBuy() {
-    onBuyNow(product, quantity);
+    const added = onBuyNow(product, quantity);
+    if (!added) {
+      setMessage("");
+      return;
+    }
+
     setMessage(`Purchase confirmed: ${quantity} x ${product.name}`);
   }
 

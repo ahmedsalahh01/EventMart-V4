@@ -5,6 +5,16 @@ import Footer from "./Footer";
 function AppShell({ children }) {
   const location = useLocation();
   const isCartRoute = location.pathname === "/cart";
+  const isAuthRoute = location.pathname === "/auth";
+
+  if (isAuthRoute) {
+    return (
+      <>
+        {children}
+        <Footer />
+      </>
+    );
+  }
 
   if (isCartRoute) {
     return <div className="app-shell">{children}</div>;

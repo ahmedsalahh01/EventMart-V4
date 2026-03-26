@@ -3,31 +3,31 @@
   --c-22: var(--c-2);
   --c-23: var(--c-4);
   --c-24: 0 4px 24px -4px color-mix(in srgb, var(--c-9) 12%, transparent);
-  --c-25: var(--c-12);
+  --c-25: var(--page-accent-solid);
   --c-26: var(--c-14);
   --c-27: var(--c-5);
   --c-28: var(--c-4);
-  --c-29: var(--c-12);
-  --c-30: var(--c-13);
+  --c-29: var(--page-accent-solid);
+  --c-30: #0f4957;
   --c-31: var(--c-3);
-  --c-32: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
+  --c-32: var(--page-accent-gradient);
   --c-33: color-mix(in srgb, var(--c-10) 42%, var(--c-2));
   --c-34: var(--c-2);
-  --c-35: color-mix(in srgb, var(--c-12) 16%, var(--c-2));
-  --c-36: color-mix(in srgb, var(--c-14) 80%, var(--c-12));
-  --c-37: color-mix(in srgb, var(--c-29) 24%, transparent);
+  --c-35: color-mix(in srgb, var(--page-accent-solid) 10%, var(--c-2));
+  --c-36: var(--page-accent-ink);
+  --c-37: var(--page-accent-ring);
   --c-38: linear-gradient(180deg, color-mix(in srgb, var(--c-2) 68%, transparent), transparent);
   --c-39: color-mix(in srgb, var(--c-2) 86%, transparent);
   --c-40: color-mix(in srgb, var(--c-2) 18%, transparent);
   --c-41: color-mix(in srgb, var(--c-10) 42%, var(--c-2));
   --c-42: 0 20px 60px -30px color-mix(in srgb, var(--c-14) 36%, transparent);
-  --c-43: color-mix(in srgb, var(--c-29) 24%, transparent);
-  --c-44: color-mix(in srgb, var(--c-12) 10%, var(--c-2));
+  --c-43: var(--page-accent-border);
+  --c-44: color-mix(in srgb, var(--page-accent-solid) 8%, var(--c-2));
 
   --planner-surface-soft: color-mix(in srgb, var(--c-2) 90%, transparent);
   --planner-surface-strong: linear-gradient(180deg, var(--c-39) 0%, var(--c-33) 100%);
   --planner-card-surface: linear-gradient(180deg, color-mix(in srgb, var(--c-2) 94%, transparent) 0%, color-mix(in srgb, var(--c-10) 10%, var(--c-2)) 100%);
-  --planner-accent-soft: color-mix(in srgb, var(--c-29) 10%, transparent);
+  --planner-accent-soft: var(--page-accent-soft);
   --planner-warning-bg: color-mix(in srgb, #ef4444 10%, var(--c-2));
   --planner-warning-border: color-mix(in srgb, #ef4444 24%, transparent);
   --planner-warning-text: color-mix(in srgb, #b91c1c 72%, var(--c-14));
@@ -39,34 +39,35 @@ html[data-interface-theme="dark"] [data-theme-scope="planner"] {
     color-mix(in srgb, var(--c-2) 96%, #071126) 0%,
     color-mix(in srgb, var(--c-3) 88%, #071024) 100%
   );
+  
   --c-22: color-mix(in srgb, var(--c-2) 96%, #081127);
   --c-23: var(--c-4);
   --c-24: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
-  --c-25: var(--c-12);
+  --c-25: var(--page-accent-ink);
   --c-26: var(--c-14);
   --c-27: var(--c-5);
   --c-28: var(--c-4);
-  --c-29: var(--c-12);
-  --c-30: var(--c-13);
+  --c-29: var(--page-accent-ink);
+  --c-30: #102846;
   --c-31: color-mix(in srgb, var(--c-3) 90%, #071024);
-  --c-32: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
+  --c-32: var(--page-accent-gradient);
   --c-33: color-mix(in srgb, var(--c-10) 12%, #102247);
   --c-34: var(--c-1);
-  --c-35: color-mix(in srgb, var(--c-12) 22%, #102247);
-  --c-36: color-mix(in srgb, var(--c-14) 82%, var(--c-12));
-  --c-37: color-mix(in srgb, var(--c-29) 26%, transparent);
+  --c-35: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --c-36: var(--page-accent-ink);
+  --c-37: var(--page-accent-ring);
   --c-38: linear-gradient(180deg, color-mix(in srgb, var(--c-2) 10%, transparent), transparent);
   --c-39: color-mix(in srgb, var(--c-22) 86%, transparent);
   --c-40: color-mix(in srgb, var(--c-2) 10%, transparent);
   --c-41: color-mix(in srgb, var(--c-12) 14%, #102247);
   --c-42: 0 20px 60px -30px color-mix(in srgb, var(--c-1) 42%, transparent);
-  --c-43: color-mix(in srgb, var(--c-29) 26%, transparent);
-  --c-44: color-mix(in srgb, var(--c-12) 12%, #102247);
+  --c-43: var(--page-hero-border);
+  --c-44: color-mix(in srgb, var(--c-10) 10%, #102247);
 
   --planner-surface-soft: color-mix(in srgb, #0f1c38 84%, transparent);
   --planner-surface-strong: linear-gradient(180deg, color-mix(in srgb, #132447 92%, transparent) 0%, color-mix(in srgb, #0d1831 100%, transparent) 100%);
   --planner-card-surface: linear-gradient(180deg, color-mix(in srgb, #132447 88%, transparent) 0%, color-mix(in srgb, #0f1b36 100%, transparent) 100%);
-  --planner-accent-soft: color-mix(in srgb, var(--c-29) 14%, transparent);
+  --planner-accent-soft: color-mix(in srgb, var(--c-10) 10%, transparent);
   --planner-warning-bg: color-mix(in srgb, #7f1d1d 26%, #0f172a);
   --planner-warning-border: color-mix(in srgb, #ef4444 28%, transparent);
   --planner-warning-text: color-mix(in srgb, #fecaca 78%, white);
@@ -114,20 +115,8 @@ html[data-interface-theme="dark"] [data-theme-scope="planner"] {
   margin-bottom: 24px;
   padding: clamp(30px, 4vw, 42px);
   border-radius: 24px;
-  background:
-    linear-gradient(
-      120deg,
-      color-mix(in srgb, var(--c-2) 18%, transparent) 0%,
-      color-mix(in srgb, var(--c-10) 16%, transparent) 24%,
-      transparent 48%
-    ),
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--c-12) 92%, var(--c-11)) 0%,
-      color-mix(in srgb, var(--c-13) 86%, var(--c-12)) 54%,
-      color-mix(in srgb, var(--c-12) 70%, var(--c-10)) 100%
-    );
-  border: 1px solid color-mix(in srgb, var(--c-2) 24%, var(--c-12));
+  background: var(--page-heading-bg);
+  border: 1px solid var(--page-hero-border);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--c-2) 26%, transparent),
     0 14px 36px -18px color-mix(in srgb, var(--c-14) 36%, transparent);

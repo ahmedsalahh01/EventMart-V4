@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import ProductCard from "../components/shop/ProductCard";
 import ProductModal from "../components/shop/ProductModal";
 import { useCart } from "../contexts/CartContext";
+import useRequireAuth from "../hooks/useRequireAuth";
 import {
   bumpMetric,
   getMode,
@@ -15,6 +16,7 @@ import "./../styles/shop.css";
 function ShopPage() {
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
+  const { requireAuth } = useRequireAuth();
   const [products, setProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [selectedMode, setSelectedMode] = useState("ALL");
@@ -77,22 +79,37 @@ function ShopPage() {
     setActiveProduct(product);
   }
 
+  function runProtectedCartAction(action) {
+    if (!requireAuth()) {
+      return false;
+    }
+
+    action();
+    return true;
+  }
+
   function quickAdd(product) {
     if (product.quantity_available <= 0) return;
     const mode = product.buy_enabled && product.buy_price !== null ? "buy" : "rent";
-    bumpMetric(product.id, "add_to_cart", 1);
-    addItem(product, 1, mode);
+    return runProtectedCartAction(() => {
+      bumpMetric(product.id, "add_to_cart", 1);
+      addItem(product, 1, mode);
+    });
   }
 
   function handleAddToCart(product, quantity) {
     const mode = product.buy_enabled && product.buy_price !== null ? "buy" : "rent";
-    bumpMetric(product.id, "add_to_cart", quantity);
-    addItem(product, quantity, mode);
+    return runProtectedCartAction(() => {
+      bumpMetric(product.id, "add_to_cart", quantity);
+      addItem(product, quantity, mode);
+    });
   }
 
   function handleBuyNow(product, quantity) {
-    bumpMetric(product.id, "purchase", quantity);
-    addItem(product, quantity, "buy");
+    return runProtectedCartAction(() => {
+      bumpMetric(product.id, "purchase", quantity);
+      addItem(product, quantity, "buy");
+    });
   }
 
   return (

@@ -2,49 +2,45 @@
   --p-card-bg: var(--c-2);
   --p-card-border: var(--c-4);
   --p-shadow: 0 4px 24px -4px color-mix(in srgb, var(--c-9) 12%, transparent);
-  --p-title: var(--c-12);
+  --p-title: var(--page-accent-ink);
   --p-heading: var(--c-1);
-  --p-hero-bg: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
-  --p-hero-border: color-mix(in srgb, var(--c-14) 42%, var(--c-12));
-  --p-hero-copy: var(--c-10);
+  --p-hero-bg: var(--page-heading-bg);
+  --p-hero-border: var(--page-hero-border);
+  --p-hero-copy: var(--page-hero-copy);
   --p-stat-bg: color-mix(in srgb, var(--c-2) 10%, transparent);
   --p-stat-border: color-mix(in srgb, var(--c-2) 18%, transparent);
-  --p-text: color-mix(in srgb, var(--c-14) 82%, var(--c-12));
+  --p-text: color-mix(in srgb, var(--page-accent-solid) 76%, var(--c-14));
   --p-muted: var(--c-5);
   --p-field-bg: var(--c-3);
   --p-field-border: var(--c-4);
-  --p-field-text: color-mix(in srgb, var(--c-14) 76%, var(--c-12));
-  --p-primary-bg: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
+  --p-field-text: color-mix(in srgb, var(--page-accent-solid) 72%, var(--c-14));
+  --p-primary-bg: var(--page-accent-gradient);
   --p-primary-text: var(--c-1);
-  --p-ghost-bg: color-mix(in srgb, var(--c-10) 42%, var(--c-2));
-  --p-ghost-border: color-mix(in srgb, var(--c-12) 20%, var(--c-4));
-  --p-ghost-text: var(--c-14);
+  --p-ghost-bg: var(--page-accent-soft);
+  --p-ghost-border: var(--page-accent-border);
+  --p-ghost-text: var(--page-accent-ink);
   --p-danger-bg: var(--c-9);
   --p-danger-text: var(--c-1);
-  --p-progress-bg: color-mix(in srgb, var(--c-12) 16%, var(--c-2));
-  --p-progress-bar: linear-gradient(90deg, var(--c-12) 0%, var(--c-13) 100%);
-  --p-status-bg: color-mix(in srgb, var(--c-10) 42%, var(--c-2));
-  --p-status-border: color-mix(in srgb, var(--c-12) 18%, var(--c-4));
-  --p-status-text: var(--c-14);
+  --p-progress-bg: color-mix(in srgb, var(--page-accent-solid) 12%, var(--c-2));
+  --p-progress-bar: var(--page-accent-gradient);
+  --p-status-bg: var(--page-accent-soft);
+  --p-status-border: var(--page-accent-border);
+  --p-status-text: var(--page-accent-ink);
   --p-danger-soft-bg: color-mix(in srgb, var(--c-18) 12%, var(--c-2));
   --p-danger-soft-border: color-mix(in srgb, var(--c-18) 18%, var(--c-4));
   --p-danger-soft-text: var(--c-17);
-  --p-focus-ring: color-mix(in srgb, var(--c-12) 24%, transparent);
+  --p-focus-ring: var(--page-accent-ring);
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="profile"] {
   --p-card-bg: color-mix(in srgb, var(--c-2) 96%, #081127);
   --p-card-border: var(--c-4);
   --p-shadow: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
-  --p-title: var(--c-14);
+  --p-title: var(--page-accent-ink);
   --p-heading: var(--c-1);
-  --p-hero-bg: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--c-12) 42%, #081127) 0%,
-    color-mix(in srgb, var(--c-13) 56%, #071024) 100%
-  );
-  --p-hero-border: color-mix(in srgb, var(--c-10) 16%, transparent);
-  --p-hero-copy: color-mix(in srgb, var(--c-14) 82%, var(--c-10));
+  --p-hero-bg: var(--page-heading-bg);
+  --p-hero-border: var(--page-hero-border);
+  --p-hero-copy: var(--page-hero-copy);
   --p-stat-bg: color-mix(in srgb, var(--c-2) 10%, transparent);
   --p-stat-border: color-mix(in srgb, var(--c-2) 14%, transparent);
   --p-text: color-mix(in srgb, var(--c-14) 86%, var(--c-10));
@@ -52,22 +48,22 @@ html[data-interface-theme="dark"] [data-theme-scope="profile"] {
   --p-field-bg: color-mix(in srgb, var(--c-12) 12%, #102247);
   --p-field-border: var(--c-4);
   --p-field-text: color-mix(in srgb, var(--c-14) 82%, var(--c-10));
-  --p-primary-bg: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
+  --p-primary-bg: var(--page-accent-gradient);
   --p-primary-text: var(--c-1);
-  --p-ghost-bg: color-mix(in srgb, var(--c-12) 14%, #102247);
-  --p-ghost-border: color-mix(in srgb, var(--c-12) 24%, var(--c-4));
-  --p-ghost-text: var(--c-14);
+  --p-ghost-bg: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --p-ghost-border: var(--page-hero-border);
+  --p-ghost-text: var(--page-accent-ink);
   --p-danger-bg: var(--c-8);
   --p-danger-text: var(--c-1);
-  --p-progress-bg: color-mix(in srgb, var(--c-12) 12%, #102247);
-  --p-progress-bar: linear-gradient(90deg, var(--c-12) 0%, var(--c-13) 100%);
-  --p-status-bg: color-mix(in srgb, var(--c-12) 14%, #102247);
-  --p-status-border: color-mix(in srgb, var(--c-12) 22%, var(--c-4));
-  --p-status-text: var(--c-14);
+  --p-progress-bg: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --p-progress-bar: var(--page-accent-gradient);
+  --p-status-bg: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --p-status-border: var(--page-hero-border);
+  --p-status-text: var(--page-accent-ink);
   --p-danger-soft-bg: color-mix(in srgb, var(--c-18) 12%, #102247);
   --p-danger-soft-border: color-mix(in srgb, var(--c-18) 20%, var(--c-4));
   --p-danger-soft-text: var(--c-18);
-  --p-focus-ring: color-mix(in srgb, var(--c-12) 24%, transparent);
+  --p-focus-ring: var(--page-accent-ring);
 }
 
 .profile-main {
@@ -208,7 +204,7 @@ html[data-interface-theme="dark"] [data-theme-scope="profile"] {
 .profile-form input:focus,
 .orders-head select:focus {
   outline: none;
-  border-color: var(--c-12);
+  border-color: var(--p-title);
   box-shadow: 0 0 0 3px var(--p-focus-ring);
 }
 

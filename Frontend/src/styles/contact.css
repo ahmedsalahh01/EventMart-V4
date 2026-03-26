@@ -10,9 +10,10 @@
   --c-29: var(--c-3);
   --c-30: var(--c-4);
   --c-31: var(--c-12);
-  --c-32: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
+  --c-32: var(--page-accent-gradient);
   --c-33: var(--c-2);
-  --c-34: var(--c-8);
+  --c-34: var(--page-accent-ink);
+  --c-35: var(--page-accent-ink);
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="contact"] {
@@ -31,9 +32,10 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
   --c-29: color-mix(in srgb, var(--c-3) 90%, #071024);
   --c-30: var(--c-4);
   --c-31: var(--c-12);
-  --c-32: linear-gradient(135deg, var(--c-12) 0%, var(--c-13) 100%);
+  --c-32: var(--page-accent-gradient);
   --c-33: var(--c-1);
-  --c-34: var(--c-6);
+  --c-34: var(--page-accent-ink);
+  --c-35: var(--page-accent-ink);
 }
 
 .contact-page {
@@ -47,8 +49,8 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
   margin-bottom: 30px;
   padding: 30px;
   border-radius: 24px;
-  background: var(--c-12);
-  border: 1px solid color-mix(in srgb, var(--c-14) 42%, var(--c-12));
+  background: var(--page-heading-bg);
+  border: 1px solid var(--page-hero-border);
   box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--c-14) 34%, transparent);
 }
 
@@ -82,7 +84,7 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
 .contact-card h2 {
   margin-bottom: 18px;
   font-size: clamp(22px, 2.2vw, 32px);
-  color: var(--c-12);
+  color: var(--c-35);
 }
 
 .details-list {
@@ -97,7 +99,7 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--c-14);
+  color: var(--c-35);
 }
 
 .details-list p,
@@ -108,7 +110,7 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
 }
 
 .details-list a:hover {
-  color: var(--c-12);
+  color: var(--c-35);
 }
 
 .contact-form {
@@ -119,7 +121,7 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
 .contact-form label {
   margin-top: 8px;
   font-size: 14px;
-  color: var(--c-14);
+  color: var(--c-35);
   font-weight: 600;
 }
 
@@ -142,8 +144,8 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] {
 .contact-form input:focus,
 .contact-form textarea:focus {
   outline: none;
-  border-color: var(--c-31);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-31) 24%, transparent);
+  border-color: var(--c-35);
+  box-shadow: 0 0 0 3px var(--page-accent-ring);
 }
 
 .submit-btn {

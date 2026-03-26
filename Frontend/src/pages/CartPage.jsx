@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
 import Footer from "../components/Footer";
+import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
 import { formatMoney, getProductImage } from "../lib/products";
 import "./../styles/cart.css";
 
@@ -20,7 +21,8 @@ function CartPage() {
   const currency = items[0]?.currency || "USD";
   const hasItems = items.length > 0;
   const authLabel = isAuthenticated && firstName ? `Hi, ${firstName}` : "Sign In";
-  const cartTitle = `Shopping Cart (${itemCount} ${itemCount === 1 ? "item" : "items"})`;
+  const cartTitle = "Shopping Cart";
+  const showCartIcon = shouldShowCartIcon(isAuthenticated);
 
   function navLinkClassName({ isActive }) {
     return isActive ? "active" : undefined;
@@ -30,9 +32,7 @@ function CartPage() {
     <motion.div className="cart-page" data-theme-scope="cart" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
       <header className="cart-navbar">
         <Link to="/" className="brand-link" aria-label="EventMart Home">
-          <span className="brand-text">
-            Event<span>Mart</span>
-          </span>
+          <img className="brand-logo" src="/assets/eventmart-navbar-logo.png" alt="" />
         </Link>
 
         <nav className="center-nav" aria-label="Main navigation">
@@ -74,24 +74,26 @@ function CartPage() {
             </svg>
           </button>
 
-          <Link to="/cart" className="icon-btn cart-btn active-cart" aria-label="Shopping cart">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M4 5H6L7.7 14.2A1 1 0 0 0 8.68 15H17.4A1 1 0 0 0 18.36 14.26L20 8H7"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="9.6" cy="19" r="1.2" fill="currentColor" />
-              <circle cx="16.8" cy="19" r="1.2" fill="currentColor" />
-            </svg>
-            <span className="cart-badge" data-cart-count style={{ display: itemCount > 0 ? "inline-block" : "none" }}>
-              {itemCount}
-            </span>
-          </Link>
+          {showCartIcon ? (
+            <Link to="/cart" className="icon-btn cart-btn active-cart" aria-label="Shopping cart">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M4 5H6L7.7 14.2A1 1 0 0 0 8.68 15H17.4A1 1 0 0 0 18.36 14.26L20 8H7"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="9.6" cy="19" r="1.2" fill="currentColor" />
+                <circle cx="16.8" cy="19" r="1.2" fill="currentColor" />
+              </svg>
+              <span className="cart-badge" data-cart-count style={{ display: itemCount > 0 ? "inline-block" : "none" }}>
+                {itemCount}
+              </span>
+            </Link>
+          ) : null}
 
-          <Link to={isAuthenticated ? "/profile" : "/auth?tab=signin"} className="signin-link">
+          <Link to={isAuthenticated ? "/profile" : buildAuthPath()} className="signin-link">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.8" />
               <path d="M5 20c.9-3.2 3.72-5 7-5s6.1 1.8 7 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -102,7 +104,9 @@ function CartPage() {
       </header>
 
       <main className="cart-main">
-        <h2 id="cartTitle">{cartTitle}</h2>
+        <section className="cart-hero">
+          <h2 id="cartTitle">{cartTitle}</h2>
+        </section>
 
         <div className="cart-layout">
           <section className="cart-panel">
@@ -119,7 +123,7 @@ function CartPage() {
                   <path d="M6.8 4h10.4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6.8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" />
                   <path d="M4.8 8.2h14.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
-                Browse Products
+                <span>Browse Products</span>
               </Link>
             </section>
 
@@ -237,7 +241,7 @@ function CartPage() {
               disabled={!hasItems}
               onClick={() => navigate("/auth?tab=signin")}
             >
-              Checkout
+              <span>Checkout</span>
               <span aria-hidden="true">&rarr;</span>
             </button>
           </aside>

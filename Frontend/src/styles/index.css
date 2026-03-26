@@ -2,8 +2,46 @@
   box-sizing: border-box;
 }
 
+:root {
+  --page-hero-bg: linear-gradient(145deg, #071a28 0%, #0a2635 46%, #0f4957 100%);
+  --page-heading-bg: linear-gradient(
+    98deg,
+    color-mix(in srgb, #071a28 82%, #257999) 0%,
+    color-mix(in srgb, #0a2635 74%, #298a8f) 52%,
+    color-mix(in srgb, #0f4957 54%, #2e9e84) 100%
+  );
+  --page-hero-border: color-mix(in srgb, #d7eef3 16%, transparent);
+  --page-hero-copy: color-mix(in srgb, #d7eef3 78%, #0c2530);
+  --page-accent-solid: #071a28;
+  --page-accent-soft: color-mix(in srgb, #071a28 10%, transparent);
+  --page-accent-border: color-mix(in srgb, #071a28 18%, transparent);
+  --page-accent-ring: color-mix(in srgb, #071a28 22%, transparent);
+  --page-accent-gradient: var(--page-hero-bg);
+  --page-accent-contrast: #ffffff;
+  --page-accent-ink: #071a28;
+}
+
 html {
   scroll-behavior: auto;
+}
+
+html[data-interface-theme="dark"] {
+  --page-hero-bg: linear-gradient(145deg, #030816 0%, #071427 44%, #102846 100%);
+  --page-heading-bg: linear-gradient(
+    98deg,
+    color-mix(in srgb, #030816 84%, #257999) 0%,
+    color-mix(in srgb, #071427 76%, #298a8f) 52%,
+    color-mix(in srgb, #102846 58%, #2e9e84) 100%
+  );
+  --page-hero-border: color-mix(in srgb, #9bb0cf 14%, transparent);
+  --page-hero-copy: color-mix(in srgb, #d7e7ff 80%, #0f1930);
+  --page-accent-solid: #030816;
+  --page-accent-soft: color-mix(in srgb, #d7e7ff 10%, transparent);
+  --page-accent-border: color-mix(in srgb, #d7e7ff 18%, transparent);
+  --page-accent-ring: color-mix(in srgb, #d7e7ff 24%, transparent);
+  --page-accent-gradient: var(--page-hero-bg);
+  --page-accent-contrast: #ffffff;
+  --page-accent-ink: #ffffff;
 }
 
 body {
@@ -81,15 +119,15 @@ html[data-interface-theme="dark"] [data-theme-scope="not-found"] {
   gap: 18px;
   padding: 56px 48px;
   border-radius: 32px;
-  background: var(--c-21);
-  border: 1px solid var(--c-22);
+  background: var(--page-heading-bg);
+  border: 1px solid var(--page-hero-border);
   box-shadow: var(--c-23);
-  color: var(--c-24);
+  color: var(--c-1);
 }
 
 .placeholder-kicker {
   margin: 0;
-  color: var(--c-26);
+  color: var(--page-hero-copy);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -97,7 +135,7 @@ html[data-interface-theme="dark"] [data-theme-scope="not-found"] {
 }
 
 .placeholder-text {
-  color: var(--c-25);
+  color: var(--page-hero-copy);
 }
 
 
