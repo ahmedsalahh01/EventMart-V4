@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import AppScaleFrame from "./components/AppScaleFrame";
 import AdminLayout from "./components/AdminLayout";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -67,56 +68,58 @@ function App() {
   }, []);
 
   return (
-    <AdminLayout>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <DashboardPage
-              error={productsError}
-              isLoading={productsLoading}
-              onRefresh={refreshProducts}
-              products={products}
-            />
-          }
-        />
-        <Route
-          path="/products"
-          element={
-            <ProductsPage
-              error={productsError}
-              isLoading={productsLoading}
-              onProductsRefresh={refreshProducts}
-              products={products}
-            />
-          }
-        />
-        <Route
-          path="/users"
-          element={
-            <UsersPage
-              error={usersError}
-              isLoading={usersLoading}
-              onUsersRefresh={refreshUsers}
-              users={users}
-            />
-          }
-        />
-        <Route
-          path="/analytics"
-          element={
-            <AnalyticsPage
-              error={productsError}
-              isLoading={productsLoading}
-              metricsRevision={metricsRevision}
-              onRefresh={refreshProducts}
-              products={products}
-            />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AdminLayout>
+    <AppScaleFrame>
+      <AdminLayout>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DashboardPage
+                error={productsError}
+                isLoading={productsLoading}
+                onRefresh={refreshProducts}
+                products={products}
+              />
+            }
+          />
+          <Route
+            path="/products"
+            element={
+              <ProductsPage
+                error={productsError}
+                isLoading={productsLoading}
+                onProductsRefresh={refreshProducts}
+                products={products}
+              />
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <UsersPage
+                error={usersError}
+                isLoading={usersLoading}
+                onUsersRefresh={refreshUsers}
+                users={users}
+              />
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <AnalyticsPage
+                error={productsError}
+                isLoading={productsLoading}
+                metricsRevision={metricsRevision}
+                onRefresh={refreshProducts}
+                products={products}
+              />
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AdminLayout>
+    </AppScaleFrame>
   );
 }
 
