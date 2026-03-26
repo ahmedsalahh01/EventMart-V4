@@ -1,5 +1,6 @@
 import { AnimatePresence } from "framer-motion";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import AppShell from "./components/AppShell";
 import ProtectedRoute from "./components/ProtectedRoute";
 import HomePage from "./pages/HomePage";
@@ -45,6 +46,7 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AnimatePresence>
+      <Analytics />
     </AppShell>
   );
 }
