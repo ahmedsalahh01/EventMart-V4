@@ -7,13 +7,13 @@ import { useTheme } from "../contexts/ThemeContext";
 import Footer from "../components/Footer";
 import useRequireAuth from "../hooks/useRequireAuth";
 import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
-import { formatMoney, getProductImage } from "../lib/products";
+import { deleteCustomizationUploads, formatMoney, getProductImage } from "../lib/products";
 import "./../styles/cart.css";
 
 function CartPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, firstName } = useAuth();
+  const { isAuthenticated, firstName, token } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { items, itemCount, updateQuantity, updateRentalDays, removeItem, clearCart } = useCart();
   const { requireAuth } = useRequireAuth();
@@ -53,6 +53,17 @@ function CartPage() {
     }
 
     navigate("/checkout");
+  }
+
+  async function cleanupCustomizationUploadsForItems(targetItems) {
+    const uploadTokens = targetItems.flatMap((item) =>
+      Array.isArray(item.customization_uploads)
+        ? item.customization_uploads.map((upload) => upload.uploadToken).filter(Boolean)
+        : []
+    );
+
+    if (!uploadTokens.length || !token) return;
+    await deleteCustomizationUploads(uploadTokens, token).catch(() => {});
   }
 
   return (
@@ -162,7 +173,7 @@ function CartPage() {
                   const stockLimit = Number(item.stock || 0) > 0 ? Number(item.stock) : Number.POSITIVE_INFINITY;
 
                   return (
-                    <article key={`${item.id}-${item.mode}`} className="cart-item">
+                    <article key={item.cart_item_key} className="cart-item">
                       <img className="item-image" src={getProductImage(item, theme)} alt={item.name} />
 
                       <div className="item-body">
@@ -174,6 +185,14 @@ function CartPage() {
                           </svg>
                           {item.mode === "rent" ? "Rent" : "Buy"}
                         </p>
+                        <p className="item-mode">
+                          {item.selected_color || "Standard"} / {item.selected_size || "Default"}
+                        </p>
+                        {item.customization_requested ? (
+                          <p className="item-mode">
+                            Custom files: {Array.isArray(item.customization_uploads) ? item.customization_uploads.length : 0}
+                          </p>
+                        ) : null}
 
                         <div className="item-controls">
                           <div className="qty-controls" aria-label="Quantity controls">
@@ -181,7 +200,7 @@ function CartPage() {
                               className="qty-btn"
                               type="button"
                               aria-label="Decrease quantity"
-                              onClick={() => updateQuantity(item.id, item.mode, Math.max(1, item.quantity - 1))}
+                              onClick={() => updateQuantity(item.cart_item_key, Math.max(1, item.quantity - 1))}
                             >
                               -
                             </button>
@@ -191,7 +210,7 @@ function CartPage() {
                               type="button"
                               aria-label="Increase quantity"
                               disabled={item.quantity >= stockLimit}
-                              onClick={() => updateQuantity(item.id, item.mode, item.quantity + 1)}
+                              onClick={() => updateQuantity(item.cart_item_key, item.quantity + 1)}
                             >
                               +
                             </button>
@@ -204,7 +223,7 @@ function CartPage() {
                                 className="qty-btn"
                                 type="button"
                                 aria-label="Decrease rental days"
-                                onClick={() => updateRentalDays(item.id, item.mode, Math.max(1, rentalDays - 1))}
+                                onClick={() => updateRentalDays(item.cart_item_key, Math.max(1, rentalDays - 1))}
                               >
                                 -
                               </button>
@@ -213,7 +232,7 @@ function CartPage() {
                                 className="qty-btn"
                                 type="button"
                                 aria-label="Increase rental days"
-                                onClick={() => updateRentalDays(item.id, item.mode, rentalDays + 1)}
+                                onClick={() => updateRentalDays(item.cart_item_key, rentalDays + 1)}
                               >
                                 +
                               </button>
@@ -224,7 +243,15 @@ function CartPage() {
 
                       <div className="item-side">
                         <strong className="item-price">{formatMoney(total, item.currency)}</strong>
-                        <button className="remove-btn" type="button" aria-label="Remove item" onClick={() => removeItem(item.id, item.mode)}>
+                        <button
+                          className="remove-btn"
+                          type="button"
+                          aria-label="Remove item"
+                          onClick={async () => {
+                            await cleanupCustomizationUploadsForItems([item]);
+                            removeItem(item.cart_item_key);
+                          }}
+                        >
                           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path
                               d="M5 7h14M9 7V5h6v2M9.5 11.2v5.8M14.5 11.2v5.8M7.8 7l.8 11.2a1 1 0 0 0 1 .8h4.8a1 1 0 0 0 1-.8L16.2 7"
@@ -240,7 +267,16 @@ function CartPage() {
                   );
                 })}
               </div>
-              <button type="button" id="clearCartBtn" className="clear-btn" hidden={!hasItems} onClick={clearCart}>
+              <button
+                type="button"
+                id="clearCartBtn"
+                className="clear-btn"
+                hidden={!hasItems}
+                onClick={async () => {
+                  await cleanupCustomizationUploadsForItems(items);
+                  clearCart();
+                }}
+              >
                 Clear Cart
               </button>
             </section>

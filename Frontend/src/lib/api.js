@@ -45,13 +45,13 @@ export function resolveApiBaseUrl({ env = readImportMetaEnv(), location = readRu
   return PRODUCTION_API_URL;
 }
 
-function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
-  if (!baseUrl || baseUrl === PRODUCTION_API_URL) {
-    return "";
+function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation(), env = readImportMetaEnv()) {
+  const configuredFallback = normalizeBaseUrl(env?.VITE_FALLBACK_API_URL);
+  if (configuredFallback && configuredFallback !== baseUrl) {
+    return configuredFallback;
   }
 
-  const hostname = String(location?.hostname || "").trim().toLowerCase();
-  if (!hostname || isLocalHostname(hostname)) {
+  if (!baseUrl || baseUrl === PRODUCTION_API_URL) {
     return "";
   }
 
@@ -111,10 +111,12 @@ async function requestJson(url, options = {}) {
     "Content-Type": "application/json",
     ...(options.headers || {})
   };
+  const method = options.method || "GET";
 
   const response = await fetch(url, {
-    method: options.method || "GET",
+    method,
     headers,
+    cache: options.cache || "no-store",
     body: options.body ? JSON.stringify(options.body) : undefined
   });
 
@@ -141,8 +143,14 @@ export function buildApiUrl(path, options = {}) {
 
 export async function apiRequest(path, options = {}) {
   const runtimeLocation = readRuntimeLocation();
-  const primaryBaseUrl = normalizeBaseUrl(options.baseUrl || resolveApiBaseUrl({ location: runtimeLocation }));
-  const fallbackBaseUrl = normalizeBaseUrl(options.fallbackBaseUrl || getFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation));
+  const runtimeEnv = readImportMetaEnv();
+  const primaryBaseUrl = normalizeBaseUrl(options.baseUrl || resolveApiBaseUrl({
+    env: runtimeEnv,
+    location: runtimeLocation
+  }));
+  const fallbackBaseUrl = normalizeBaseUrl(
+    options.fallbackBaseUrl || getFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation, runtimeEnv)
+  );
   const attemptBaseUrls = [primaryBaseUrl, fallbackBaseUrl].filter((value, index, all) => value && all.indexOf(value) === index);
 
   let lastError = null;

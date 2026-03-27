@@ -243,21 +243,6 @@ function CheckoutPage() {
       exit={{ opacity: 0, y: -12 }}
       transition={{ duration: 0.35 }}
     >
-      <section className="checkout-hero">
-        <div>
-          <p className="checkout-kicker">Secure Checkout</p>
-          <h1>Review your details, confirm the 30% advance, and place your order.</h1>
-          <p className="checkout-hero-copy">
-            We’ll use your shipping and billing details to prepare a confirmed order and delivery window right away.
-          </p>
-        </div>
-        <div className="checkout-hero-badges">
-          <span>{summary.itemCount} item{summary.itemCount === 1 ? "" : "s"}</span>
-          <span>30% advance required</span>
-          <span>Egypt-only geolocation assist</span>
-        </div>
-      </section>
-
       <div className="checkout-layout">
         <form className="checkout-form" onSubmit={handleSubmit} noValidate>
           <section className="checkout-section">
@@ -637,11 +622,15 @@ function CheckoutPage() {
                 const lineTotal = Number(item.unit_price || 0) * Number(item.quantity || 0) * multiplier;
 
                 return (
-                  <article key={`${item.id}-${item.mode}`} className="checkout-summary-item">
+                  <article key={item.cart_item_key || `${item.id}-${item.mode}`} className="checkout-summary-item">
                     <div>
                       <strong>{item.name}</strong>
                       <p>
                         {item.quantity} x {item.mode === "rent" ? `${multiplier} day${multiplier === 1 ? "" : "s"} rent` : "buy"}
+                      </p>
+                      <p>
+                        {item.selected_color || "Standard"} / {item.selected_size || "Default"}
+                        {item.customization_requested ? " • Customized" : ""}
                       </p>
                     </div>
                     <span>{formatMoney(lineTotal, item.currency || currency)}</span>

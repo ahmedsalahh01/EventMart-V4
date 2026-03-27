@@ -1,4 +1,5 @@
 import { apiRequest, buildApiUrl } from "./api";
+import { materializeProductDetail } from "./productDetail";
 
 const STORAGE_KEY = "eventmart_products_v1";
 const METRICS_KEY = "eventmart_product_metrics_v1";
@@ -80,6 +81,22 @@ export function fallbackProductId(id) {
   return PRODUCT_ID_REGEX.test(candidate) ? candidate : "00001";
 }
 
+function fallbackProductSlug(name, productId, id) {
+  const base = String(name || "product")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const suffix = String(productId || id || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+  return suffix ? `${base || "product"}-${suffix}` : base || "product";
+}
+
 export function getMode(product) {
   if (product.buy_enabled && product.rent_enabled) return "BOTH";
   if (product.buy_enabled) return "BUY_ONLY";
@@ -127,6 +144,13 @@ export function normalizeProduct(row) {
       : row.stock !== undefined
         ? toNum(row.stock, 0)
       : 0;
+  const detail = materializeProductDetail({
+    colors: row.colors,
+    quantity_available: quantityAvailable,
+    size_mode: row.size_mode || row.sizeMode,
+    sizes: row.sizes,
+    variations: row.variations
+  });
 
   if (!lightImages.length && !darkImages.length && legacyImageUrl) {
     lightImages.push(legacyImageUrl);
@@ -137,6 +161,7 @@ export function normalizeProduct(row) {
     product_id: PRODUCT_ID_REGEX.test(normalizedProductId)
       ? normalizedProductId
       : fallbackProductId(row.product_id || localId),
+    slug: String(row.slug || fallbackProductSlug(row.name, row.product_id, localId)),
     name: String(row.name || "Unnamed Product"),
     category: String(row.category || "General"),
     subcategory: String(row.subcategory || "General"),
@@ -144,7 +169,13 @@ export function normalizeProduct(row) {
     image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
     light_images: lightImages,
     description: String(row.description || ""),
+    quality: String(row.quality || ""),
     quality_points: qualityPoints,
+    colors: detail.colors,
+    size_mode: detail.size_mode,
+    sizes: detail.sizes,
+    customizable: Boolean(row.customizable),
+    variations: detail.variations,
     buy_enabled: Boolean(row.buy_enabled),
     rent_enabled: Boolean(row.rent_enabled),
     buy_price: toNum(row.buy_price, null),
@@ -261,4 +292,90 @@ export function getProductRating(product) {
   const spread = ((seed + score) % 6) / 10;
   const rating = Math.min(5, 4.5 + spread);
   return rating.toFixed(1);
+}
+
+export async function loadProductBySlug(slug) {
+  const normalizedSlug = String(slug || "").trim();
+
+  try {
+    const row = await apiRequest(`/api/products/slug/${encodeURIComponent(normalizedSlug)}`);
+    return row ? normalizeProduct(row) : null;
+  } catch (error) {
+    const fallbackProduct = readStoredProducts().find(
+      (product) => String(product.slug || "").trim().toLowerCase() === normalizedSlug.toLowerCase()
+    );
+
+    if (fallbackProduct) {
+      return fallbackProduct;
+    }
+
+    throw error;
+  }
+}
+
+export async function uploadCustomizationFile({ file, productId, token, uploadKind, variationId }) {
+  const params = new URLSearchParams({
+    filename: String(file?.name || `${uploadKind || "design"}.file`),
+    product_id: String(productId || ""),
+    upload_kind: String(uploadKind || "")
+  });
+
+  if (variationId) {
+    params.set("variation_id", String(variationId));
+  }
+
+  const response = await fetch(buildApiUrl(`/api/customization-uploads?${params.toString()}`), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": file?.type || "application/octet-stream"
+    },
+    body: file
+  });
+
+  const text = await response.text();
+  let payload = null;
+
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = text ? { error: text } : null;
+  }
+
+  if (!response.ok) {
+    const error = new Error(payload?.error || payload?.details || "Customization upload failed.");
+    error.status = response.status;
+    throw error;
+  }
+
+  return payload;
+}
+
+export async function deleteCustomizationUploads(uploadTokens, token) {
+  const list = Array.isArray(uploadTokens) ? uploadTokens.filter(Boolean) : [];
+  if (!list.length) return;
+
+  const response = await fetch(buildApiUrl("/api/customization-uploads"), {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ uploadTokens: list })
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let payload = null;
+
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = text ? { error: text } : null;
+    }
+
+    const error = new Error(payload?.error || payload?.details || "Customization cleanup failed.");
+    error.status = response.status;
+    throw error;
+  }
 }

@@ -144,6 +144,27 @@ function sanitizePhone(value) {
     .slice(0, 20);
 }
 
+function normalizeUploadTokenList(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === null || value === undefined || value === ""
+      ? []
+      : [value];
+
+  return Array.from(
+    new Set(
+      list
+        .map((item) =>
+          sanitizeText(
+            item?.uploadToken || item?.upload_token || item,
+            120
+          )
+        )
+        .filter(Boolean)
+    )
+  );
+}
+
 export function normalizeInstapayUsernameInput(value) {
   return sanitizeText(value, 120).replace(/^@+/, "");
 }
@@ -608,6 +629,12 @@ export function buildCheckoutPayload(form, items) {
     },
     items: (Array.isArray(items) ? items : []).map((item) => ({
       id: item?.id,
+      variation_id: item?.variation_id || item?.variationId || null,
+      selected_color: sanitizeText(item?.selected_color || item?.selectedColor, 60),
+      selected_size: sanitizeText(item?.selected_size || item?.selectedSize, 40),
+      customization_upload_tokens: normalizeUploadTokenList(
+        item?.customization_uploads || item?.customizationUploads
+      ),
       mode: item?.mode === "rent" ? "rent" : "buy",
       quantity: Math.max(1, Number(item?.quantity || 1)),
       rental_days: item?.mode === "rent" ? Math.max(1, Number(item?.rental_days || 1)) : 1
@@ -794,6 +821,13 @@ export function createLocalInstapayConfirmationOrder({ form, items, summary, cur
         id: `${item?.id}-${item?.mode || "buy"}`,
         productId: Number(item?.id || 0),
         name: String(item?.name || "Product"),
+        selectedColor: sanitizeText(item?.selected_color || item?.selectedColor, 60),
+        selectedSize: sanitizeText(item?.selected_size || item?.selectedSize, 40),
+        customizationRequested: Boolean(
+          item?.customization_requested ||
+          item?.customizationRequested ||
+          normalizeUploadTokenList(item?.customization_uploads || item?.customizationUploads).length
+        ),
         quantity: Number(item?.quantity || 0),
         mode: item?.mode === "rent" ? "rent" : "buy",
         rentalDays: item?.mode === "rent" ? Number(item?.rental_days || 1) : null,

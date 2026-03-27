@@ -2,9 +2,6 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ProductCard from "../components/shop/ProductCard";
-import ProductModal from "../components/shop/ProductModal";
-import { useCart } from "../contexts/CartContext";
-import useRequireAuth from "../hooks/useRequireAuth";
 import {
   bumpMetric,
   getMode,
@@ -15,14 +12,11 @@ import "./../styles/shop.css";
 
 function ShopPage() {
   const [searchParams] = useSearchParams();
-  const { addItem } = useCart();
-  const { requireAuth } = useRequireAuth();
   const [products, setProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [selectedMode, setSelectedMode] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState("featured");
-  const [activeProduct, setActiveProduct] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,42 +68,8 @@ function ShopPage() {
 
   const browseInfo = `Browse ${products.length} products across ${categories.length} categories`;
 
-  function openModal(product) {
+  function trackOpen(product) {
     bumpMetric(product.id, "product_view", 1);
-    setActiveProduct(product);
-  }
-
-  function runProtectedCartAction(action) {
-    if (!requireAuth()) {
-      return false;
-    }
-
-    action();
-    return true;
-  }
-
-  function quickAdd(product) {
-    if (product.quantity_available <= 0) return;
-    const mode = product.buy_enabled && product.buy_price !== null ? "buy" : "rent";
-    return runProtectedCartAction(() => {
-      bumpMetric(product.id, "add_to_cart", 1);
-      addItem(product, 1, mode);
-    });
-  }
-
-  function handleAddToCart(product, quantity) {
-    const mode = product.buy_enabled && product.buy_price !== null ? "buy" : "rent";
-    return runProtectedCartAction(() => {
-      bumpMetric(product.id, "add_to_cart", quantity);
-      addItem(product, quantity, mode);
-    });
-  }
-
-  function handleBuyNow(product, quantity) {
-    return runProtectedCartAction(() => {
-      bumpMetric(product.id, "purchase", quantity);
-      addItem(product, quantity, "buy");
-    });
   }
 
   return (
@@ -162,8 +122,7 @@ function ShopPage() {
               <ProductCard
                 key={product.id}
                 product={product}
-                onView={openModal}
-                onQuickAdd={quickAdd}
+                onOpen={trackOpen}
                 isFeatured={Boolean(product.featured)}
               />
             ))
@@ -175,15 +134,6 @@ function ShopPage() {
           )}
         </section>
       </main>
-
-      {activeProduct ? (
-        <ProductModal
-          product={activeProduct}
-          onClose={() => setActiveProduct(null)}
-          onAddToCart={handleAddToCart}
-          onBuyNow={handleBuyNow}
-        />
-      ) : null}
     </motion.div>
   );
 }

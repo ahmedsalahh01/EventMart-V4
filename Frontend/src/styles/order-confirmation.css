@@ -51,7 +51,7 @@ html[data-interface-theme="dark"] [data-theme-scope="order-confirmation"] {
 }
 
 .order-confirmation-card h1 {
-  margin: 0;
+  margin: 10px 0 0;
   line-height: 1.08;
 }
 

@@ -162,6 +162,10 @@ function OrderConfirmationPage() {
                   <p>
                     {item.quantity} x {item.mode === "rent" ? `${item.rentalDays} day${item.rentalDays === 1 ? "" : "s"} rent` : "buy"}
                   </p>
+                  <p>
+                    {item.selectedColor || "Standard"} / {item.selectedSize || "Default"}
+                    {item.customizationRequested ? " • Customized" : ""}
+                  </p>
                 </div>
                 <span>{formatMoney(item.lineTotal, order.currency)}</span>
               </article>

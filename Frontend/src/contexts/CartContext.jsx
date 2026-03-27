@@ -32,16 +32,31 @@ function CartProvider({ children }) {
     persist(nextItems.filter((item) => item.id));
   }
 
-  function addItem(product, quantity = 1, mode = "buy") {
+  function addItem(product, quantity = 1, mode = "buy", options = {}) {
     const unitPrice =
       mode === "rent" && product.rent_enabled && product.rent_price_per_day !== null
         ? Number(product.rent_price_per_day)
         : Number(product.buy_price ?? product.rent_price_per_day ?? 0);
 
-    const stock = Number(product.quantity_available || 0);
+    const stock = Number(options.stock ?? product.quantity_available ?? 0);
+    const variationId =
+      options.variation_id === null || options.variation_id === undefined || options.variation_id === ""
+        ? null
+        : String(options.variation_id);
+    const uploadTokens = Array.isArray(options.customization_uploads)
+      ? options.customization_uploads
+          .map((upload) => String(upload?.uploadToken || upload?.upload_token || "").trim())
+          .filter(Boolean)
+      : [];
+    const cartItemKey = [
+      String(product.id),
+      mode,
+      variationId || "default",
+      uploadTokens.join(":") || "plain"
+    ].join("|");
 
     setItems((current) => {
-      const existingIndex = current.findIndex((item) => item.id === String(product.id) && item.mode === mode);
+      const existingIndex = current.findIndex((item) => item.cart_item_key === cartItemKey);
       if (existingIndex >= 0) {
         return current.map((item, index) => {
           if (index !== existingIndex) return item;
@@ -52,6 +67,15 @@ function CartProvider({ children }) {
             rental_days: item.mode === "rent" ? Math.max(1, Number(item.rental_days || 1)) : 1,
             unit_price: unitPrice,
             stock,
+            variation_id: variationId,
+            selected_color: String(options.selected_color || item.selected_color || ""),
+            selected_size: String(options.selected_size || item.selected_size || ""),
+            sku: String(options.sku || item.sku || ""),
+            customization_uploads: Array.isArray(options.customization_uploads)
+              ? options.customization_uploads
+              : item.customization_uploads,
+            customization_requested:
+              Boolean(options.customization_requested) || item.customization_requested,
             dark_images:
               Array.isArray(product.dark_images) && product.dark_images.length
                 ? product.dark_images
@@ -68,13 +92,23 @@ function CartProvider({ children }) {
       return [
         ...current,
         normalizeCartItem({
+          cart_item_key: cartItemKey,
           id: String(product.id),
           product_id: String(product.product_id || ""),
           name: product.name,
+          slug: product.slug || "",
           dark_images: Array.isArray(product.dark_images) ? product.dark_images : [],
           image_url: product.image_url || "",
           light_images: Array.isArray(product.light_images) ? product.light_images : [],
           mode,
+          variation_id: variationId,
+          selected_color: String(options.selected_color || ""),
+          selected_size: String(options.selected_size || ""),
+          sku: String(options.sku || ""),
+          customization_uploads: Array.isArray(options.customization_uploads)
+            ? options.customization_uploads
+            : [],
+          customization_requested: Boolean(options.customization_requested),
           quantity,
           rental_days: mode === "rent" ? 1 : 1,
           unit_price: unitPrice,
@@ -85,30 +119,30 @@ function CartProvider({ children }) {
     });
   }
 
-  function updateQuantity(id, mode, quantity) {
+  function updateQuantity(cartItemKey, quantity) {
     const nextQuantity = Math.max(1, Number(quantity || 1));
     setItems((current) =>
       current.map((item) => {
-        if (item.id !== String(id) || item.mode !== mode) return item;
+        if (item.cart_item_key !== String(cartItemKey)) return item;
         const safeQuantity = item.stock > 0 ? Math.min(nextQuantity, item.stock) : nextQuantity;
         return { ...item, quantity: safeQuantity };
       })
     );
   }
 
-  function updateRentalDays(id, mode, days) {
+  function updateRentalDays(cartItemKey, days) {
     const nextDays = Math.max(1, Number(days || 1));
     setItems((current) =>
       current.map((item) => {
-        if (item.id !== String(id) || item.mode !== mode) return item;
+        if (item.cart_item_key !== String(cartItemKey)) return item;
         if (item.mode !== "rent") return item;
         return { ...item, rental_days: nextDays };
       })
     );
   }
 
-  function removeItem(id, mode) {
-    setItems((current) => current.filter((item) => !(item.id === String(id) && item.mode === mode)));
+  function removeItem(cartItemKey) {
+    setItems((current) => current.filter((item) => item.cart_item_key !== String(cartItemKey)));
   }
 
   function clearCart() {

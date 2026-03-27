@@ -97,10 +97,25 @@ runTest("should flag missing checkout fields and empty carts", () => {
 
 runTest("should build a safe payload and normalize the shipment address", () => {
   const form = buildValidForm();
-  const payload = buildCheckoutPayload(form, [{ id: "9", quantity: 2, mode: "rent", rental_days: 4 }]);
+  const payload = buildCheckoutPayload(form, [
+    {
+      id: "9",
+      quantity: 2,
+      mode: "rent",
+      rental_days: 4,
+      variation_id: "17",
+      selected_color: "Red",
+      selected_size: "Medium",
+      customization_uploads: [{ uploadToken: "tok-1" }]
+    }
+  ]);
 
   assert.equal(payload.paymentDetails.cardNumber, "4242424242424242");
   assert.equal(payload.items[0].rental_days, 4);
+  assert.equal(payload.items[0].variation_id, "17");
+  assert.equal(payload.items[0].selected_color, "Red");
+  assert.equal(payload.items[0].selected_size, "Medium");
+  assert.deepEqual(payload.items[0].customization_upload_tokens, ["tok-1"]);
   assert.equal(payload.billingDetails.phoneNumber, "+201001234567");
   assert.equal(payload.billingDetails.billingAddress, "15 Tahrir Street");
   assert.equal(buildShipmentAddress(payload.shippingDetails), "15 Tahrir Street, Cairo, Cairo, 11511");
