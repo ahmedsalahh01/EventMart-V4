@@ -57,11 +57,6 @@ function resolveApiBaseUrl({ env = readImportMetaEnv(), location = readRuntimeLo
     return configuredBaseUrl;
   }
 
-  const hostname = String(location?.hostname || "").trim().toLowerCase();
-  if (!hostname || isLocalHostname(hostname)) {
-    return LOCAL_API_URL;
-  }
-
   return PRODUCTION_API_URL;
 }
 
@@ -71,11 +66,7 @@ function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
     return configuredFallback;
   }
 
-  if (!baseUrl || baseUrl === PRODUCTION_API_URL) {
-    return "";
-  }
-
-  return PRODUCTION_API_URL;
+  return "";
 }
 
 function randomId() {
@@ -125,8 +116,8 @@ function createNetworkApiError(baseUrls) {
     .join(" or ");
 
   return new Error(
-    `Could not reach the API server at ${targets || LOCAL_API_URL}. ` +
-    "Make sure the backend is running and that Admin/.env.local points to a reachable API."
+    `Could not reach the API server at ${targets || resolveApiBaseUrl()}. ` +
+    "Make sure VITE_API_URL points to a reachable backend."
   );
 }
 
