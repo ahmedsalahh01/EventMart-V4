@@ -47,6 +47,28 @@ function parsePositiveInteger(value, fallback = 1) {
   return parsed;
 }
 
+function parseOptionalPositiveInteger(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function normalizeTokenList(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value === null || value === undefined || value === ""
+      ? []
+      : [value];
+
+  return Array.from(
+    new Set(
+      list
+        .map((item) => sanitizeText(item, 120))
+        .filter(Boolean)
+    )
+  );
+}
+
 function normalizeOrderCartItems(items) {
   const list = Array.isArray(items) ? items : [];
 
@@ -60,6 +82,12 @@ function normalizeOrderCartItems(items) {
       return {
         id: productId,
         mode,
+        variationId: parseOptionalPositiveInteger(item?.variation_id ?? item?.variationId),
+        selectedColor: sanitizeText(item?.selected_color ?? item?.selectedColor, 60),
+        selectedSize: sanitizeText(item?.selected_size ?? item?.selectedSize, 40),
+        customizationUploadTokens: normalizeTokenList(
+          item?.customization_upload_tokens ?? item?.customizationUploadTokens
+        ),
         quantity: parsePositiveInteger(item?.quantity, 1),
         rentalDays: mode === "rent" ? parsePositiveInteger(item?.rental_days ?? item?.rentalDays, 1) : 1
       };

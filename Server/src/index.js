@@ -1,10 +1,25 @@
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 const pool = require("./db");
+const {
+  ONE_SIZE_LABEL,
+  buildVariationKey,
+  isVariationAvailable,
+  materializeProductCatalogShape,
+  normalizeAvailabilityStatus,
+  normalizeCatalogText,
+  normalizeSizeLabel,
+  normalizeSizeMode,
+  normalizeTextList,
+  normalizeVariationEntry,
+  slugifyProductName,
+  sortSizes
+} = require("./lib/catalog");
 const {
   authorizeAdvancePayment,
   buildPublicOrderId,
@@ -30,10 +45,20 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 const UPLOADS_DIR = path.resolve(__dirname, "../uploads");
 const PRODUCT_UPLOADS_DIR = path.join(UPLOADS_DIR, "products");
+const PRIVATE_UPLOADS_DIR = path.resolve(__dirname, "../private-uploads");
+const CUSTOMIZATION_UPLOADS_DIR = path.join(PRIVATE_UPLOADS_DIR, "customizations");
 const MAX_PRODUCT_IMAGES_PER_MODE = 10;
 const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_CUSTOMIZATION_UPLOAD_BYTES = 10 * 1024 * 1024;
 const DATA_IMAGE_URL_REGEX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)$/;
 const PRODUCT_IMAGE_UPLOAD_PARSER = express.raw({ limit: "10mb", type: () => true });
+const CUSTOMIZATION_UPLOAD_PARSER = express.raw({ limit: "12mb", type: () => true });
+const CUSTOMIZATION_UPLOAD_KIND_SET = new Set(["mockup", "design"]);
+const CUSTOMIZATION_UPLOAD_EXTENSIONS = Object.freeze({
+  "application/pdf": "pdf",
+  "image/png": "png"
+});
+const CUSTOMIZATION_UPLOAD_ALLOWED_EXTENSIONS = new Set(["pdf", "png"]);
 
 const allowedOrigins = Array.from(
   new Set(
@@ -473,10 +498,11 @@ function getManagedUploadPathFromUrl(url) {
   return absolutePath;
 }
 
-async function pruneEmptyUploadDirectories(filePath) {
+async function pruneEmptyDirectories(filePath, rootDir) {
   let currentDir = path.dirname(filePath);
+  const safeRootDir = path.resolve(rootDir);
 
-  while (currentDir.startsWith(PRODUCT_UPLOADS_DIR) && currentDir !== PRODUCT_UPLOADS_DIR) {
+  while (currentDir.startsWith(safeRootDir) && currentDir !== safeRootDir) {
     try {
       await fsp.rmdir(currentDir);
     } catch (error) {
@@ -502,7 +528,7 @@ async function removeManagedProductUploadUrl(url) {
 
   try {
     await fsp.unlink(absolutePath);
-    await pruneEmptyUploadDirectories(absolutePath);
+    await pruneEmptyDirectories(absolutePath, PRODUCT_UPLOADS_DIR);
   } catch (error) {
     if (error?.code !== "ENOENT") {
       console.warn("IMAGE CLEANUP WARNING:", error.message);
@@ -565,15 +591,92 @@ async function cleanupUnusedProductUploads(previousUrls, nextUrls) {
   await Promise.all(staleUrls.map(removeManagedProductUploadUrl));
 }
 
+function parseCustomizationUploadKind(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (CUSTOMIZATION_UPLOAD_KIND_SET.has(normalized)) {
+    return normalized;
+  }
+
+  throw createHttpError(400, "upload_kind must be either 'mockup' or 'design'.");
+}
+
+function getCustomizationUploadExtension({ fileName, mimeType }) {
+  const normalizedMimeType = String(mimeType || "").toLowerCase();
+  if (CUSTOMIZATION_UPLOAD_EXTENSIONS[normalizedMimeType]) {
+    return CUSTOMIZATION_UPLOAD_EXTENSIONS[normalizedMimeType];
+  }
+
+  const fromFileName = getImageExtensionFromFilename(fileName);
+  if (CUSTOMIZATION_UPLOAD_ALLOWED_EXTENSIONS.has(fromFileName)) {
+    return fromFileName;
+  }
+
+  return "";
+}
+
+async function saveCustomizationUploadBuffer({
+  buffer,
+  fileName,
+  mimeType,
+  productCode,
+  uploadToken,
+  userId
+}) {
+  const extension = getCustomizationUploadExtension({ fileName, mimeType });
+
+  if (!extension) {
+    throw createHttpError(400, "Only PNG and PDF files are supported.");
+  }
+
+  if (!buffer.length) {
+    throw createHttpError(400, "Uploaded customization files cannot be empty.");
+  }
+
+  if (buffer.length > MAX_CUSTOMIZATION_UPLOAD_BYTES) {
+    throw createHttpError(400, "Each customization file must be 10 MB or smaller.");
+  }
+
+  const targetDir = path.join(CUSTOMIZATION_UPLOADS_DIR, String(productCode || "product"), String(userId || "guest"));
+  await fsp.mkdir(targetDir, { recursive: true });
+
+  const storedPath = path.join(targetDir, `${uploadToken}.${extension}`);
+  await fsp.writeFile(storedPath, buffer);
+
+  return storedPath;
+}
+
+async function removeManagedCustomizationFile(filePath) {
+  const absolutePath = path.resolve(String(filePath || ""));
+  if (!absolutePath.startsWith(PRIVATE_UPLOADS_DIR)) return;
+
+  try {
+    await fsp.unlink(absolutePath);
+    await pruneEmptyDirectories(absolutePath, CUSTOMIZATION_UPLOADS_DIR);
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      console.warn("CUSTOMIZATION CLEANUP WARNING:", error.message);
+    }
+  }
+}
+
 const PRODUCT_SELECT_SQL = `
   SELECT
     p.id,
     p.product_id,
     p.name,
+    p.slug,
     p.category,
     p.subcategory,
     p.description,
+    p.quality,
     p.quality_points,
+    COALESCE(p.colors, '[]'::jsonb) AS colors,
+    COALESCE(p.size_mode, 'one-size') AS size_mode,
+    COALESCE(p.sizes, '[]'::jsonb) AS sizes,
+    COALESCE(p.customizable, FALSE) AS customizable,
     p.buy_enabled,
     p.rent_enabled,
     p.buy_price,
@@ -583,16 +686,40 @@ const PRODUCT_SELECT_SQL = `
     p.active,
     p.created_at,
     p.updated_at,
-    COALESCE(inv.quantity_available, 0)::INT AS quantity_available,
+    COALESCE(var.total_quantity, inv.quantity_available, 0)::INT AS quantity_available,
     COALESCE(inv.reorder_level, 0)::INT AS reorder_level,
     COALESCE(cost.unit_cost, 0) AS unit_cost,
     COALESCE(cost.overhead_cost, 0) AS overhead_cost,
+    COALESCE(var.variations, '[]'::json) AS variations,
     COALESCE(img.light_images, '[]'::json) AS light_images,
     COALESCE(img.dark_images, '[]'::json) AS dark_images,
     COALESCE(img.image_url, '') AS image_url
   FROM products p
   LEFT JOIN product_inventory inv ON inv.product_id = p.id
   LEFT JOIN product_costs cost ON cost.product_id = p.id
+  LEFT JOIN LATERAL (
+    SELECT
+      COALESCE(
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'id', pv.id,
+            'color', pv.color,
+            'size', pv.size,
+            'quantity', pv.quantity,
+            'sku', pv.sku,
+            'availability_status', pv.availability_status
+          )
+          ORDER BY pv.color ASC, pv.size ASC, pv.id ASC
+        ),
+        '[]'::json
+      ) AS variations,
+      CASE
+        WHEN COUNT(pv.id) = 0 THEN NULL
+        ELSE COALESCE(SUM(pv.quantity), 0)::INT
+      END AS total_quantity
+    FROM product_variations pv
+    WHERE pv.product_id = p.id
+  ) var ON TRUE
   LEFT JOIN LATERAL (
     SELECT
       COALESCE(
@@ -624,6 +751,30 @@ const PRODUCT_SELECT_SQL = `
     WHERE product_id = p.id
   ) img ON TRUE
 `;
+
+function materializeProductRow(row) {
+  const imageCollections = resolveProductImageCollections(row);
+  const catalogShape = materializeProductCatalogShape({
+    colors: row?.colors,
+    quantity_available: row?.quantity_available,
+    size_mode: row?.size_mode,
+    sizes: row?.sizes,
+    variations: row?.variations
+  });
+
+  return {
+    ...row,
+    ...imageCollections,
+    slug: normalizeCatalogText(row?.slug, 180) || slugifyProductName(row?.name, row?.product_id || row?.id),
+    quality: normalizeCatalogText(row?.quality, 160),
+    colors: catalogShape.colors,
+    size_mode: catalogShape.size_mode,
+    sizes: catalogShape.sizes,
+    customizable: Boolean(row?.customizable),
+    variations: catalogShape.variations,
+    quantity_available: catalogShape.quantity_available
+  };
+}
 
 function createHttpError(status, message) {
   const error = new Error(message);
@@ -686,6 +837,61 @@ function normalizeQualityPoints(value) {
   return [];
 }
 
+function normalizeVariationPayloadList(value, sizeMode, fallbackQuantity) {
+  const normalizedSizeMode = normalizeSizeMode(sizeMode);
+  const list = Array.isArray(value) ? value : [];
+  const seen = new Set();
+
+  const variations = list.map((entry, index) => {
+    const color = normalizeCatalogText(entry?.color, 60);
+    const size = normalizedSizeMode === "one-size"
+      ? ONE_SIZE_LABEL
+      : normalizeSizeLabel(entry?.size, normalizedSizeMode);
+
+    if (!color) {
+      throw createHttpError(400, `Variation ${index + 1} must include a color.`);
+    }
+
+    if (!size) {
+      throw createHttpError(400, `Variation ${index + 1} must include a size.`);
+    }
+
+    const quantity = parseWholeNumber(entry?.quantity, `Variation ${index + 1} quantity`);
+    const key = buildVariationKey(color, size);
+
+    if (seen.has(key)) {
+      throw createHttpError(400, `Duplicate variation found for ${color} / ${size}.`);
+    }
+
+    seen.add(key);
+
+    return {
+      color,
+      size,
+      quantity,
+      sku: normalizeCatalogText(entry?.sku, 80),
+      availability_status: normalizeAvailabilityStatus(
+        entry?.availability_status ?? entry?.availabilityStatus,
+        quantity
+      )
+    };
+  });
+
+  if (variations.length) {
+    return variations;
+  }
+
+  return [
+    {
+      color: "Standard",
+      size: normalizedSizeMode === "one-size" ? ONE_SIZE_LABEL : "Standard",
+      quantity: Math.max(0, Number(fallbackQuantity || 0)),
+      sku: "",
+      availability_status: normalizeAvailabilityStatus("in_stock", fallbackQuantity)
+    }
+  ];
+}
+
 function normalizeProductPayload(body) {
   const rawProductId = String(body?.product_id || "").trim();
   const digitsOnlyProductId = rawProductId.replace(/\D/g, "");
@@ -699,12 +905,18 @@ function normalizeProductPayload(body) {
   const category = String(body?.category || "").trim();
   const subcategory = String(body?.subcategory || "").trim();
   const description = String(body?.description || "").trim();
+  const quality = normalizeCatalogText(body?.quality, 160);
   const currency = String(body?.currency || "USD")
     .trim()
     .toUpperCase();
+  const sizeMode = normalizeSizeMode(body?.size_mode || body?.sizeMode);
   const legacyImageUrl = String(body?.image_url || "").trim();
   const lightImages = normalizeImageSourceList(body?.light_images);
   const darkImages = normalizeImageSourceList(body?.dark_images);
+  const quantityAvailable = parseWholeNumber(body?.quantity_available, "Quantity available");
+  const variations = normalizeVariationPayloadList(body?.variations, sizeMode, quantityAvailable);
+  const colors = normalizeTextList(body?.colors, 60);
+  const sizes = sortSizes(normalizeTextList(body?.sizes, 40), sizeMode);
 
   if (!lightImages.length && !darkImages.length && legacyImageUrl) {
     lightImages.push(legacyImageUrl);
@@ -735,13 +947,52 @@ function normalizeProductPayload(body) {
     throw createHttpError(400, "A product can have up to 10 dark mode images.");
   }
 
+  const catalogShape = materializeProductCatalogShape({
+    colors,
+    quantity_available: quantityAvailable,
+    size_mode: sizeMode,
+    sizes,
+    variations
+  });
+
+  if (!catalogShape.colors.length) {
+    throw createHttpError(400, "At least one product color is required.");
+  }
+
+  if (catalogShape.size_mode === "varied" && !catalogShape.sizes.length) {
+    throw createHttpError(400, "Varied-size products must include at least one size.");
+  }
+
+  const allowedColors = new Set(catalogShape.colors.map((entry) => entry.toLowerCase()));
+  const allowedSizes = new Set(catalogShape.sizes.map((entry) => entry.toLowerCase()));
+
+  catalogShape.variations.forEach((variation, index) => {
+    if (!allowedColors.has(String(variation.color || "").toLowerCase())) {
+      throw createHttpError(400, `Variation ${index + 1} color must match one of the product colors.`);
+    }
+
+    if (
+      catalogShape.size_mode === "varied" &&
+      !allowedSizes.has(String(variation.size || "").toLowerCase())
+    ) {
+      throw createHttpError(400, `Variation ${index + 1} size must match one of the product sizes.`);
+    }
+  });
+
   return {
     product_id: productId,
+    slug: slugifyProductName(name, productId),
     name,
     category,
     subcategory,
     description,
+    quality,
     quality_points: normalizeQualityPoints(body?.quality_points),
+    colors: catalogShape.colors,
+    size_mode: catalogShape.size_mode,
+    sizes: catalogShape.sizes,
+    customizable: parseBoolean(body?.customizable, false),
+    variations: catalogShape.variations,
     buy_enabled: buyEnabled,
     rent_enabled: rentEnabled,
     buy_price: parseOptionalNumber(body?.buy_price, "Buy price"),
@@ -749,7 +1000,7 @@ function normalizeProductPayload(body) {
     currency,
     featured: parseBoolean(body?.featured, false),
     active: parseBoolean(body?.active, true),
-    quantity_available: parseWholeNumber(body?.quantity_available, "Quantity available"),
+    quantity_available: catalogShape.quantity_available,
     reorder_level: parseWholeNumber(body?.reorder_level, "Reorder level"),
     unit_cost: parseOptionalNumber(body?.unit_cost, "Unit cost") ?? 0,
     overhead_cost: parseOptionalNumber(body?.overhead_cost, "Overhead cost") ?? 0,
@@ -767,22 +1018,81 @@ function parseProductRouteId(rawId) {
   return productId;
 }
 
+function parseOptionalPositiveInteger(value, fieldLabel) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw createHttpError(400, `${fieldLabel} must be a positive integer.`);
+  }
+
+  return number;
+}
+
 async function listProducts() {
   const result = await pool.query(`${PRODUCT_SELECT_SQL} ORDER BY p.id ASC`);
-  return result.rows.map((row) => ({
-    ...row,
-    ...resolveProductImageCollections(row)
-  }));
+  return result.rows.map(materializeProductRow);
 }
 
 async function getProductById(productId) {
   const result = await pool.query(`${PRODUCT_SELECT_SQL} WHERE p.id = $1 LIMIT 1`, [productId]);
   if (!result.rows[0]) return null;
 
-  return {
-    ...result.rows[0],
-    ...resolveProductImageCollections(result.rows[0])
-  };
+  return materializeProductRow(result.rows[0]);
+}
+
+async function getProductBySlug(slug) {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  if (!normalizedSlug) return null;
+
+  const result = await pool.query(`${PRODUCT_SELECT_SQL} WHERE LOWER(p.slug) = $1 LIMIT 1`, [normalizedSlug]);
+  if (!result.rows[0]) return null;
+
+  return materializeProductRow(result.rows[0]);
+}
+
+async function syncAggregateInventory(client, productId, reorderLevel = null, fallbackQuantity = 0) {
+  const summary = await client.query(
+    `
+    SELECT
+      COUNT(*)::INT AS variation_count,
+      COALESCE(SUM(quantity), 0)::INT AS total_quantity
+    FROM product_variations
+    WHERE product_id = $1
+    `,
+    [productId]
+  );
+
+  const variationCount = Number(summary.rows[0]?.variation_count || 0);
+  const totalQuantity =
+    variationCount > 0
+      ? Number(summary.rows[0]?.total_quantity || 0)
+      : Number(fallbackQuantity || 0);
+  const safeReorderLevel = reorderLevel === null || reorderLevel === undefined
+    ? Number(
+        (
+          await client.query(
+            "SELECT COALESCE(reorder_level, 0)::INT AS reorder_level FROM product_inventory WHERE product_id = $1",
+            [productId]
+          )
+        ).rows[0]?.reorder_level || 0
+      )
+    : Number(reorderLevel || 0);
+
+  await client.query(
+    `
+    INSERT INTO product_inventory (product_id, quantity_available, reorder_level, updated_at)
+    VALUES ($1, $2, $3, NOW())
+    ON CONFLICT (product_id)
+    DO UPDATE SET
+      quantity_available = EXCLUDED.quantity_available,
+      reorder_level = EXCLUDED.reorder_level,
+      updated_at = NOW()
+    `,
+    [productId, totalQuantity, safeReorderLevel]
+  );
 }
 
 async function syncProductRelations(client, productId, product) {
@@ -797,19 +1107,6 @@ async function syncProductRelations(client, productId, product) {
 
   await client.query(
     `
-    INSERT INTO product_inventory (product_id, quantity_available, reorder_level, updated_at)
-    VALUES ($1, $2, $3, NOW())
-    ON CONFLICT (product_id)
-    DO UPDATE SET
-      quantity_available = EXCLUDED.quantity_available,
-      reorder_level = EXCLUDED.reorder_level,
-      updated_at = NOW()
-    `,
-    [productId, product.quantity_available, product.reorder_level]
-  );
-
-  await client.query(
-    `
     INSERT INTO product_costs (product_id, unit_cost, overhead_cost, updated_at)
     VALUES ($1, $2, $3, NOW())
     ON CONFLICT (product_id)
@@ -820,6 +1117,35 @@ async function syncProductRelations(client, productId, product) {
     `,
     [productId, product.unit_cost, product.overhead_cost]
   );
+
+  await client.query("DELETE FROM product_variations WHERE product_id = $1", [productId]);
+
+  for (const variation of product.variations) {
+    await client.query(
+      `
+      INSERT INTO product_variations (
+        product_id,
+        color,
+        size,
+        quantity,
+        sku,
+        availability_status,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `,
+      [
+        productId,
+        variation.color,
+        variation.size,
+        variation.quantity,
+        variation.sku || null,
+        variation.availability_status
+      ]
+    );
+  }
+
+  await syncAggregateInventory(client, productId, product.reorder_level, product.quantity_available);
 
   try {
     const lightImageUrls = await materializeProductImages(
@@ -888,7 +1214,7 @@ function sendProductError(res, error, logPrefix) {
   }
 
   if (error?.code === "23505") {
-    return res.status(409).json({ error: "Product ID already exists." });
+    return res.status(409).json({ error: "A product with this ID or slug already exists." });
   }
 
   console.error(logPrefix, error.message);
@@ -919,38 +1245,252 @@ function sendCheckoutError(res, error, logPrefix) {
   });
 }
 
-async function fetchProductsForCheckout(productIds) {
+function setCatalogResponseHeaders(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  res.set("Surrogate-Control", "no-store");
+}
+
+async function fetchProductsForCheckout(productIds, client = pool) {
   const ids = Array.from(new Set(productIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
 
   if (!ids.length) {
     return [];
   }
 
-  const result = await pool.query(
+  const result = await client.query(
     `
     SELECT
       p.id,
       p.name,
       p.active,
+      p.product_id,
       p.buy_enabled,
       p.rent_enabled,
       p.buy_price,
       p.rent_price_per_day,
       p.currency,
-      COALESCE(inv.quantity_available, 0)::INT AS quantity_available,
+      COALESCE(p.size_mode, 'one-size') AS size_mode,
+      COALESCE(p.colors, '[]'::jsonb) AS colors,
+      COALESCE(p.sizes, '[]'::jsonb) AS sizes,
+      COALESCE(p.customizable, FALSE) AS customizable,
+      COALESCE(var.variations, '[]'::json) AS variations,
+      COALESCE(var.total_quantity, inv.quantity_available, 0)::INT AS quantity_available,
       COALESCE(cost.unit_cost, 0) AS unit_cost
     FROM products p
     LEFT JOIN product_inventory inv ON inv.product_id = p.id
     LEFT JOIN product_costs cost ON cost.product_id = p.id
+    LEFT JOIN LATERAL (
+      SELECT
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', pv.id,
+              'color', pv.color,
+              'size', pv.size,
+              'quantity', pv.quantity,
+              'sku', pv.sku,
+              'availability_status', pv.availability_status
+            )
+            ORDER BY pv.color ASC, pv.size ASC, pv.id ASC
+          ),
+          '[]'::json
+        ) AS variations,
+        CASE
+          WHEN COUNT(pv.id) = 0 THEN NULL
+          ELSE COALESCE(SUM(pv.quantity), 0)::INT
+        END AS total_quantity
+      FROM product_variations pv
+      WHERE pv.product_id = p.id
+    ) var ON TRUE
     WHERE p.id = ANY($1::BIGINT[])
     `,
     [ids]
   );
 
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...row,
+    ...materializeProductCatalogShape({
+      colors: row.colors,
+      quantity_available: row.quantity_available,
+      size_mode: row.size_mode,
+      sizes: row.sizes,
+      variations: row.variations
+    })
+  }));
 }
 
-async function buildCheckoutLineItems(rawItems) {
+function resolveCheckoutVariation(product, item) {
+  const variations = Array.isArray(product?.variations) ? product.variations : [];
+  const sizeMode = normalizeSizeMode(product?.size_mode);
+  const requestedColor = normalizeCatalogText(item?.selectedColor, 60);
+  const requestedSize = sizeMode === "one-size"
+    ? ONE_SIZE_LABEL
+    : normalizeSizeLabel(item?.selectedSize, sizeMode);
+  const requestedVariationId = Number(item?.variationId || item?.variation_id || 0);
+
+  if (!variations.length) {
+    return null;
+  }
+
+  if (requestedVariationId > 0) {
+    return variations.find((variation) => Number(variation.id || 0) === requestedVariationId) || null;
+  }
+
+  if (requestedColor && requestedSize) {
+    return variations.find((variation) => variation.color === requestedColor && variation.size === requestedSize) || null;
+  }
+
+  if (requestedColor) {
+    return variations.find((variation) => variation.color === requestedColor && isVariationAvailable(variation))
+      || variations.find((variation) => variation.color === requestedColor)
+      || null;
+  }
+
+  if (requestedSize) {
+    return variations.find((variation) => variation.size === requestedSize && isVariationAvailable(variation))
+      || variations.find((variation) => variation.size === requestedSize)
+      || null;
+  }
+
+  return variations.find(isVariationAvailable) || variations[0] || null;
+}
+
+async function validateCustomizationUploadsForItem(client, {
+  customizationUploadTokens,
+  itemIndex,
+  product,
+  userId,
+  variation
+}) {
+  if (!customizationUploadTokens.length) {
+    return;
+  }
+
+  if (!product.customizable) {
+    throw createHttpError(400, `${product.name} does not support customization uploads.`);
+  }
+
+  const result = await client.query(
+    `
+    SELECT upload_token, variation_id
+    FROM customization_uploads
+    WHERE user_id = $1
+      AND product_id = $2
+      AND upload_token = ANY($3::TEXT[])
+      AND order_item_id IS NULL
+    `,
+    [userId, product.id, customizationUploadTokens]
+  );
+
+  if (result.rows.length !== customizationUploadTokens.length) {
+    const error = new Error("One or more customization files are no longer available.");
+    error.status = 400;
+    error.fieldErrors = {
+      [`items.${itemIndex}`]: "One or more customization files are no longer available."
+    };
+    throw error;
+  }
+
+  const expectedVariationId = Number(variation?.id || 0);
+  if (expectedVariationId > 0 && result.rows.some((row) => Number(row.variation_id || 0) !== expectedVariationId)) {
+    const error = new Error("Customization files no longer match the selected product variation.");
+    error.status = 400;
+    error.fieldErrors = {
+      [`items.${itemIndex}`]: "Customization files no longer match the selected product variation."
+    };
+    throw error;
+  }
+}
+
+async function attachCustomizationUploadsToOrderItem(client, {
+  customizationUploadTokens,
+  orderItemId,
+  productId,
+  userId,
+  variationId
+}) {
+  if (!customizationUploadTokens.length) return;
+
+  const result = await client.query(
+    `
+    UPDATE customization_uploads
+    SET order_item_id = $1,
+        variation_id = COALESCE(variation_id, $2)
+    WHERE user_id = $3
+      AND product_id = $4
+      AND upload_token = ANY($5::TEXT[])
+      AND order_item_id IS NULL
+    RETURNING upload_token
+    `,
+    [orderItemId, variationId, userId, productId, customizationUploadTokens]
+  );
+
+  if (result.rows.length !== customizationUploadTokens.length) {
+    throw createHttpError(409, "Some customization files could not be attached to this order.");
+  }
+}
+
+async function reserveInventoryForLineItems(client, lineItems) {
+  const touchedProductIds = new Set();
+
+  for (const item of lineItems) {
+    if (item.variationId) {
+      const reservation = await client.query(
+        `
+        UPDATE product_variations
+        SET quantity = quantity - $2,
+            availability_status = CASE
+              WHEN availability_status = 'unavailable' THEN 'unavailable'
+              WHEN quantity - $2 > 0 THEN 'in_stock'
+              ELSE 'out_of_stock'
+            END,
+            updated_at = NOW()
+        WHERE id = $1
+          AND quantity >= $2
+          AND availability_status <> 'unavailable'
+        RETURNING id
+        `,
+        [item.variationId, item.quantity]
+      );
+
+      if (!reservation.rows.length) {
+        throw createHttpError(
+          409,
+          `${item.productName} is no longer available in ${item.selectedColor} / ${item.selectedSize}.`
+        );
+      }
+    } else {
+      const reservation = await client.query(
+        `
+        UPDATE product_inventory
+        SET quantity_available = quantity_available - $2,
+            updated_at = NOW()
+        WHERE product_id = $1
+          AND quantity_available >= $2
+        RETURNING product_id
+        `,
+        [item.productId, item.quantity]
+      );
+
+      if (!reservation.rows.length) {
+        throw createHttpError(
+          409,
+          `${item.productName} is no longer available in the selected quantity.`
+        );
+      }
+    }
+
+    touchedProductIds.add(item.productId);
+  }
+
+  for (const productId of touchedProductIds) {
+    await syncAggregateInventory(client, productId);
+  }
+}
+
+async function buildCheckoutLineItems(rawItems, { client = pool, userId } = {}) {
   const items = normalizeOrderCartItems(rawItems);
   if (!items.length) {
     const error = new Error("Your cart is empty.");
@@ -959,44 +1499,86 @@ async function buildCheckoutLineItems(rawItems) {
     throw error;
   }
 
-  const productRows = await fetchProductsForCheckout(items.map((item) => item.id));
+  const productRows = await fetchProductsForCheckout(items.map((item) => item.id), client);
   const productMap = new Map(productRows.map((row) => [Number(row.id), row]));
   const lineItems = [];
   const itemErrors = {};
 
-  items.forEach((item, index) => {
+  for (const [index, item] of items.entries()) {
     const product = productMap.get(Number(item.id));
 
     if (!product) {
       itemErrors[`items.${index}`] = "One of the selected products no longer exists.";
-      return;
+      continue;
     }
 
     if (product.active === false) {
       itemErrors[`items.${index}`] = `${product.name} is currently unavailable.`;
-      return;
+      continue;
     }
 
     if (item.mode === "buy" && !product.buy_enabled) {
       itemErrors[`items.${index}`] = `${product.name} is not available for purchase right now.`;
-      return;
+      continue;
     }
 
     if (item.mode === "rent" && !product.rent_enabled) {
       itemErrors[`items.${index}`] = `${product.name} is not available for rent right now.`;
-      return;
+      continue;
     }
 
-    const availableQuantity = Number(product.quantity_available || 0);
+    const variation = resolveCheckoutVariation(product, item);
+    if (Array.isArray(product.variations) && product.variations.length && !variation) {
+      itemErrors[`items.${index}`] = `${product.name} is no longer available in the selected color and size.`;
+      continue;
+    }
+
+    const availableQuantity = variation
+      ? Number(variation.quantity || 0)
+      : Number(product.quantity_available || 0);
+
+    if (variation && !isVariationAvailable(variation)) {
+      itemErrors[`items.${index}`] = `${product.name} is unavailable for ${variation.color} / ${variation.size}.`;
+      continue;
+    }
+
+    if (availableQuantity <= 0) {
+      const stockLabel = variation
+        ? `${product.name} in ${variation.color} / ${variation.size}`
+        : product.name;
+      itemErrors[`items.${index}`] = `${stockLabel} is currently out of stock.`;
+      continue;
+    }
+
     if (availableQuantity > 0 && Number(item.quantity) > availableQuantity) {
-      itemErrors[`items.${index}`] = `Only ${availableQuantity} units of ${product.name} are currently available.`;
-      return;
+      const stockLabel = variation
+        ? `${product.name} in ${variation.color} / ${variation.size}`
+        : product.name;
+      itemErrors[`items.${index}`] = `Only ${availableQuantity} units of ${stockLabel} are currently available.`;
+      continue;
     }
 
     const unitPrice = item.mode === "rent" ? Number(product.rent_price_per_day) : Number(product.buy_price);
     if (!Number.isFinite(unitPrice) || unitPrice < 0) {
       itemErrors[`items.${index}`] = `${product.name} does not have a valid checkout price.`;
-      return;
+      continue;
+    }
+
+    try {
+      await validateCustomizationUploadsForItem(client, {
+        customizationUploadTokens: item.customizationUploadTokens || [],
+        itemIndex: index,
+        product,
+        userId,
+        variation
+      });
+    } catch (error) {
+      if (error?.fieldErrors) {
+        Object.assign(itemErrors, error.fieldErrors);
+        continue;
+      }
+
+      throw error;
     }
 
     const multiplier = item.mode === "rent" ? Number(item.rentalDays || 1) : 1;
@@ -1005,6 +1587,14 @@ async function buildCheckoutLineItems(rawItems) {
     lineItems.push({
       productId: Number(product.id),
       productName: String(product.name || "Unnamed Product"),
+      variationId: variation?.id ? Number(variation.id) : null,
+      selectedColor: variation?.color || normalizeCatalogText(item.selectedColor, 60) || "Standard",
+      selectedSize: variation?.size || (
+        normalizeSizeMode(product.size_mode) === "one-size"
+          ? ONE_SIZE_LABEL
+          : normalizeSizeLabel(item.selectedSize, product.size_mode)
+      ) || "",
+      customizationUploadTokens: item.customizationUploadTokens || [],
       quantity: Number(item.quantity || 1),
       mode: item.mode,
       rentalDays: item.mode === "rent" ? Number(item.rentalDays || 1) : null,
@@ -1013,7 +1603,7 @@ async function buildCheckoutLineItems(rawItems) {
       lineTotal,
       currency: String(product.currency || "USD")
     });
-  });
+  }
 
   if (Object.keys(itemErrors).length > 0) {
     const error = new Error("One or more cart items could not be checked out.");
@@ -1044,6 +1634,9 @@ function normalizeOrderResponse(row) {
     id: Number(item?.id),
     productId: Number(item?.productId),
     name: String(item?.name || "Product"),
+    selectedColor: String(item?.selectedColor || ""),
+    selectedSize: String(item?.selectedSize || ""),
+    customizationRequested: Boolean(item?.customizationRequested),
     quantity: Number(item?.quantity || 0),
     mode: String(item?.mode || "buy"),
     rentalDays: item?.rentalDays === null || item?.rentalDays === undefined ? null : Number(item.rentalDays),
@@ -1103,6 +1696,9 @@ async function getConfirmedOrderForUser(userId, publicOrderId) {
             'id', oi.id,
             'productId', oi.product_id,
             'name', COALESCE(p.name, 'Product'),
+            'selectedColor', COALESCE(oi.selected_color, ''),
+            'selectedSize', COALESCE(oi.selected_size, ''),
+            'customizationRequested', COALESCE(oi.customization_requested, FALSE),
             'quantity', oi.quantity,
             'mode', oi.type,
             'rentalDays', oi.rent_days,
@@ -1245,12 +1841,149 @@ app.delete(["/product-images", "/api/product-images"], async (req, res) => {
   }
 });
 
+app.post(["/customization-uploads", "/api/customization-uploads"], requireAuth, CUSTOMIZATION_UPLOAD_PARSER, async (req, res) => {
+  try {
+    const productId = parseProductRouteId(req.query.product_id);
+    const variationId = parseOptionalPositiveInteger(req.query.variation_id, "variation_id");
+    const uploadKind = parseCustomizationUploadKind(req.query.upload_kind);
+    const mimeType = String(req.headers["content-type"] || "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    const fileName = String(req.query.filename || `${uploadKind}.file`);
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+    const productResult = await pool.query(
+      "SELECT id, product_id, customizable FROM products WHERE id = $1 LIMIT 1",
+      [productId]
+    );
+    const product = productResult.rows[0];
+
+    if (!product) {
+      throw createHttpError(404, "Product not found.");
+    }
+
+    if (!product.customizable) {
+      throw createHttpError(400, "This product does not support customization uploads.");
+    }
+
+    if (variationId) {
+      const variationResult = await pool.query(
+        "SELECT id FROM product_variations WHERE id = $1 AND product_id = $2 LIMIT 1",
+        [variationId, productId]
+      );
+
+      if (!variationResult.rows.length) {
+        throw createHttpError(400, "Selected variation is invalid for this product.");
+      }
+    }
+
+    const uploadToken = crypto.randomUUID();
+    const storedPath = await saveCustomizationUploadBuffer({
+      buffer,
+      fileName,
+      mimeType,
+      productCode: product.product_id,
+      uploadToken,
+      userId: req.auth.userId
+    });
+
+    await pool.query(
+      `
+      INSERT INTO customization_uploads (
+        upload_token,
+        product_id,
+        variation_id,
+        user_id,
+        upload_kind,
+        original_file_name,
+        stored_path,
+        mime_type,
+        size_bytes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `,
+      [
+        uploadToken,
+        productId,
+        variationId,
+        req.auth.userId,
+        uploadKind,
+        fileName,
+        storedPath,
+        mimeType || "application/octet-stream",
+        buffer.length
+      ]
+    );
+
+    return res.status(201).json({
+      uploadKind,
+      uploadToken,
+      originalFileName: fileName
+    });
+  } catch (err) {
+    return sendProductError(res, err, "CUSTOMIZATION UPLOAD ERROR:");
+  }
+});
+
+app.delete(["/customization-uploads", "/api/customization-uploads"], requireAuth, async (req, res) => {
+  try {
+    const uploadTokens = normalizeTextList(req.body?.uploadTokens || req.body?.upload_tokens, 120);
+
+    if (!uploadTokens.length) {
+      return res.status(204).send();
+    }
+
+    const result = await pool.query(
+      `
+      SELECT id, stored_path
+      FROM customization_uploads
+      WHERE user_id = $1
+        AND upload_token = ANY($2::TEXT[])
+        AND order_item_id IS NULL
+      `,
+      [req.auth.userId, uploadTokens]
+    );
+
+    await Promise.all(result.rows.map((row) => removeManagedCustomizationFile(row.stored_path)));
+
+    await pool.query(
+      `
+      DELETE FROM customization_uploads
+      WHERE user_id = $1
+        AND upload_token = ANY($2::TEXT[])
+        AND order_item_id IS NULL
+      `,
+      [req.auth.userId, uploadTokens]
+    );
+
+    return res.status(204).send();
+  } catch (err) {
+    return sendProductError(res, err, "CUSTOMIZATION DELETE ERROR:");
+  }
+});
+
 app.get(["/products", "/api/products"], async (_req, res) => {
   try {
+    setCatalogResponseHeaders(res);
     const rows = await listProducts();
     res.json(rows);
   } catch (err) {
     return sendProductError(res, err, "PRODUCTS ROUTE ERROR:");
+  }
+});
+
+app.get("/api/products/slug/:slug", async (req, res) => {
+  try {
+    setCatalogResponseHeaders(res);
+    const product = await getProductBySlug(req.params.slug);
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found." });
+    }
+
+    return res.json(product);
+  } catch (err) {
+    return sendProductError(res, err, "PRODUCT SLUG ROUTE ERROR:");
   }
 });
 
@@ -1264,10 +1997,16 @@ app.post(["/products", "/api/products"], async (req, res) => {
         INSERT INTO products (
           product_id,
           name,
+          slug,
           category,
           subcategory,
           description,
+          quality,
           quality_points,
+          colors,
+          size_mode,
+          sizes,
+          customizable,
           buy_enabled,
           rent_enabled,
           buy_price,
@@ -1277,16 +2016,25 @@ app.post(["/products", "/api/products"], async (req, res) => {
           active,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, NOW())
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11::jsonb, $12, $13,
+          $14, $15, $16, $17, $18, $19, NOW()
+        )
         RETURNING id
         `,
         [
           product.product_id,
           product.name,
+          product.slug,
           product.category,
           product.subcategory,
           product.description,
+          product.quality,
           JSON.stringify(product.quality_points),
+          JSON.stringify(product.colors),
+          product.size_mode,
+          JSON.stringify(product.sizes),
+          product.customizable,
           product.buy_enabled,
           product.rent_enabled,
           product.buy_price,
@@ -1320,28 +2068,40 @@ app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
         UPDATE products
         SET product_id = $1,
             name = $2,
-            category = $3,
-            subcategory = $4,
-            description = $5,
-            quality_points = $6::jsonb,
-            buy_enabled = $7,
-            rent_enabled = $8,
-            buy_price = $9,
-            rent_price_per_day = $10,
-            currency = $11,
-            featured = $12,
-            active = $13,
+            slug = $3,
+            category = $4,
+            subcategory = $5,
+            description = $6,
+            quality = $7,
+            quality_points = $8::jsonb,
+            colors = $9::jsonb,
+            size_mode = $10,
+            sizes = $11::jsonb,
+            customizable = $12,
+            buy_enabled = $13,
+            rent_enabled = $14,
+            buy_price = $15,
+            rent_price_per_day = $16,
+            currency = $17,
+            featured = $18,
+            active = $19,
             updated_at = NOW()
-        WHERE id = $14
+        WHERE id = $20
         RETURNING id
         `,
         [
           product.product_id,
           product.name,
+          product.slug,
           product.category,
           product.subcategory,
           product.description,
+          product.quality,
           JSON.stringify(product.quality_points),
+          JSON.stringify(product.colors),
+          product.size_mode,
+          JSON.stringify(product.sizes),
+          product.customizable,
           product.buy_enabled,
           product.rent_enabled,
           product.buy_price,
@@ -1374,8 +2134,15 @@ app.delete(["/products/:id", "/api/products/:id"], async (req, res) => {
       "SELECT url FROM product_images WHERE product_id = $1 ORDER BY id ASC",
       [routeProductId]
     );
+    const existingCustomizationResult = await pool.query(
+      "SELECT stored_path FROM customization_uploads WHERE product_id = $1 ORDER BY id ASC",
+      [routeProductId]
+    );
     const existingUrls = existingImagesResult.rows
       .map((row) => String(row.url || "").trim())
+      .filter(Boolean);
+    const storedPaths = existingCustomizationResult.rows
+      .map((row) => String(row.stored_path || "").trim())
       .filter(Boolean);
     const result = await pool.query("DELETE FROM products WHERE id = $1 RETURNING id", [routeProductId]);
 
@@ -1386,6 +2153,7 @@ app.delete(["/products/:id", "/api/products/:id"], async (req, res) => {
     await Promise.all(
       existingUrls.filter((url) => isManagedProductUploadUrl(url)).map(removeManagedProductUploadUrl)
     );
+    await Promise.all(storedPaths.map(removeManagedCustomizationFile));
 
     return res.status(204).send();
   } catch (err) {
@@ -1718,17 +2486,19 @@ app.put("/api/me", requireAuth, async (req, res) => {
 app.post("/api/checkout/orders", requireAuth, async (req, res) => {
   try {
     const checkoutInput = validateCheckoutSubmission(req.body);
-    const lineItems = await buildCheckoutLineItems(checkoutInput.items);
-    const totals = calculateTotals(lineItems);
-    const currency = String(lineItems[0]?.currency || "USD");
-    const deliveryEstimate = calculateDeliveryEstimate(lineItems);
+    const previewLineItems = await buildCheckoutLineItems(checkoutInput.items, {
+      userId: req.auth.userId
+    });
+    const previewTotals = calculateTotals(previewLineItems);
+    const currency = String(previewLineItems[0]?.currency || "USD");
+    const deliveryEstimate = calculateDeliveryEstimate(previewLineItems);
 
     checkoutInput.billingDetails.advancePaymentRequiredPercentage = 30;
 
     const paymentResult = authorizeAdvancePayment({
       billingDetails: checkoutInput.billingDetails,
       paymentDetails: checkoutInput.paymentDetails,
-      total: totals.total
+      total: previewTotals.total
     });
 
     checkoutInput.billingDetails.depositRequired = paymentResult.depositRequired;
@@ -1739,6 +2509,21 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
     const paidAt = paymentResult.paidAt;
 
     await runProductTransaction(async (client) => {
+      const lineItems = await buildCheckoutLineItems(checkoutInput.items, {
+        client,
+        userId: req.auth.userId
+      });
+      const totals = calculateTotals(lineItems);
+
+      if (totals.total !== previewTotals.total) {
+        throw createHttpError(
+          409,
+          "Your cart changed while we were confirming payment. Please review the latest pricing and stock."
+        );
+      }
+
+      await reserveInventoryForLineItems(client, lineItems);
+
       const orderInsert = await client.query(
         `
         INSERT INTO orders (
@@ -1804,31 +2589,48 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
       const orderId = orderInsert.rows[0].id;
 
       for (const item of lineItems) {
-        await client.query(
+        const orderItemInsert = await client.query(
           `
           INSERT INTO order_items (
             order_id,
             product_id,
+            variation_id,
             quantity,
             type,
+            selected_color,
+            selected_size,
+            customization_requested,
             rent_days,
             unit_price,
             unit_cost_snapshot,
             line_total
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          RETURNING id
           `,
           [
             orderId,
             item.productId,
+            item.variationId,
             item.quantity,
             item.mode,
+            item.selectedColor,
+            item.selectedSize,
+            item.customizationUploadTokens.length > 0,
             item.mode === "rent" ? item.rentalDays : null,
             item.unitPrice,
             item.unitCostSnapshot,
             item.lineTotal
           ]
         );
+
+        await attachCustomizationUploadsToOrderItem(client, {
+          customizationUploadTokens: item.customizationUploadTokens,
+          orderItemId: orderItemInsert.rows[0].id,
+          productId: item.productId,
+          userId: req.auth.userId,
+          variationId: item.variationId
+        });
       }
     });
 

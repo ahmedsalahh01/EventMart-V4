@@ -6,6 +6,7 @@ const {
   calculateTotals,
   extractEgyptAddressFromReversePayload,
   isCoordinateWithinEgypt,
+  normalizeOrderCartItems,
   validateCheckoutSubmission
 } = require("./checkout");
 
@@ -73,6 +74,25 @@ runTest("should validate a complete checkout submission", () => {
   assert.equal(payload.billingDetails.billingAddress, "22 Nile Corniche");
   assert.equal(payload.billingDetails.paymentMethod, "card");
   assert.equal(payload.items.length, 1);
+});
+
+runTest("should normalize variation selections and customization tokens", () => {
+  const items = normalizeOrderCartItems([
+    {
+      id: "4",
+      variation_id: "11",
+      selected_color: "Red",
+      selected_size: "Medium",
+      customization_upload_tokens: ["tok-1", "tok-2", "tok-1"],
+      quantity: 2,
+      mode: "buy"
+    }
+  ]);
+
+  assert.equal(items[0].variationId, 11);
+  assert.equal(items[0].selectedColor, "Red");
+  assert.equal(items[0].selectedSize, "Medium");
+  assert.deepEqual(items[0].customizationUploadTokens, ["tok-1", "tok-2"]);
 });
 
 runTest("should report required field errors for incomplete checkout data", () => {
