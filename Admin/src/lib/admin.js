@@ -1,6 +1,7 @@
 export const METRICS_KEY = "eventmart_product_metrics_v1";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const LOCAL_API_URL = "http://localhost:4000";
+const PRODUCTION_API_URL = "https://eventmart-v4-production.up.railway.app";
 const PRODUCTS_PATH = "/api/products";
 const PRODUCT_IMAGE_UPLOAD_PATHS = ["/api/product-images/upload", "/product-images/upload"];
 const PRODUCT_IMAGE_DELETE_PATHS = ["/api/product-images", "/product-images"];
@@ -11,6 +12,7 @@ const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
 const DEFAULT_CURRENCY_ALPHA = "EGP";
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/320x220?text=EventMart";
 export const MAX_IMAGES_PER_MODE = 10;
+export const ONE_SIZE_LABEL = "One Size";
 const CURRENCY_NUMERIC_TO_ALPHA = Object.freeze({
   "008": "ALL",
   "012": "DZD",
@@ -28,8 +30,53 @@ const CURRENCY_NUMERIC_TO_ALPHA = Object.freeze({
   "978": "EUR"
 });
 
-// REMOVE AFTER VERIFICATION: confirms the Admin app resolved the expected backend base URL.
-console.info("[Admin API] resolved API_URL:", API_URL);
+function readImportMetaEnv() {
+  return import.meta?.env || {};
+}
+
+function readRuntimeLocation() {
+  if (typeof window !== "undefined" && window.location) {
+    return window.location;
+  }
+
+  return globalThis.location || null;
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isLocalHostname(hostname) {
+  const normalized = String(hostname || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "[::1]";
+}
+
+function resolveApiBaseUrl({ env = readImportMetaEnv(), location = readRuntimeLocation() } = {}) {
+  const configuredBaseUrl = normalizeBaseUrl(env?.VITE_API_URL);
+  if (configuredBaseUrl) {
+    return configuredBaseUrl;
+  }
+
+  const hostname = String(location?.hostname || "").trim().toLowerCase();
+  if (!hostname || isLocalHostname(hostname)) {
+    return LOCAL_API_URL;
+  }
+
+  return PRODUCTION_API_URL;
+}
+
+function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
+  const configuredFallback = normalizeBaseUrl(readImportMetaEnv()?.VITE_FALLBACK_API_URL);
+  if (configuredFallback && configuredFallback !== baseUrl) {
+    return configuredFallback;
+  }
+
+  if (!baseUrl || baseUrl === PRODUCTION_API_URL) {
+    return "";
+  }
+
+  return PRODUCTION_API_URL;
+}
 
 function randomId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -59,12 +106,35 @@ function apiErrorMessage(payload, status) {
   return cleanMessage || `Request failed with status ${status}`;
 }
 
-function resolveApiUrl(path) {
+function resolveApiUrl(path, baseUrl = resolveApiBaseUrl()) {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
 
-  return `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  return `${normalizeBaseUrl(baseUrl)}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function isNetworkFetchError(error) {
+  const message = String(error?.message || "").trim().toLowerCase();
+  return message === "failed to fetch" || message.includes("networkerror");
+}
+
+function createNetworkApiError(baseUrls) {
+  const targets = (Array.isArray(baseUrls) ? baseUrls : [baseUrls])
+    .filter(Boolean)
+    .join(" or ");
+
+  return new Error(
+    `Could not reach the API server at ${targets || LOCAL_API_URL}. ` +
+    "Make sure the backend is running and that Admin/.env.local points to a reachable API."
+  );
+}
+
+function tagProductActionError(error, stage) {
+  if (error && !error.productActionStage) {
+    error.productActionStage = stage;
+  }
+  return error;
 }
 
 function normalizeImageList(value) {
@@ -174,39 +244,67 @@ export function resolveAssetUrl(source, fallback = PLACEHOLDER_IMAGE_URL) {
 }
 
 async function apiRequestJson(path, options = {}) {
-  const url = resolveApiUrl(path);
-  const method = options.method || "GET";
-  const response = await fetch(url, {
-    method,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {})
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
+  const runtimeLocation = readRuntimeLocation();
+  const primaryBaseUrl = normalizeBaseUrl(options.baseUrl || resolveApiBaseUrl({ location: runtimeLocation }));
+  const fallbackBaseUrl = normalizeBaseUrl(options.fallbackBaseUrl || getFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation));
+  const attemptBaseUrls = [primaryBaseUrl, fallbackBaseUrl].filter(
+    (value, index, all) => value && all.indexOf(value) === index
+  );
 
-  const text = await response.text();
-  let payload = null;
+  for (let index = 0; index < attemptBaseUrls.length; index += 1) {
+    const currentBaseUrl = attemptBaseUrls[index];
+    const url = resolveApiUrl(path, currentBaseUrl);
+    const method = options.method || "GET";
 
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text ? { error: text } : null;
+    try {
+      const response = await fetch(url, {
+        method,
+        cache: options.cache || "no-store",
+        headers: {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.headers || {})
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+
+      const text = await response.text();
+      let payload = null;
+
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text ? { error: text } : null;
+      }
+
+      if (!response.ok) {
+        console.error("[Admin API] request failed", {
+          baseUrl: currentBaseUrl,
+          body: payload,
+          method,
+          status: response.status,
+          url
+        });
+        const error = new Error(apiErrorMessage(payload, response.status));
+        error.status = response.status;
+        throw error;
+      }
+
+      return payload;
+    } catch (error) {
+      const hasFallback = index < attemptBaseUrls.length - 1;
+      if (isNetworkFetchError(error) && hasFallback) {
+        continue;
+      }
+
+      if (isNetworkFetchError(error)) {
+        throw createNetworkApiError(attemptBaseUrls);
+      }
+
+      throw error;
+    }
   }
 
-  if (!response.ok) {
-    console.error("[Admin API] request failed", {
-      body: payload,
-      method,
-      status: response.status,
-      url
-    });
-    const error = new Error(apiErrorMessage(payload, response.status));
-    error.status = response.status;
-    throw error;
-  }
-
-  return payload;
+  throw createNetworkApiError(attemptBaseUrls);
 }
 
 export async function uploadProductImage(file, { productId, themeMode }) {
@@ -216,40 +314,83 @@ export async function uploadProductImage(file, { productId, themeMode }) {
     filename: String(file?.name || "image")
   });
 
+  const runtimeLocation = readRuntimeLocation();
+  const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
+  const fallbackBaseUrl = normalizeBaseUrl(getFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation));
+  const attemptBaseUrls = [primaryBaseUrl, fallbackBaseUrl].filter(
+    (value, index, all) => value && all.indexOf(value) === index
+  );
   let lastError = null;
 
-  for (const path of PRODUCT_IMAGE_UPLOAD_PATHS) {
-    const response = await fetch(resolveApiUrl(`${path}?${params.toString()}`), {
-      method: "POST",
-      headers: {
-        "Content-Type": file?.type || "application/octet-stream"
-      },
-      body: file
-    });
+  for (const baseUrl of attemptBaseUrls) {
+    for (const path of PRODUCT_IMAGE_UPLOAD_PATHS) {
+      try {
+        const response = await fetch(resolveApiUrl(`${path}?${params.toString()}`, baseUrl), {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": file?.type || "application/octet-stream"
+          },
+          body: file
+        });
 
-    const text = await response.text();
-    let payload = null;
+        const text = await response.text();
+        let payload = null;
 
-    try {
-      payload = text ? JSON.parse(text) : null;
-    } catch {
-      payload = text ? { error: text } : null;
-    }
+        try {
+          payload = text ? JSON.parse(text) : null;
+        } catch {
+          payload = text ? { error: text } : null;
+        }
 
-    if (response.ok) {
-      return String(payload?.url || "").trim();
-    }
+        if (response.ok) {
+          return String(payload?.url || "").trim();
+        }
 
-    const error = new Error(apiErrorMessage(payload, response.status));
-    error.status = response.status;
-    lastError = error;
+        const error = tagProductActionError(
+          new Error(apiErrorMessage(payload, response.status)),
+          "upload"
+        );
+        error.status = response.status;
+        lastError = error;
 
-    if (!isMissingImageUploadEndpointError(error)) {
-      throw error;
+        if (!isMissingImageUploadEndpointError(error)) {
+          throw error;
+        }
+      } catch (error) {
+        if (isNetworkFetchError(error)) {
+          lastError = tagProductActionError(createNetworkApiError(attemptBaseUrls), "upload");
+          continue;
+        }
+
+        throw tagProductActionError(error, "upload");
+      }
     }
   }
 
-  throw lastError || new Error("Product image upload endpoint is unavailable.");
+  throw tagProductActionError(
+    lastError || new Error("Product image upload endpoint is unavailable."),
+    "upload"
+  );
+}
+
+export function formatProductActionError(error) {
+  const message = String(error?.message || "").trim() || "Unable to save product.";
+  const stage = String(error?.productActionStage || "").trim().toLowerCase();
+
+  if (stage === "upload") {
+    return `Product images could not be uploaded. ${message}`;
+  }
+
+  if (stage === "save") {
+    return `Product details could not be saved. ${message}`;
+  }
+
+  if (stage === "refresh") {
+    return `The product may have been saved, but the catalog could not be refreshed. ${message}`;
+  }
+
+  return message;
 }
 
 export async function deleteUploadedImages(urls) {
@@ -308,6 +449,185 @@ export function fallbackProductId(seed) {
 
   const candidate = digits.slice(-5).padStart(5, "0");
   return PRODUCT_ID_REGEX.test(candidate) ? candidate : "00001";
+}
+
+function normalizeTextList(value, maxItemLength = 60) {
+  const list = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/\r?\n|,/)
+      : value === null || value === undefined || value === ""
+        ? []
+        : [value];
+
+  return Array.from(
+    new Set(
+      list
+        .map((item) => String(item || "").trim().replace(/\s+/g, " ").slice(0, maxItemLength))
+        .filter(Boolean)
+    )
+  );
+}
+
+function normalizeQualityPointsInput(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (
+      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+      (trimmed.startsWith("{") && trimmed.endsWith("}"))
+    ) {
+      try {
+        return normalizeQualityPointsInput(JSON.parse(trimmed));
+      } catch (_error) {
+        // Fall through to line splitting.
+      }
+    }
+
+    return trimmed
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeSizeModeInput(value) {
+  return String(value || "").trim().toLowerCase() === "varied" ? "varied" : "one-size";
+}
+
+function normalizeSizeLabel(value, sizeMode = "varied") {
+  if (normalizeSizeModeInput(sizeMode) === "one-size") {
+    return ONE_SIZE_LABEL;
+  }
+
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[\s_]+/g, "")
+    .replace(/-/g, "");
+
+  if (normalized === "xs" || normalized === "xsmall") return "XS";
+  if (normalized === "s" || normalized === "small") return "Small";
+  if (normalized === "m" || normalized === "medium") return "Medium";
+  if (normalized === "l" || normalized === "large") return "Large";
+  if (normalized === "xl" || normalized === "xlarge") return "X-Large";
+  if (normalized === "2xl" || normalized === "2xlarge" || normalized === "xxl") return "2X-Large";
+  if (normalized === "3xl" || normalized === "3xlarge" || normalized === "xxxl") return "3X-Large";
+  if (normalized === "4xl" || normalized === "4xlarge" || normalized === "xxxxl") return "4X-Large";
+
+  return raw;
+}
+
+function sortSizes(sizes, sizeMode = "varied") {
+  const normalizedSizeMode = normalizeSizeModeInput(sizeMode);
+
+  if (normalizedSizeMode === "one-size") {
+    return [ONE_SIZE_LABEL];
+  }
+
+  const order = new Map([
+    ["XS", 0],
+    ["Small", 1],
+    ["Medium", 2],
+    ["Large", 3],
+    ["X-Large", 4],
+    ["2X-Large", 5],
+    ["3X-Large", 6],
+    ["4X-Large", 7]
+  ]);
+
+  return normalizeTextList(sizes, 40)
+    .map((size) => normalizeSizeLabel(size, normalizedSizeMode))
+    .filter(Boolean)
+    .sort((left, right) => {
+      const leftIndex = order.has(left) ? order.get(left) : Number.POSITIVE_INFINITY;
+      const rightIndex = order.has(right) ? order.get(right) : Number.POSITIVE_INFINITY;
+
+      if (leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
+      }
+
+      return left.localeCompare(right);
+    });
+}
+
+function normalizeVariationList(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeVariationList(entry));
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (
+      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+      (trimmed.startsWith("{") && trimmed.endsWith("}"))
+    ) {
+      try {
+        return normalizeVariationList(JSON.parse(trimmed));
+      } catch (_error) {
+        return [];
+      }
+    }
+
+    return [];
+  }
+
+  if (value && typeof value === "object") {
+    const nested =
+      value.variations ??
+      value.items ??
+      value.rows ??
+      value.value;
+
+    if (nested !== undefined) {
+      const normalizedNested = normalizeVariationList(nested);
+      if (normalizedNested.length) {
+        return normalizedNested;
+      }
+    }
+
+    return [value];
+  }
+
+  return [];
+}
+
+export function getCatalogColorOptions(value) {
+  return normalizeTextList(value, 60);
+}
+
+export function getCatalogSizeOptions(value, sizeMode = "varied") {
+  const normalizedSizeMode = normalizeSizeModeInput(sizeMode);
+  return normalizedSizeMode === "one-size"
+    ? [ONE_SIZE_LABEL]
+    : sortSizes(normalizeTextList(value, 40), normalizedSizeMode);
+}
+
+export function getDerivedVariationAvailability(quantity) {
+  return Number(quantity) > 0 ? "in_stock" : "out_of_stock";
+}
+
+export function createEmptyVariationRow(sizeMode = "one-size") {
+  return {
+    availability_status: getDerivedVariationAvailability(0),
+    color: "",
+    quantity: "0",
+    size: normalizeSizeModeInput(sizeMode) === "one-size" ? ONE_SIZE_LABEL : "",
+    sku: ""
+  };
 }
 
 export function generateNextProductId(products) {
@@ -406,12 +726,26 @@ function mapApiProduct(row) {
   const mappedId = String(row.id ?? randomId());
   const normalizedProductId = normalizeProductIdInput(row.product_id);
   const imageCollections = resolveImageCollections(row);
+  const sizeMode = normalizeSizeModeInput(row.size_mode ?? row.sizeMode);
+  const variations = normalizeVariationList(row.variations).map((variation) => ({
+    availability_status: String(
+      variation.availability_status ||
+      variation.availabilityStatus ||
+      getDerivedVariationAvailability(variation.quantity)
+    ),
+    color: String(variation.color || ""),
+    id: variation.id ?? null,
+    quantity: toNum(variation.quantity, 0),
+    size: normalizeSizeLabel(variation.size, sizeMode),
+    sku: String(variation.sku || "")
+  }));
 
   return {
     active: row.active !== false,
     buy_enabled: Boolean(row.buy_enabled),
     buy_price: toNum(row.buy_price, null),
     category: String(row.category ?? "General"),
+    colors: getCatalogColorOptions(row.colors),
     created_at: String(row.created_at ?? ""),
     currency: getSafeCurrencyAlpha(row.currency, DEFAULT_CURRENCY_ALPHA),
     description: String(row.description ?? ""),
@@ -425,14 +759,19 @@ function mapApiProduct(row) {
     product_id: PRODUCT_ID_REGEX.test(normalizedProductId)
       ? normalizedProductId
       : fallbackProductId(row.product_id || mappedId),
-    quality_points: Array.isArray(row.quality_points) ? row.quality_points : [],
+    quality: String(row.quality ?? ""),
+    quality_points: normalizeQualityPointsInput(row.quality_points),
     quantity_available: toNum(row.quantity_available, 0),
     rent_enabled: Boolean(row.rent_enabled),
     rent_price_per_day: toNum(row.rent_price_per_day, null),
     reorder_level: toNum(row.reorder_level, 0),
+    size_mode: sizeMode,
+    sizes: getCatalogSizeOptions(row.sizes, sizeMode),
     subcategory: String(row.subcategory ?? "General"),
+    customizable: Boolean(row.customizable),
     unit_cost: toNum(row.unit_cost, 0),
-    updated_at: String(row.updated_at ?? "")
+    updated_at: String(row.updated_at ?? ""),
+    variations
   };
 }
 
@@ -508,6 +847,7 @@ export function createEmptyProductForm(products) {
     buy_enabled: true,
     buy_price: "",
     category: "",
+    colors: "",
     currency: DEFAULT_CURRENCY_ALPHA,
     description: "",
     dark_images: [],
@@ -516,12 +856,17 @@ export function createEmptyProductForm(products) {
     name: "",
     overhead_cost: "0",
     product_id: generateNextProductId(products),
+    quality: "",
     quality_points: "",
     quantity_available: "0",
     rent_enabled: false,
     rent_price_per_day: "",
     reorder_level: "0",
+    size_mode: "one-size",
+    sizes: "",
     subcategory: "",
+    customizable: false,
+    variations: [createEmptyVariationRow("one-size")],
     unit_cost: "0"
   };
 }
@@ -529,6 +874,7 @@ export function createEmptyProductForm(products) {
 export function buildFormFromProduct(product) {
   const lightImages = normalizeImageList(product.light_images);
   const darkImages = normalizeImageList(product.dark_images);
+  const sizeMode = normalizeSizeModeInput(product.size_mode);
   const legacyImages =
     !lightImages.length && !darkImages.length
       ? normalizeImageList(product.image_url)
@@ -539,6 +885,7 @@ export function buildFormFromProduct(product) {
     buy_enabled: Boolean(product.buy_enabled),
     buy_price: product.buy_price ?? "",
     category: product.category,
+    colors: Array.isArray(product.colors) ? product.colors.join("\n") : "",
     currency: getSafeCurrencyAlpha(product.currency, DEFAULT_CURRENCY_ALPHA),
     description: product.description || "",
     dark_images: darkImages,
@@ -547,14 +894,28 @@ export function buildFormFromProduct(product) {
     name: product.name,
     overhead_cost: product.overhead_cost ?? 0,
     product_id: product.product_id || fallbackProductId(product.id),
-    quality_points: Array.isArray(product.quality_points)
-      ? product.quality_points.join("\n")
-      : "",
+    quality: product.quality || "",
+    quality_points: normalizeQualityPointsInput(product.quality_points).join("\n"),
     quantity_available: product.quantity_available ?? 0,
     rent_enabled: Boolean(product.rent_enabled),
     rent_price_per_day: product.rent_price_per_day ?? "",
     reorder_level: product.reorder_level ?? 0,
+    size_mode: sizeMode,
+    sizes: sizeMode === "varied" ? getCatalogSizeOptions(product.sizes, sizeMode).join("\n") : "",
     subcategory: product.subcategory,
+    customizable: Boolean(product.customizable),
+    variations: normalizeVariationList(product.variations).length
+      ? normalizeVariationList(product.variations).map((variation) => ({
+          availability_status: String(
+            variation.availability_status || getDerivedVariationAvailability(variation.quantity)
+          ),
+          color: String(variation.color || ""),
+          id: variation.id ?? null,
+          quantity: variation.quantity ?? 0,
+          size: normalizeSizeLabel(variation.size, sizeMode),
+          sku: String(variation.sku || "")
+        }))
+      : [createEmptyVariationRow(sizeMode)],
     unit_cost: product.unit_cost ?? 0
   };
 }
@@ -570,6 +931,9 @@ export function buildProductPayload(form, { editingId, products }) {
   const rentEnabled = Boolean(form.rent_enabled);
   const lightImages = normalizeImageList(form.light_images);
   const darkImages = normalizeImageList(form.dark_images);
+  const sizeMode = normalizeSizeModeInput(form.size_mode);
+  const colors = getCatalogColorOptions(form.colors);
+  const sizes = getCatalogSizeOptions(form.sizes, sizeMode);
 
   if (!buyEnabled && !rentEnabled) {
     throw new Error("Enable at least Buy or Rent.");
@@ -581,7 +945,7 @@ export function buildProductPayload(form, { editingId, products }) {
 
   const duplicate = products.find(
     (product) =>
-      product.id !== editingId &&
+      String(product.id) !== String(editingId ?? "") &&
       String(product.product_id || "") === normalizedProductId
   );
   if (duplicate) {
@@ -608,11 +972,96 @@ export function buildProductPayload(form, { editingId, products }) {
     throw new Error("You can upload up to 10 dark mode images per product.");
   }
 
+  const variationRows = Array.isArray(form.variations) ? form.variations : [];
+  const variations = variationRows
+    .filter((row) =>
+      String(row?.color || "").trim() ||
+      String(row?.size || "").trim() ||
+      String(row?.sku || "").trim() ||
+      Number(row?.quantity || 0) > 0
+    )
+    .map((row, index) => {
+      const color = String(row.color || "").trim();
+      const size = sizeMode === "one-size" ? ONE_SIZE_LABEL : normalizeSizeLabel(row.size, sizeMode);
+      const quantity = toNum(row.quantity, 0);
+
+      if (!color) {
+        throw new Error(`Variation ${index + 1} requires a color.`);
+      }
+
+      if (!size) {
+        throw new Error(`Variation ${index + 1} requires a size.`);
+      }
+
+      if (!Number.isInteger(Number(quantity)) || Number(quantity) < 0) {
+        throw new Error(`Variation ${index + 1} quantity must be a non-negative whole number.`);
+      }
+
+      if (colors.length && !colors.some((option) => option.toLowerCase() === color.toLowerCase())) {
+        throw new Error(`Variation ${index + 1} color must be chosen from the color options list.`);
+      }
+
+      if (
+        sizeMode === "varied" &&
+        sizes.length &&
+        !sizes.some((option) => option.toLowerCase() === size.toLowerCase())
+      ) {
+        throw new Error(`Variation ${index + 1} size must be chosen from the size options list.`);
+      }
+
+      return {
+        availability_status: getDerivedVariationAvailability(quantity),
+        color,
+        quantity: Number(quantity),
+        size,
+        sku: String(row.sku || "").trim()
+      };
+    });
+
+  const normalizedVariations = variations.length
+    ? variations
+    : [
+        {
+          availability_status: getDerivedVariationAvailability(toNum(form.quantity_available, 0)),
+          color: colors[0] || "Standard",
+          quantity: Number(toNum(form.quantity_available, 0)),
+          size: sizeMode === "one-size" ? ONE_SIZE_LABEL : sizes[0] || "Standard",
+          sku: ""
+        }
+      ];
+
+  const variationKeys = new Set();
+  normalizedVariations.forEach((variation) => {
+    const key = `${variation.color.toLowerCase()}::${variation.size.toLowerCase()}`;
+    if (variationKeys.has(key)) {
+      throw new Error(`Duplicate variation found for ${variation.color} / ${variation.size}.`);
+    }
+    variationKeys.add(key);
+  });
+
+  const normalizedColors = colors.length
+    ? colors
+    : Array.from(new Set(normalizedVariations.map((variation) => variation.color)));
+  const normalizedSizes = sizeMode === "one-size"
+    ? []
+    : sizes.length
+      ? sizes
+      : sortSizes(normalizedVariations.map((variation) => variation.size), sizeMode);
+
+  if (!normalizedColors.length) {
+    throw new Error("Add at least one color option.");
+  }
+
+  if (sizeMode === "varied" && !normalizedSizes.length) {
+    throw new Error("Varied-size products need at least one size.");
+  }
+
   return {
     active: Boolean(form.active),
     buy_enabled: buyEnabled,
     buy_price: toNum(form.buy_price, null),
     category,
+    colors: normalizedColors,
     currency: normalizedCurrency,
     description: String(form.description || "").trim(),
     dark_images: darkImages,
@@ -622,13 +1071,18 @@ export function buildProductPayload(form, { editingId, products }) {
     name,
     overhead_cost: toNum(form.overhead_cost, 0),
     product_id: normalizedProductId,
+    quality: String(form.quality || "").trim(),
     quality_points: qualityPoints,
-    quantity_available: toNum(form.quantity_available, 0),
+    quantity_available: normalizedVariations.reduce((sum, variation) => sum + Number(variation.quantity || 0), 0),
     rent_enabled: rentEnabled,
     rent_price_per_day: toNum(form.rent_price_per_day, null),
     reorder_level: toNum(form.reorder_level, 0),
+    size_mode: sizeMode,
+    sizes: normalizedSizes,
     subcategory,
-    unit_cost: toNum(form.unit_cost, 0)
+    customizable: Boolean(form.customizable),
+    unit_cost: toNum(form.unit_cost, 0),
+    variations: normalizedVariations
   };
 }
 
@@ -696,7 +1150,9 @@ export function productMatchesSearch(product, query) {
     product.name,
     product.category,
     product.subcategory,
-    product.description
+    product.description,
+    product.quality,
+    ...(Array.isArray(product.colors) ? product.colors : [])
   ]
     .join(" ")
     .toLowerCase()

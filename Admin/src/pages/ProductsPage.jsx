@@ -3,12 +3,18 @@ import ProductForm from "../components/ProductForm";
 import ProductList from "../components/ProductList";
 import {
   MAX_IMAGES_PER_MODE,
+  ONE_SIZE_LABEL,
   buildFormFromProduct,
+  formatProductActionError,
   buildProductPayload,
+  createEmptyVariationRow,
   createEmptyProductForm,
   createLocalImageEntry,
   deleteUploadedImages,
   generateNextProductId,
+  getCatalogColorOptions,
+  getCatalogSizeOptions,
+  getDerivedVariationAvailability,
   isLocalImageEntry,
   isMissingImageUploadEndpointError,
   normalizeCurrencyCodeInput,
@@ -21,6 +27,44 @@ import {
 } from "../lib/admin";
 
 const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function getVariationTotal(variations, sizeMode) {
+  return String(
+    (Array.isArray(variations) ? variations : []).reduce(
+      (sum, variation) =>
+        String(variation?.color || "").trim() &&
+        (sizeMode === "one-size" || String(variation?.size || "").trim())
+          ? sum + Math.max(0, Number(variation?.quantity || 0))
+          : sum,
+      0
+    )
+  );
+}
+
+function syncVariationRows(variations, formState) {
+  const sizeMode = formState.size_mode === "varied" ? "varied" : "one-size";
+  const colorOptions = getCatalogColorOptions(formState.colors);
+  const sizeOptions = getCatalogSizeOptions(formState.sizes, sizeMode);
+
+  return (Array.isArray(variations) ? variations : []).map((variation) => {
+    const rawColor = String(variation?.color || "").trim().toLowerCase();
+    const rawSize = String(variation?.size || "").trim().toLowerCase();
+    const matchedColor =
+      colorOptions.find((option) => option.toLowerCase() === rawColor) || "";
+    const matchedSize = sizeMode === "one-size"
+      ? ONE_SIZE_LABEL
+      : sizeOptions.find((option) => option.toLowerCase() === rawSize) || "";
+    const quantity = String(variation?.quantity ?? "0");
+
+    return {
+      ...variation,
+      availability_status: getDerivedVariationAvailability(quantity),
+      color: matchedColor,
+      quantity,
+      size: matchedSize
+    };
+  });
+}
 
 function revokeFormPreviewUrls(form) {
   (form?.light_images || []).forEach(revokeLocalImageEntry);
@@ -172,6 +216,8 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
         !current.description &&
         current.light_images.length === 0 &&
         current.dark_images.length === 0 &&
+        !current.colors &&
+        !current.quality &&
         !current.quality_points &&
         current.buy_price === "" &&
         current.rent_price_per_day === "" &&
@@ -179,6 +225,13 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
         String(current.reorder_level) === "0" &&
         String(current.unit_cost) === "0" &&
         String(current.overhead_cost) === "0" &&
+        current.size_mode === "one-size" &&
+        !current.sizes &&
+        current.customizable === false &&
+        current.variations.length === 1 &&
+        !current.variations[0].color &&
+        String(current.variations[0].quantity) === "0" &&
+        !current.variations[0].sku &&
         current.buy_enabled === true &&
         current.rent_enabled === false &&
         current.featured === false &&
@@ -219,10 +272,79 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
       nextValue = normalizeCurrencyCodeInput(nextValue);
     }
 
-    setForm((current) => ({
-      ...current,
-      [name]: nextValue
-    }));
+    setForm((current) => {
+      const nextForm = {
+        ...current,
+        [name]: nextValue
+      };
+
+      if (name === "size_mode") {
+        const nextMode = nextValue === "varied" ? "varied" : "one-size";
+        nextForm.size_mode = nextMode;
+        nextForm.sizes = nextMode === "one-size" ? "" : current.sizes;
+      }
+
+      if (name === "colors" || name === "sizes" || name === "size_mode") {
+        const baseVariations = current.variations.length
+          ? current.variations
+          : [createEmptyVariationRow(nextForm.size_mode)];
+        nextForm.variations = syncVariationRows(baseVariations, nextForm);
+        nextForm.quantity_available = getVariationTotal(nextForm.variations, nextForm.size_mode);
+      }
+
+      return nextForm;
+    });
+  }
+
+  function handleVariationChange(index, field, value) {
+    setForm((current) => {
+      const variations = current.variations.map((variation, variationIndex) =>
+        variationIndex === index
+          ? {
+              ...variation,
+              availability_status:
+                field === "quantity"
+                  ? getDerivedVariationAvailability(value)
+                  : getDerivedVariationAvailability(variation.quantity),
+              [field]: field === "size" && current.size_mode === "one-size" ? ONE_SIZE_LABEL : value
+            }
+          : variation
+      );
+
+      return {
+        ...current,
+        quantity_available: getVariationTotal(variations, current.size_mode),
+        variations
+      };
+    });
+    setNotice("");
+    setPageError("");
+  }
+
+  function handleAddVariation() {
+    setForm((current) => {
+      const variations = [...current.variations, createEmptyVariationRow(current.size_mode)];
+      return {
+        ...current,
+        quantity_available: getVariationTotal(variations, current.size_mode),
+        variations
+      };
+    });
+  }
+
+  function handleRemoveVariation(indexToRemove) {
+    setForm((current) => {
+      const variations =
+        current.variations.length === 1
+          ? [createEmptyVariationRow(current.size_mode)]
+          : current.variations.filter((_, index) => index !== indexToRemove);
+
+      return {
+        ...current,
+        quantity_available: getVariationTotal(variations, current.size_mode),
+        variations
+      };
+    });
   }
 
   async function handleImageSelect(themeMode, fileList) {
@@ -349,16 +471,30 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
 
       const payload = buildProductPayload(preparedForm, { editingId, products });
 
-      await saveProduct(payload, editingId);
+      try {
+        await saveProduct(payload, editingId);
+      } catch (saveError) {
+        saveError.productActionStage = saveError.productActionStage || "save";
+        throw saveError;
+      }
+
       productSaved = true;
-      const nextProducts = await onProductsRefresh();
+      let nextProducts = null;
+
+      try {
+        nextProducts = await onProductsRefresh();
+      } catch (refreshError) {
+        refreshError.productActionStage = refreshError.productActionStage || "refresh";
+        throw refreshError;
+      }
+
       resetForm(nextProducts);
       setNotice(wasEditing ? "Product updated successfully." : "Product created successfully.");
     } catch (submitError) {
       if (!productSaved && uploadedUrls.length) {
         await deleteUploadedImages(uploadedUrls).catch(() => {});
       }
-      setPageError(submitError?.message || "Unable to save product.");
+      setPageError(formatProductActionError(submitError));
     } finally {
       setIsSaving(false);
     }
@@ -433,10 +569,13 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
           isSaving={isSaving}
           onBlur={handleBlur}
           onChange={handleChange}
+          onAddVariation={handleAddVariation}
           onImageRemove={handleImageRemove}
           onImageSelect={handleImageSelect}
+          onRemoveVariation={handleRemoveVariation}
           onReset={() => resetForm()}
           onSubmit={handleSubmit}
+          onVariationChange={handleVariationChange}
         />
 
         <ProductList

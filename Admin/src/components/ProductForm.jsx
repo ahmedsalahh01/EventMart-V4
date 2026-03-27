@@ -1,5 +1,8 @@
 import {
   MAX_IMAGES_PER_MODE,
+  ONE_SIZE_LABEL,
+  getCatalogColorOptions,
+  getCatalogSizeOptions,
   getImagePreviewKey,
   resolveAssetUrl
 } from "../lib/admin";
@@ -8,12 +11,15 @@ function ProductForm({
   form,
   isEditing,
   isSaving,
+  onAddVariation,
   onBlur,
   onChange,
   onImageRemove,
   onImageSelect,
+  onRemoveVariation,
   onReset,
-  onSubmit
+  onSubmit,
+  onVariationChange
 }) {
   function renderImageGroup(themeMode, title, description) {
     const images = form[`${themeMode}_images`] || [];
@@ -77,6 +83,9 @@ function ProductForm({
       </div>
     );
   }
+
+  const colorOptions = getCatalogColorOptions(form.colors);
+  const sizeOptions = getCatalogSizeOptions(form.sizes, form.size_mode);
 
   return (
     <div className="panel">
@@ -190,11 +199,12 @@ function ProductForm({
             <input
               id="quantity_available"
               name="quantity_available"
-              onChange={onChange}
+              readOnly
               placeholder="10"
               type="number"
               value={form.quantity_available}
             />
+            <small className="helper-text">Calculated from the variation rows below.</small>
           </div>
 
           <div className="field">
@@ -263,6 +273,18 @@ function ProductForm({
             />
           </div>
 
+          <div className="field">
+            <label htmlFor="quality">Quality Summary</label>
+            <input
+              id="quality"
+              name="quality"
+              onChange={onChange}
+              placeholder="Premium heavyweight cotton"
+              type="text"
+              value={form.quality}
+            />
+          </div>
+
           <div className="field field-wide">
             <label htmlFor="quality_points">Quality Points (one per line)</label>
             <textarea
@@ -273,6 +295,104 @@ function ProductForm({
               rows={5}
               value={form.quality_points}
             />
+          </div>
+
+          <div className="field field-wide">
+            <label htmlFor="colors">Color Options (one per line)</label>
+            <textarea
+              id="colors"
+              name="colors"
+              onChange={onChange}
+              placeholder={"Black\nWhite\nRed"}
+              rows={4}
+              value={form.colors}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="size_mode">Size Mode</label>
+            <select id="size_mode" name="size_mode" onChange={onChange} value={form.size_mode}>
+              <option value="one-size">One Size</option>
+              <option value="varied">Varied Sizes</option>
+            </select>
+          </div>
+
+          {form.size_mode === "varied" ? (
+            <div className="field field-wide">
+              <label htmlFor="sizes">Size Options (one per line)</label>
+              <textarea
+                id="sizes"
+                name="sizes"
+                onChange={onChange}
+                placeholder={"XS\nSmall\nMedium\nLarge\nX-Large"}
+                rows={4}
+                value={form.sizes}
+              />
+            </div>
+          ) : null}
+
+          <div className="field field-wide">
+            <label>Variation Inventory</label>
+            <p className="helper-text variation-helper-text">
+              Pick variation colors and sizes from the catalog lists above to keep admin and storefront data aligned.
+            </p>
+            <div className="variation-grid">
+              {form.variations.map((variation, index) => (
+                <div className="variation-row" key={`${variation.id ?? "new"}-${index}`}>
+                  <select
+                    disabled={isSaving || colorOptions.length === 0}
+                    onChange={(event) => onVariationChange(index, "color", event.target.value)}
+                    value={variation.color}
+                  >
+                    <option value="">
+                      {colorOptions.length ? "Select color" : "Add colors above first"}
+                    </option>
+                    {colorOptions.map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
+                  {form.size_mode === "varied" ? (
+                    <select
+                      disabled={isSaving || sizeOptions.length === 0}
+                      onChange={(event) => onVariationChange(index, "size", event.target.value)}
+                      value={variation.size}
+                    >
+                      <option value="">
+                        {sizeOptions.length ? "Select size" : "Add sizes above first"}
+                      </option>
+                      {sizeOptions.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input disabled type="text" value={ONE_SIZE_LABEL} />
+                  )}
+                  <input
+                    min="0"
+                    onChange={(event) => onVariationChange(index, "quantity", event.target.value)}
+                    placeholder="Qty"
+                    type="number"
+                    value={variation.quantity}
+                  />
+                  <input
+                    onChange={(event) => onVariationChange(index, "sku", event.target.value)}
+                    placeholder="SKU (optional)"
+                    type="text"
+                    value={variation.sku}
+                  />
+                  <button className="btn ghost" onClick={() => onRemoveVariation(index)} type="button">
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button className="btn" onClick={onAddVariation} type="button">
+              Add variation
+            </button>
           </div>
         </div>
 
@@ -298,6 +418,10 @@ function ProductForm({
           <label>
             <input checked={form.featured} name="featured" onChange={onChange} type="checkbox" />
             Featured Badge
+          </label>
+          <label>
+            <input checked={form.customizable} name="customizable" onChange={onChange} type="checkbox" />
+            Customizable
           </label>
           <label>
             <input checked={form.active} name="active" onChange={onChange} type="checkbox" />

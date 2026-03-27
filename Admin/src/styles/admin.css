@@ -197,6 +197,7 @@ button:disabled {
 .filters-row input,
 .list-head input,
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   padding: 12px 14px;
@@ -216,6 +217,7 @@ button:disabled {
 .filters-row input:focus,
 .list-head input:focus,
 .field input:focus,
+.field select:focus,
 .field textarea:focus {
   border-color: rgba(104, 234, 188, 0.4);
   box-shadow: 0 0 0 3px rgba(104, 234, 188, 0.12);
@@ -326,6 +328,11 @@ button:disabled {
 
 .field textarea {
   resize: vertical;
+}
+
+.field small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .helper-text {
@@ -478,6 +485,44 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.variation-grid {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.variation-helper-text {
+  margin-bottom: 12px;
+}
+
+.variation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(120px, 0.7fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.variation-row input,
+.variation-row select {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.22);
+  outline: none;
+}
+
+.variation-row input:focus,
+.variation-row select:focus {
+  border-color: rgba(104, 234, 188, 0.4);
+  box-shadow: 0 0 0 3px rgba(104, 234, 188, 0.12);
 }
 
 .form-actions {
@@ -701,6 +746,10 @@ button:disabled {
 
   .image-preview-card img {
     height: 180px;
+  }
+
+  .variation-row {
+    grid-template-columns: 1fr;
   }
 
   .filters-row input,

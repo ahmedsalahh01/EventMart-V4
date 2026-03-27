@@ -59,6 +59,14 @@ function ProductList({
                   Qty: {product.quantity_available} | Reorder: {product.reorder_level} |{" "}
                   {product.active ? "Active" : "Inactive"}
                 </p>
+                <p className="meta">
+                  Quality: {product.quality || "-"} | Colors: {Array.isArray(product.colors) ? product.colors.length : 0} |{" "}
+                  Variations: {Array.isArray(product.variations) ? product.variations.length : 0}
+                </p>
+                <p className="meta">
+                  Size mode: {product.size_mode === "varied" ? "Varied" : "One Size"} |{" "}
+                  {product.customizable ? "Customizable" : "Standard"}
+                </p>
                 <p className="meta">Featured badge: {product.featured ? "On" : "Off"}</p>
                 <p className="meta">
                   Light images: {lightCount} | Dark images: {darkCount}
