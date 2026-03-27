@@ -868,6 +868,10 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
   gap: 12px;
 }
 
+.product-detail-section-head {
+  margin-bottom: 16px;
+}
+
 .product-detail-section-head h2 {
   margin: 0;
   color: var(--c-25);
@@ -917,7 +921,9 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
 }
 
 .product-detail-size-grid {
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .product-detail-color-chip,
@@ -934,6 +940,12 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
   gap: 10px;
   font-weight: 700;
   box-shadow: var(--c-33);
+}
+
+.product-detail-size-chip {
+  flex: 0 0 124px;
+  width: 124px;
+  white-space: nowrap;
 }
 
 .product-detail-color-chip.is-active,

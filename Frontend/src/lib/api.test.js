@@ -21,13 +21,13 @@ await runTest("should use an explicit VITE_API_URL when configured", () => {
   );
 });
 
-await runTest("should fall back to localhost during local development", () => {
+await runTest("should default to the production Railway backend when VITE_API_URL is not set", () => {
   assert.equal(
     resolveApiBaseUrl({
       env: {},
       location: { hostname: "localhost" }
     }),
-    "http://localhost:4000"
+    "https://eventmart-v4-production.up.railway.app"
   );
 });
 

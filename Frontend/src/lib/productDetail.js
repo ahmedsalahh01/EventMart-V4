@@ -298,47 +298,25 @@ export function buildProductOptionState(product, selection = {}) {
   let selectedColor = requestedColor;
   let selectedSize = sizeMode === "one-size" ? ONE_SIZE_LABEL : requestedSize;
 
-  if (!selectedColor || !detail.colors.includes(selectedColor)) {
-    selectedColor = firstMatchingVariation(detail.variations)?.color || detail.colors[0] || "";
+  if (!detail.colors.includes(selectedColor)) {
+    selectedColor = "";
   }
 
-  if (sizeMode === "varied") {
-    const sizeMatchesColor = detail.variations.some((variation) => variation.color === selectedColor && variation.size === selectedSize);
-    if (!selectedSize || !sizeMatchesColor) {
-      selectedSize = firstMatchingVariation(detail.variations, { color: selectedColor })?.size || detail.sizes[0] || "";
+  if (sizeMode === "one-size") {
+    if (!selectedColor) {
+      selectedColor = firstMatchingVariation(detail.variations)?.color || detail.colors[0] || "";
+    }
+  } else {
+    const sizeMatchesColor = detail.variations.some(
+      (variation) => variation.color === selectedColor && variation.size === selectedSize
+    );
+    if (!selectedColor || !sizeMatchesColor) {
+      selectedSize = "";
     }
   }
 
-  let activeVariation = detail.variations.find(
-    (variation) =>
-      variation.color === selectedColor &&
-      variation.size === (sizeMode === "one-size" ? ONE_SIZE_LABEL : selectedSize)
-  ) || null;
-
-  if (!activeVariation || !isVariationSelectable(activeVariation)) {
-    activeVariation = firstMatchingVariation(detail.variations, {
-      color: selectedColor,
-      size: sizeMode === "one-size" ? ONE_SIZE_LABEL : selectedSize
-    });
-  }
-
-  if (!activeVariation) {
-    activeVariation = firstMatchingVariation(detail.variations);
-  }
-
-  if (activeVariation) {
-    selectedColor = activeVariation.color;
-    selectedSize = activeVariation.size;
-  }
-
   const colors = detail.colors.map((color) => {
-    const matching = detail.variations.filter((variation) => {
-      if (variation.color !== color) return false;
-      if (sizeMode === "varied" && selectedSize && variation.size !== selectedSize) {
-        return false;
-      }
-      return true;
-    });
+    const matching = detail.variations.filter((variation) => variation.color === color);
     const isAvailable = matching.some(isVariationSelectable);
 
     return {
@@ -349,9 +327,18 @@ export function buildProductOptionState(product, selection = {}) {
     };
   });
 
+  const visibleSizes = sizeMode === "one-size"
+    ? []
+    : sortSizes(
+        detail.variations
+          .filter((variation) => variation.color === selectedColor)
+          .map((variation) => variation.size),
+        sizeMode
+      );
+
   const sizes = sizeMode === "one-size"
     ? []
-    : detail.sizes.map((size) => {
+    : visibleSizes.map((size) => {
         const matching = detail.variations.filter((variation) => variation.size === size && variation.color === selectedColor);
         const isAvailable = matching.some(isVariationSelectable);
 
@@ -362,6 +349,38 @@ export function buildProductOptionState(product, selection = {}) {
           isSelected: size === selectedSize
         };
       });
+
+  let activeVariation = null;
+
+  if (sizeMode === "one-size") {
+    activeVariation = detail.variations.find(
+      (variation) =>
+        variation.color === selectedColor &&
+        variation.size === ONE_SIZE_LABEL
+    ) || null;
+
+    if (!activeVariation || !isVariationSelectable(activeVariation)) {
+      activeVariation = firstMatchingVariation(detail.variations, {
+        color: selectedColor,
+        size: ONE_SIZE_LABEL
+      });
+    }
+
+    if (!activeVariation) {
+      activeVariation = firstMatchingVariation(detail.variations);
+    }
+
+    if (activeVariation) {
+      selectedColor = activeVariation.color;
+      selectedSize = activeVariation.size;
+    }
+  } else if (selectedColor && selectedSize) {
+    activeVariation = detail.variations.find(
+      (variation) =>
+        variation.color === selectedColor &&
+        variation.size === selectedSize
+    ) || null;
+  }
 
   return {
     ...detail,

@@ -37,11 +37,6 @@ export function resolveApiBaseUrl({ env = readImportMetaEnv(), location = readRu
     return configuredBaseUrl;
   }
 
-  const hostname = String(location?.hostname || "").trim().toLowerCase();
-  if (!hostname || isLocalHostname(hostname)) {
-    return LOCAL_API_URL;
-  }
-
   return PRODUCTION_API_URL;
 }
 
@@ -51,11 +46,7 @@ function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation(), env = 
     return configuredFallback;
   }
 
-  if (!baseUrl || baseUrl === PRODUCTION_API_URL) {
-    return "";
-  }
-
-  return PRODUCTION_API_URL;
+  return "";
 }
 
 export function sanitizeApiErrorMessage(rawValue) {
@@ -103,7 +94,7 @@ function isNetworkFetchError(error) {
 }
 
 function createNetworkApiError() {
-  return new Error("Could not reach the API server. This is usually a backend availability or CORS issue.");
+  return new Error("Could not reach the API server. Check VITE_API_URL and backend CORS availability.");
 }
 
 async function requestJson(url, options = {}) {
@@ -194,9 +185,7 @@ export async function apiRequest(path, options = {}) {
       const canRetryAfterNetworkFailure =
         index === 0 &&
         fallbackBaseUrl &&
-        fallbackBaseUrl !== currentBaseUrl &&
-        currentBaseUrl === LOCAL_API_URL &&
-        !isLocalHostname(runtimeLocation?.hostname || "");
+        fallbackBaseUrl !== currentBaseUrl;
 
       if (canRetryAfterNetworkFailure) {
         lastError = error;

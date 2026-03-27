@@ -1,4 +1,4 @@
-import { apiRequest, buildApiUrl } from "./api";
+import { apiRequest, buildApiUrl, resolveApiBaseUrl } from "./api";
 import { materializeProductDetail } from "./productDetail";
 
 const STORAGE_KEY = "eventmart_products_v1";
@@ -50,6 +50,10 @@ function normalizeImageList(value) {
       }
       return [];
     });
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
 }
 
 export function resolveProductImageUrl(source) {
@@ -220,38 +224,59 @@ export function clearStoredProducts() {
   }
 }
 
-export function readStoredProducts() {
+export function readStoredProducts(baseUrl = resolveApiBaseUrl()) {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(normalizeProduct) : [];
+
+    if (Array.isArray(parsed)) {
+      return [];
+    }
+
+    const storedBaseUrl = normalizeBaseUrl(parsed?.baseUrl);
+    const currentBaseUrl = normalizeBaseUrl(baseUrl);
+
+    if (storedBaseUrl && currentBaseUrl && storedBaseUrl !== currentBaseUrl) {
+      return [];
+    }
+
+    const rows = Array.isArray(parsed?.products) ? parsed.products : [];
+    return rows.map(normalizeProduct);
   } catch (_error) {
     return [];
   }
 }
 
-function writeStoredProducts(products) {
+function writeStoredProducts(products, baseUrl = resolveApiBaseUrl()) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        baseUrl: normalizeBaseUrl(baseUrl),
+        products
+      })
+    );
   } catch (_error) {
     // Ignore storage write failures.
   }
 }
 
 export async function loadProducts() {
+  const baseUrl = resolveApiBaseUrl();
+
   try {
-    const rows = await apiRequest("/api/products");
+    const rows = await apiRequest("/api/products", { baseUrl });
     if (!Array.isArray(rows)) return [];
 
     const products = rows
       .map(normalizeProduct)
       .filter((product) => product.active !== false);
 
-    writeStoredProducts(products);
+    writeStoredProducts(products, baseUrl);
     return products;
   } catch (_error) {
-    return readStoredProducts();
+    return readStoredProducts(baseUrl);
   }
 }
 
@@ -296,12 +321,13 @@ export function getProductRating(product) {
 
 export async function loadProductBySlug(slug) {
   const normalizedSlug = String(slug || "").trim();
+  const baseUrl = resolveApiBaseUrl();
 
   try {
-    const row = await apiRequest(`/api/products/slug/${encodeURIComponent(normalizedSlug)}`);
+    const row = await apiRequest(`/api/products/slug/${encodeURIComponent(normalizedSlug)}`, { baseUrl });
     return row ? normalizeProduct(row) : null;
   } catch (error) {
-    const fallbackProduct = readStoredProducts().find(
+    const fallbackProduct = readStoredProducts(baseUrl).find(
       (product) => String(product.slug || "").trim().toLowerCase() === normalizedSlug.toLowerCase()
     );
 

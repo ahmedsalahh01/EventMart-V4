@@ -33,7 +33,7 @@ function ProductDetailPage() {
   const [error, setError] = useState("");
   const [selectedMode, setSelectedMode] = useState("buy");
   const [selectedColor, setSelectedColor] = useState("");
-  const [selectedSize, setSelectedSize] = useState(ONE_SIZE_LABEL);
+  const [selectedSize, setSelectedSize] = useState("");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
@@ -56,7 +56,7 @@ function ProductDetailPage() {
         const initialState = buildProductOptionState(nextProduct, {});
         setProduct(nextProduct);
         setSelectedColor(initialState.selectedColor);
-        setSelectedSize(initialState.selectedSize || ONE_SIZE_LABEL);
+        setSelectedSize(initialState.selectedSize || (initialState.size_mode === "one-size" ? ONE_SIZE_LABEL : ""));
         setSelectedMode(
           nextProduct.buy_enabled && nextProduct.buy_price !== null
             ? "buy"
@@ -105,7 +105,7 @@ function ProductDetailPage() {
 
     const nextState = buildProductOptionState(product, nextSelection);
     setSelectedColor(nextState.selectedColor);
-    setSelectedSize(nextState.selectedSize || ONE_SIZE_LABEL);
+    setSelectedSize(nextState.selectedSize || (nextState.size_mode === "one-size" ? ONE_SIZE_LABEL : ""));
     setQuantity((current) => {
       const nextStock = Math.max(1, Number(nextState.activeVariation?.quantity || 1));
       return Math.min(current, nextStock);
@@ -136,6 +136,18 @@ function ProductDetailPage() {
   }
 
   async function handleAddToCart() {
+    if (optionState?.size_mode === "varied" && !selectedColor) {
+      setActionMessage("Choose a color first.");
+      setActionTone("error");
+      return;
+    }
+
+    if (optionState?.size_mode === "varied" && !selectedSize) {
+      setActionMessage("Choose a size from the selected color.");
+      setActionTone("error");
+      return;
+    }
+
     if (!product || !optionState || !activeVariation) {
       setActionMessage("This product variation could not be loaded. Please refresh and try again.");
       setActionTone("error");
@@ -238,9 +250,18 @@ function ProductDetailPage() {
     );
   }
 
-  const stockMessage = stockLimit > 0
-    ? `${stockLimit} item${stockLimit === 1 ? "" : "s"} available for ${activeVariation?.color} / ${activeVariation?.size}.`
-    : "This selection is currently unavailable.";
+  const stockMessage = optionState.size_mode === "varied" && !optionState.selectedColor
+    ? "Choose a color to see the sizes available for that option."
+    : optionState.size_mode === "varied" && !optionState.selectedSize
+      ? "Choose a size from the selected color to continue."
+      : stockLimit > 0
+        ? `Items available for ${activeVariation?.color} / ${activeVariation?.size}.`
+        : "This selection is currently unavailable.";
+  const selectedColorLabel = optionState.selectedColor || "Select color";
+  const selectedSizeLabel = optionState.size_mode === "one-size"
+    ? ONE_SIZE_LABEL
+    : optionState.selectedSize || "Select size";
+  const itemSummaryLabel = `${selectedColorLabel} selected - ${selectedSizeLabel}`;
 
   return (
     <motion.main
@@ -333,7 +354,7 @@ function ProductDetailPage() {
             <section className="product-detail-section">
               <div className="product-detail-section-head">
                 <h2>Color</h2>
-                <span>{optionState.selectedColor}</span>
+                <span>{selectedColorLabel}</span>
               </div>
               <div className="product-detail-chip-grid">
                 {optionState.colors.map((colorOption) => (
@@ -341,7 +362,7 @@ function ProductDetailPage() {
                     className={`product-detail-color-chip${colorOption.isSelected ? " is-active" : ""}`}
                     disabled={colorOption.isDisabled}
                     key={colorOption.color}
-                    onClick={() => applySelection({ color: colorOption.color, size: selectedSize })}
+                    onClick={() => applySelection({ color: colorOption.color, size: "" })}
                     type="button"
                   >
                     <span
@@ -358,21 +379,27 @@ function ProductDetailPage() {
               <section className="product-detail-section">
                 <div className="product-detail-section-head">
                   <h2>Size</h2>
-                  <span>{optionState.selectedSize}</span>
+                  <span>{optionState.selectedColor ? selectedSizeLabel : "Choose color first"}</span>
                 </div>
-                <div className="product-detail-chip-grid product-detail-size-grid">
-                  {optionState.sizes.map((sizeOption) => (
-                    <button
-                      className={`product-detail-size-chip${sizeOption.isSelected ? " is-active" : ""}`}
-                      disabled={sizeOption.isDisabled}
-                      key={sizeOption.size}
-                      onClick={() => applySelection({ color: selectedColor, size: sizeOption.size })}
-                      type="button"
-                    >
-                      {sizeOption.size}
-                    </button>
-                  ))}
-                </div>
+                {!optionState.selectedColor ? (
+                  <p className="product-detail-one-size-copy">Select a color first to view the sizes available for that color.</p>
+                ) : optionState.sizes.length ? (
+                  <div className="product-detail-chip-grid product-detail-size-grid">
+                    {optionState.sizes.map((sizeOption) => (
+                      <button
+                        className={`product-detail-size-chip${sizeOption.isSelected ? " is-active" : ""}`}
+                        disabled={sizeOption.isDisabled}
+                        key={sizeOption.size}
+                        onClick={() => applySelection({ color: selectedColor, size: sizeOption.size })}
+                        type="button"
+                      >
+                        {sizeOption.size}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="product-detail-one-size-copy">No sizes are currently available for {optionState.selectedColor}.</p>
+                )}
               </section>
             ) : (
               <section className="product-detail-section">
@@ -431,8 +458,8 @@ function ProductDetailPage() {
             <section className="product-detail-purchase-card">
               <div className="product-detail-purchase-meta">
                 <div>
-                  <span>Selected option</span>
-                  <strong>{selectedMode === "rent" ? "Rent" : "Buy"} • {optionState.selectedColor} • {optionState.selectedSize}</strong>
+                  <span>Item Summary</span>
+                  <strong>{itemSummaryLabel}</strong>
                 </div>
                 <div>
                   <span>Price</span>
@@ -473,7 +500,7 @@ function ProductDetailPage() {
               <div className="product-detail-actions">
                 <button
                   className="btn primary"
-                  disabled={isAdding || stockLimit <= 0}
+                  disabled={isAdding || !activeVariation || stockLimit <= 0}
                   onClick={handleAddToCart}
                   type="button"
                 >
