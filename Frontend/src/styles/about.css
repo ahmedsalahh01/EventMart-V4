@@ -19,31 +19,23 @@
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="about"] {
-  --c-21: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--c-2) 96%, #071126) 0%,
-    color-mix(in srgb, var(--c-3) 88%, #071024) 100%
-  );
-  --c-22: color-mix(in srgb, var(--c-2) 96%, #081127);
-  --c-23: color-mix(in srgb, var(--c-14) 76%, var(--c-12));
-  --c-24: color-mix(in srgb, var(--c-14) 74%, var(--c-12));
-  --c-25: var(--c-12);
+  --c-21: linear-gradient(145deg, var(--dark-surface-1) 0%, var(--dark-surface-2) 100%);
+  --c-22: var(--dark-surface-1);
+  --c-23: color-mix(in srgb, var(--c-14) 82%, var(--c-11));
+  --c-24: color-mix(in srgb, var(--c-14) 76%, var(--c-6));
+  --c-25: var(--c-11);
   --c-26: var(--c-14);
-  --c-27: var(--c-4);
-  --c-28: 0 16px 48px -12px color-mix(in srgb, var(--c-1) 50%, transparent);
-  --c-29: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
-  --c-31: color-mix(in srgb, var(--c-14) 68%, var(--c-10));
-  --c-32: color-mix(in srgb, var(--c-2) 16%, transparent);
-  --c-33: var(--c-14);
-  --c-34: color-mix(in srgb, var(--c-12) 26%, var(--c-4));
-  --c-35: color-mix(in srgb, var(--c-12) 42%, #081127);
-  --c-36: color-mix(in srgb, var(--c-13) 54%, #071024);
-  --c-37: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--c-2) 96%, #081127) 0%,
-    color-mix(in srgb, var(--c-3) 88%, #071024) 100%
-  );
-  --c-38: var(--c-6);
+  --c-27: var(--dark-border-strong);
+  --c-28: var(--dark-shadow-strong);
+  --c-29: var(--dark-shadow-soft);
+  --c-31: color-mix(in srgb, var(--c-14) 24%, var(--dark-surface-1));
+  --c-32: var(--dark-border-soft);
+  --c-33: color-mix(in srgb, var(--c-14) 28%, var(--c-4));
+  --c-34: color-mix(in srgb, var(--c-11) 52%, var(--c-14));
+  --c-35: color-mix(in srgb, var(--c-11) 42%, var(--dark-surface-1));
+  --c-36: color-mix(in srgb, var(--c-12) 58%, var(--dark-surface-2));
+  --c-37: linear-gradient(145deg, var(--dark-surface-1) 0%, var(--dark-surface-2) 100%);
+  --c-38: var(--c-1);
 }
 .about-snap-page {
   overscroll-behavior-y: contain;

@@ -25,33 +25,34 @@
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="shop"] {
-  --c-21: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--c-2) 96%, #071126) 0%,
-    color-mix(in srgb, var(--c-3) 88%, #071024) 100%
-  );
-  --c-22: color-mix(in srgb, var(--c-2) 96%, #081127);
+  --c-21: linear-gradient(145deg, var(--dark-surface-1) 0%, var(--dark-surface-2) 100%);
+  --c-22: var(--dark-surface-1);
   --c-23: var(--c-4);
-  --c-24: color-mix(in srgb, var(--c-14) 80%, var(--c-12));
-  --c-25: var(--c-12);
-  --c-26: color-mix(in srgb, var(--c-14) 72%, var(--c-12));
+  --c-24: color-mix(in srgb, var(--c-14) 88%, var(--c-1));
+  --c-25: var(--c-1);
+  --c-26: color-mix(in srgb, var(--c-14) 82%, var(--c-5));
   --c-27: var(--c-5);
   --c-28: var(--c-4);
   --c-29: var(--page-accent-ink);
   --c-30: var(--page-accent-gradient);
-  --c-31: color-mix(in srgb, var(--c-3) 90%, #071024);
-  --c-32: 0 16px 48px -12px color-mix(in srgb, var(--c-1) 50%, transparent);
-  --c-33: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
+  --c-31: var(--dark-surface-2);
+  --c-32: var(--dark-shadow-strong);
+  --c-33: var(--dark-shadow-soft);
   --c-34: rgba(8, 16, 39, 0.65);
-  --c-35: color-mix(in srgb, var(--c-22) 86%, transparent);
-  --c-36: color-mix(in srgb, var(--c-10) 18%, #102247);
-  --c-37: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --c-35: color-mix(in srgb, var(--dark-surface-1) 86%, transparent);
+  --c-36: color-mix(in srgb, var(--page-accent-solid) 24%, var(--dark-surface-2));
+  --c-37: color-mix(in srgb, var(--page-accent-solid) 18%, var(--dark-surface-1));
   --c-38: var(--page-hero-border);
   --c-39: var(--page-accent-ink);
   --c-40: var(--page-accent-contrast);
   --c-41: var(--page-accent-ink);
-  --c-42: color-mix(in srgb, var(--c-10) 10%, #102247);
-  --c-43: var(--page-hero-border);
+  --c-42: color-mix(in srgb, var(--page-accent-solid) 16%, var(--dark-surface-1));
+  --c-43: var(--dark-border-strong);
+}
+
+html[data-interface-theme="dark"] [data-theme-scope="shop"] .shop-header p,
+html[data-interface-theme="dark"] [data-theme-scope="shop"] .shop-products-section-head p {
+  color: var(--page-hero-copy);
 }
 
 .shop-page {
@@ -161,6 +162,84 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 18px;
+}
+
+.shop-products-section {
+  display: grid;
+  gap: 16px;
+  margin-top: 88px;
+}
+
+.shop-products-section-head {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid var(--page-hero-border);
+  background: var(--page-heading-bg);
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--c-14) 34%, transparent);
+  box-sizing: border-box;
+}
+
+.shop-products-section-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.shop-products-section-head h2 {
+  margin: 0;
+  color: var(--c-1);
+  font-size: clamp(1.9rem, 3vw, 2.5rem);
+  letter-spacing: -0.02em;
+}
+
+.shop-products-section-head p {
+  margin: 0;
+  color: var(--c-10);
+  font-size: 1.02rem;
+}
+
+.shop-products-section-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 14px;
+  align-items: center;
+}
+
+.shop-section-search,
+.shop-section-filters select {
+  background: color-mix(in srgb, var(--c-2) 18%, rgba(255, 255, 255, 0.08));
+  border-color: color-mix(in srgb, white 26%, transparent);
+  color: var(--c-1);
+  box-shadow: none;
+}
+
+.shop-section-search {
+  width: 100%;
+}
+
+.shop-section-search input,
+.shop-section-filters select {
+  color: var(--c-1);
+}
+
+.shop-section-search input::placeholder {
+  color: color-mix(in srgb, white 74%, transparent);
+}
+
+.shop-section-filters {
+  width: 100%;
+}
+
+.shop-section-filters select {
+  width: 100%;
+}
+
+.shop-section-search:focus-within,
+.shop-section-filters select:focus {
+  border-color: color-mix(in srgb, white 82%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, white 14%, transparent);
 }
 
 .product-card {
@@ -1063,6 +1142,10 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
     width: 100%;
   }
 
+  .shop-products-section-tools {
+    grid-template-columns: 1fr;
+  }
+
   .product-detail-hero {
     grid-template-columns: 1fr;
   }
@@ -1085,6 +1168,10 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] {
 
   .filter-selects {
     grid-template-columns: 1fr;
+  }
+
+  .shop-products-section-head {
+    padding: 20px;
   }
 
   .modal-body {

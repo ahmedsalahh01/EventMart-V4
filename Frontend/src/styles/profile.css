@@ -33,35 +33,35 @@
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="profile"] {
-  --p-card-bg: color-mix(in srgb, var(--c-2) 96%, #081127);
-  --p-card-border: var(--c-4);
-  --p-shadow: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
+  --p-card-bg: var(--dark-surface-1);
+  --p-card-border: var(--dark-border-strong);
+  --p-shadow: var(--dark-shadow-soft);
   --p-title: var(--page-accent-ink);
   --p-heading: var(--c-1);
   --p-hero-bg: var(--page-heading-bg);
   --p-hero-border: var(--page-hero-border);
   --p-hero-copy: var(--page-hero-copy);
-  --p-stat-bg: color-mix(in srgb, var(--c-2) 10%, transparent);
-  --p-stat-border: color-mix(in srgb, var(--c-2) 14%, transparent);
-  --p-text: color-mix(in srgb, var(--c-14) 86%, var(--c-10));
+  --p-stat-bg: color-mix(in srgb, var(--dark-surface-2) 92%, transparent);
+  --p-stat-border: var(--dark-border-soft);
+  --p-text: color-mix(in srgb, var(--c-14) 88%, var(--c-5));
   --p-muted: var(--c-5);
-  --p-field-bg: color-mix(in srgb, var(--c-12) 12%, #102247);
-  --p-field-border: var(--c-4);
-  --p-field-text: color-mix(in srgb, var(--c-14) 82%, var(--c-10));
+  --p-field-bg: var(--dark-surface-2);
+  --p-field-border: var(--dark-border-strong);
+  --p-field-text: var(--c-6);
   --p-primary-bg: var(--page-accent-gradient);
-  --p-primary-text: var(--c-1);
-  --p-ghost-bg: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --p-primary-text: var(--page-accent-contrast);
+  --p-ghost-bg: color-mix(in srgb, var(--page-accent-solid) 12%, var(--dark-surface-2));
   --p-ghost-border: var(--page-hero-border);
   --p-ghost-text: var(--page-accent-ink);
   --p-danger-bg: var(--c-8);
   --p-danger-text: var(--c-1);
-  --p-progress-bg: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --p-progress-bg: color-mix(in srgb, var(--page-accent-solid) 10%, var(--dark-surface-2));
   --p-progress-bar: var(--page-accent-gradient);
-  --p-status-bg: color-mix(in srgb, var(--c-10) 12%, #102247);
+  --p-status-bg: color-mix(in srgb, var(--page-accent-solid) 12%, var(--dark-surface-2));
   --p-status-border: var(--page-hero-border);
   --p-status-text: var(--page-accent-ink);
-  --p-danger-soft-bg: color-mix(in srgb, var(--c-18) 12%, #102247);
-  --p-danger-soft-border: color-mix(in srgb, var(--c-18) 20%, var(--c-4));
+  --p-danger-soft-bg: color-mix(in srgb, var(--c-18) 12%, var(--dark-surface-2));
+  --p-danger-soft-border: color-mix(in srgb, var(--c-18) 20%, var(--dark-border-strong));
   --p-danger-soft-text: var(--c-18);
   --p-focus-ring: var(--page-accent-ring);
 }

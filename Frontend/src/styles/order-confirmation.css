@@ -8,14 +8,10 @@
 
 html[data-interface-theme="dark"] [data-theme-scope="order-confirmation"] {
   --confirmation-ink: var(--c-6);
-  --confirmation-muted: color-mix(in srgb, var(--c-14) 66%, var(--c-5));
-  --confirmation-card: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--c-2) 92%, #12213f) 0%,
-    color-mix(in srgb, var(--c-3) 96%, #081121) 100%
-  );
-  --confirmation-card-border: color-mix(in srgb, var(--c-14) 16%, transparent);
-  --confirmation-shadow: 0 34px 78px -52px color-mix(in srgb, #020617 76%, transparent);
+  --confirmation-muted: color-mix(in srgb, var(--c-14) 72%, var(--c-5));
+  --confirmation-card: var(--dark-panel-gradient);
+  --confirmation-card-border: var(--dark-border-soft);
+  --confirmation-shadow: var(--dark-shadow-strong);
 }
 
 .order-confirmation-page {

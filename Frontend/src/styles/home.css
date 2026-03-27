@@ -48,27 +48,94 @@
 }
 
 html[data-interface-theme="dark"] .app-shell {
-  --c-21: var(--c-1);
-  --c-22: var(--c-2);
-  --c-23: var(--c-3);
+  --c-21: var(--brand-deep-1);
+  --c-22: var(--dark-surface-1);
+  --c-23: var(--dark-surface-2);
   --c-24: var(--c-6);
-  --c-25: var(--c-5);
+  --c-25: color-mix(in srgb, var(--c-14) 82%, var(--c-5));
   --c-26: var(--c-6);
   --c-27: color-mix(in srgb, var(--c-6) 92%, var(--c-14));
   --c-28: var(--c-12);
   --c-29: var(--c-4);
-  --c-30: 0 16px 48px -12px color-mix(in srgb, var(--c-1) 50%, transparent);
-  --c-31: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
-  --c-32: color-mix(in srgb, var(--c-5) 88%, var(--c-2));
+  --c-30: var(--dark-shadow-strong);
+  --c-31: var(--dark-shadow-soft);
+  --c-32: color-mix(in srgb, var(--c-14) 78%, var(--dark-surface-1));
   --c-33: var(--c-28);
   --c-34: var(--c-13);
-  --c-35: linear-gradient(90deg, #0a1030 0%, #090f2a 55%, #09152f 100%);
-  --c-36: #162444;
-  --c-37: #e8eeff;
-  --c-38: #9fb0d2;
-  --c-39: #ffffff;
-  --c-40: #9fb0d2;
-  --c-49: #3cc69f;
+  --c-35: linear-gradient(90deg, var(--brand-deep-1) 0%, var(--brand-deep-2) 55%, var(--brand-deep-3) 100%);
+  --c-36: var(--dark-border-strong);
+  --c-37: var(--page-accent-ink);
+  --c-38: color-mix(in srgb, var(--c-14) 70%, var(--c-5));
+  --c-39: var(--c-1);
+  --c-40: color-mix(in srgb, var(--c-14) 72%, var(--c-5));
+  --c-49: var(--brand-teal-2);
+}
+
+html[data-interface-theme="dark"] .purpose-card p {
+  color: color-mix(in srgb, var(--c-14) 84%, var(--c-5));
+}
+
+html[data-interface-theme="dark"] .section-head h2,
+html[data-interface-theme="dark"] .trust-section h2,
+html[data-interface-theme="dark"] .purpose-section #purpose-title {
+  color: var(--c-1);
+}
+
+html[data-interface-theme="dark"] .section-link {
+  color: var(--c-1);
+}
+
+html[data-interface-theme="dark"] .section-link::after {
+  background: var(--c-1);
+}
+
+html[data-interface-theme="dark"] .section-mini-title,
+html[data-interface-theme="dark"] .section-kicker {
+  color: var(--c-11);
+}
+
+html[data-interface-theme="dark"] .section-head .section-kicker {
+  background: color-mix(in srgb, var(--page-accent-solid) 14%, var(--dark-surface-2));
+  color: var(--c-1);
+}
+
+html[data-interface-theme="dark"] .market-card h3,
+html[data-interface-theme="dark"] .deal-card h3,
+html[data-interface-theme="dark"] .rent-card h3,
+html[data-interface-theme="dark"] .trust-card h3 {
+  color: var(--c-1);
+}
+
+html[data-interface-theme="dark"] .card-price,
+html[data-interface-theme="dark"] .deal-price strong,
+html[data-interface-theme="dark"] .rent-pricing strong,
+html[data-interface-theme="dark"] .card-btn {
+  color: var(--c-1);
+}
+
+html[data-interface-theme="dark"] .card-price span,
+html[data-interface-theme="dark"] .deal-sub,
+html[data-interface-theme="dark"] .rent-pricing span,
+html[data-interface-theme="dark"] .trust-card p {
+  color: color-mix(in srgb, var(--c-14) 84%, var(--c-5));
+}
+
+html[data-interface-theme="dark"] .deal-price span {
+  color: color-mix(in srgb, var(--c-14) 58%, var(--c-5));
+}
+
+html[data-interface-theme="dark"] .footer-copy,
+html[data-interface-theme="dark"] .footer-contact li,
+html[data-interface-theme="dark"] .footer-links a,
+html[data-interface-theme="dark"] .footer-bottom p {
+  color: color-mix(in srgb, var(--c-14) 84%, var(--c-5));
+}
+
+html[data-interface-theme="dark"] .footer-heading,
+html[data-interface-theme="dark"] .footer-brand,
+html[data-interface-theme="dark"] .footer-links a:hover,
+html[data-interface-theme="dark"] .footer-links a:focus-visible {
+  color: var(--c-1);
 }
 
 [data-theme-scope="home"] {
@@ -125,56 +192,51 @@ html[data-interface-theme="dark"] .app-shell {
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="home"] {
-  --c-50: #030816;
+  --c-50: var(--brand-deep-1);
   --c-33: var(--c-12);
   --c-34: var(--c-13);
-  --c-51: linear-gradient(145deg, #030816 0%, #071427 44%, #102846 100%);
-  --c-52: color-mix(in srgb, #9bb0cf 14%, transparent);
-  --c-53: 0 48px 88px -52px color-mix(in srgb, #01040a 88%, transparent);
+  --c-51: var(--page-hero-bg);
+  --c-52: var(--dark-border-strong);
+  --c-53: 0 48px 88px -52px color-mix(in srgb, var(--c-9) 68%, transparent);
   --c-54: var(--c-1);
-  --c-55: color-mix(in srgb, var(--c-14) 80%, var(--c-10));
-  --c-56: color-mix(in srgb, var(--c-14) 76%, var(--c-10));
-  --c-57: color-mix(in srgb, var(--c-10) 70%, var(--c-12));
-  --c-58: 0 0 0 6px color-mix(in srgb, var(--c-10) 18%, transparent);
+  --c-55: color-mix(in srgb, var(--c-14) 88%, white);
+  --c-56: color-mix(in srgb, var(--c-14) 82%, var(--c-5));
+  --c-57: color-mix(in srgb, var(--c-14) 18%, var(--dark-surface-1));
+  --c-58: 0 0 0 6px color-mix(in srgb, var(--page-accent-solid) 18%, transparent);
   --c-59: var(--c-14);
   --c-60: var(--c-12);
-  --c-61: color-mix(in srgb, var(--c-10) 22%, #102247);
+  --c-61: color-mix(in srgb, var(--page-accent-solid) 24%, var(--dark-surface-2));
   --c-62: var(--c-14);
   --c-63: var(--c-1);
-  --c-64: color-mix(in srgb, var(--c-2) 12%, transparent);
+  --c-64: color-mix(in srgb, var(--c-14) 12%, transparent);
   --c-65: var(--c-1);
-  --c-66: color-mix(in srgb, var(--c-2) 14%, transparent);
-  --c-67: color-mix(in srgb, var(--c-10) 18%, #102247);
+  --c-66: color-mix(in srgb, var(--c-14) 16%, transparent);
+  --c-67: color-mix(in srgb, var(--page-accent-solid) 18%, var(--dark-surface-2));
   --c-68: var(--c-14);
-  --c-69: var(--c-4);
+  --c-69: var(--dark-border-strong);
   --c-70: var(--c-1);
   --c-71: var(--c-22);
-  --c-72: var(--c-29);
-  --c-73: 0 14px 32px -20px color-mix(in srgb, var(--c-1) 26%, transparent);
-  --c-74: color-mix(in srgb, var(--c-14) 68%, var(--c-10));
-  --c-75: linear-gradient(
-    98deg,
-    color-mix(in srgb, #030816 84%, #257999) 0%,
-    color-mix(in srgb, #071427 76%, #298a8f) 52%,
-    color-mix(in srgb, #102846 58%, #2e9e84) 100%
-  );
-  --c-76: color-mix(in srgb, var(--c-10) 16%, transparent);
-  --c-77: 0 20px 42px -24px color-mix(in srgb, var(--c-1) 40%, transparent);
-  --c-78: color-mix(in srgb, var(--c-10) 10%, transparent);
-  --c-79: color-mix(in srgb, var(--c-10) 16%, transparent);
+  --c-72: var(--dark-border-soft);
+  --c-73: 0 14px 32px -20px color-mix(in srgb, var(--c-9) 34%, transparent);
+  --c-74: color-mix(in srgb, var(--c-14) 84%, white);
+  --c-75: var(--page-heading-bg);
+  --c-76: color-mix(in srgb, var(--c-14) 18%, transparent);
+  --c-77: 0 20px 42px -24px color-mix(in srgb, var(--c-9) 46%, transparent);
+  --c-78: color-mix(in srgb, var(--c-14) 12%, transparent);
+  --c-79: color-mix(in srgb, var(--c-14) 20%, transparent);
   --c-80: var(--c-14);
   --c-81: inset 0 1px 0 color-mix(in srgb, var(--c-2) 14%, transparent);
   --c-82: var(--c-10);
-  --c-83: var(--c-9);
-  --c-84: linear-gradient(135deg, color-mix(in srgb, var(--c-12) 42%, #081127) 0%, color-mix(in srgb, var(--c-13) 58%, #071024) 100%);
-  --c-85: 0 24px 44px -24px color-mix(in srgb, var(--c-1) 42%, transparent);
+  --c-83: var(--brand-deep-1);
+  --c-84: linear-gradient(135deg, color-mix(in srgb, var(--page-accent-solid) 42%, var(--brand-deep-2)) 0%, color-mix(in srgb, var(--page-accent-solid) 74%, var(--brand-deep-4)) 100%);
+  --c-85: 0 24px 44px -24px color-mix(in srgb, var(--c-9) 52%, transparent);
   --c-86: var(--c-1);
-  --c-87: color-mix(in srgb, var(--c-14) 84%, var(--c-10));
-  --c-88: color-mix(in srgb, var(--c-10) 10%, transparent);
-  --c-89: color-mix(in srgb, var(--c-10) 18%, transparent);
-  --c-90: color-mix(in srgb, var(--c-14) 80%, var(--c-10));
-  --c-91: color-mix(in srgb, var(--c-10) 8%, #102247);
-  --c-92: var(--c-29);
+  --c-87: color-mix(in srgb, var(--c-14) 88%, white);
+  --c-88: color-mix(in srgb, var(--c-14) 12%, transparent);
+  --c-89: color-mix(in srgb, var(--c-14) 20%, transparent);
+  --c-90: color-mix(in srgb, var(--c-14) 82%, var(--c-5));
+  --c-91: color-mix(in srgb, var(--page-accent-solid) 10%, var(--dark-surface-2));
+  --c-92: var(--dark-border-soft);
 }
 
 * {
@@ -719,9 +781,15 @@ html[data-interface-theme="dark"] #themeIconMoon {
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-primary,
+html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-primary {
+  color: var(--brand-deep-1);
+}
+
 html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-primary:hover,
 html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-primary:focus-visible {
-  color: #030816;
+  background: var(--page-accent-gradient);
+  border-color: var(--page-hero-border);
+  color: #ffffff;
 }
 
 .hero-actions .btn-secondary {
@@ -921,7 +989,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
 
 html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-secondary,
 html[data-interface-theme="dark"] [data-theme-scope="home"] .package-actions .btn-secondary-pack {
-  background: color-mix(in srgb, #102846 74%, #071427);
+  background: var(--dark-button-fill);
 }
 
 .hero-actions .btn-secondary::after,

@@ -44,46 +44,60 @@
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="cart"] {
-  --c-21: #030922;
-  --c-22: color-mix(in srgb, var(--c-2) 96%, #081127);
-  --c-23: color-mix(in srgb, var(--c-3) 90%, #071024);
-  --c-24: color-mix(in srgb, var(--c-22) 92%, #081127);
-  --c-25: var(--c-4);
+  --c-21: var(--brand-deep-1);
+  --c-22: var(--dark-surface-1);
+  --c-23: var(--dark-surface-2);
+  --c-24: color-mix(in srgb, var(--dark-surface-1) 92%, var(--brand-deep-2));
+  --c-25: var(--dark-border-strong);
   --c-26: var(--c-6);
   --c-27: var(--c-5);
   --c-28: var(--page-accent-ink);
-  --c-29: #102846;
-  --c-30: linear-gradient(90deg, #0a1030 0%, #090f2a 55%, #09152f 100%);
-  --c-31: #162444;
+  --c-29: var(--brand-deep-4);
+  --c-30: linear-gradient(90deg, var(--brand-deep-1) 0%, var(--brand-deep-2) 55%, var(--brand-deep-3) 100%);
+  --c-31: var(--dark-border-strong);
   --c-32: var(--page-accent-ink);
-  --c-33: #9fb0d2;
-  --c-34: #ffffff;
+  --c-33: var(--c-5);
+  --c-34: var(--c-1);
   --c-35: var(--c-22);
   --c-36: var(--c-24);
-  --c-37: color-mix(in srgb, var(--c-27) 78%, #d7e1ff);
-  --c-38: #d0d0d3;
-  --c-39: #0c1738;
-  --c-40: #243663;
-  --c-41: #13224b;
+  --c-37: color-mix(in srgb, var(--c-27) 78%, var(--c-14));
+  --c-38: color-mix(in srgb, var(--c-14) 86%, white);
+  --c-39: color-mix(in srgb, var(--page-accent-solid) 16%, var(--brand-deep-2));
+  --c-40: color-mix(in srgb, var(--page-accent-solid) 22%, var(--brand-deep-3));
+  --c-41: color-mix(in srgb, var(--page-accent-solid) 18%, var(--brand-deep-2));
   --c-42: var(--c-6);
   --c-43: var(--c-6);
-  --c-44: #273760;
-  --c-45: #d8e1f2;
+  --c-44: color-mix(in srgb, var(--page-accent-solid) 20%, var(--brand-deep-3));
+  --c-45: var(--c-6);
   --c-46: #041a14;
   --c-47: #03140f;
   --c-48: #f87171;
-  --cart-surface: color-mix(in srgb, var(--c-2) 96%, #081127);
-  --cart-surface-soft: color-mix(in srgb, var(--c-12) 10%, #102247);
-  --cart-border: var(--c-4);
-  --cart-shadow: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
+  --cart-surface: var(--dark-surface-1);
+  --cart-surface-soft: var(--dark-surface-3);
+  --cart-border: var(--dark-border-strong);
+  --cart-shadow: var(--dark-shadow-soft);
   --cart-title: var(--page-accent-ink);
   --cart-heading: var(--page-accent-ink);
   --cart-accent: var(--c-15);
-  --cart-text: color-mix(in srgb, var(--c-14) 86%, var(--c-10));
+  --cart-text: color-mix(in srgb, var(--c-14) 88%, var(--c-5));
   --cart-muted: var(--c-5);
-  --cart-field-bg: color-mix(in srgb, var(--c-12) 12%, #102247);
+  --cart-field-bg: var(--dark-surface-2);
   --cart-field-border: var(--page-hero-border);
-  --cart-field-hover: color-mix(in srgb, var(--c-10) 10%, #102247);
+  --cart-field-hover: var(--dark-surface-3);
+}
+
+html[data-interface-theme="dark"] .footer-copy,
+html[data-interface-theme="dark"] .footer-contact li,
+html[data-interface-theme="dark"] .footer-links a,
+html[data-interface-theme="dark"] .footer-bottom p {
+  color: color-mix(in srgb, var(--c-14) 84%, var(--c-5));
+}
+
+html[data-interface-theme="dark"] .footer-heading,
+html[data-interface-theme="dark"] .footer-brand,
+html[data-interface-theme="dark"] .footer-links a:hover,
+html[data-interface-theme="dark"] .footer-links a:focus-visible {
+  color: var(--c-1);
 }
 
 .cart-page * {
@@ -434,7 +448,7 @@ html[data-interface-theme="dark"] .cart-navbar #themeIconMoon {
 
 html[data-interface-theme="dark"] .browse-btn,
 html[data-interface-theme="dark"] .checkout-btn {
-  background: color-mix(in srgb, #102846 74%, #071427);
+  background: var(--dark-button-fill);
 }
 
 .browse-btn::before,

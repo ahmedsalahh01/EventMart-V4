@@ -31,22 +31,26 @@ html {
 }
 
 html[data-interface-theme="dark"] {
-  --page-hero-bg: linear-gradient(145deg, #030816 0%, #071427 44%, #102846 100%);
+  --page-hero-bg: linear-gradient(145deg, var(--brand-deep-1) 0%, var(--brand-deep-2) 44%, var(--brand-deep-4) 100%);
   --page-heading-bg: linear-gradient(
     98deg,
-    color-mix(in srgb, #030816 84%, #257999) 0%,
-    color-mix(in srgb, #071427 76%, #298a8f) 52%,
-    color-mix(in srgb, #102846 58%, #2e9e84) 100%
+    color-mix(in srgb, var(--brand-deep-1) 88%, #257999) 0%,
+    color-mix(in srgb, var(--brand-deep-2) 76%, #298a8f) 52%,
+    color-mix(in srgb, var(--brand-deep-4) 62%, #2e9e84) 100%
   );
-  --page-hero-border: color-mix(in srgb, #9bb0cf 14%, transparent);
-  --page-hero-copy: color-mix(in srgb, #d7e7ff 80%, #0f1930);
-  --page-accent-solid: #030816;
-  --page-accent-soft: color-mix(in srgb, #d7e7ff 10%, transparent);
-  --page-accent-border: color-mix(in srgb, #d7e7ff 18%, transparent);
-  --page-accent-ring: color-mix(in srgb, #d7e7ff 24%, transparent);
-  --page-accent-gradient: var(--page-hero-bg);
-  --page-accent-contrast: #ffffff;
-  --page-accent-ink: #ffffff;
+  --page-hero-border: var(--dark-border-strong);
+  --page-hero-copy: color-mix(in srgb, var(--brand-mist-1) 86%, white);
+  --page-accent-solid: var(--brand-teal-2);
+  --page-accent-soft: color-mix(in srgb, var(--brand-teal-1) 16%, transparent);
+  --page-accent-border: color-mix(in srgb, var(--brand-teal-1) 28%, transparent);
+  --page-accent-ring: color-mix(in srgb, var(--brand-teal-1) 34%, transparent);
+  --page-accent-gradient: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand-deep-4) 84%, var(--brand-deep-2)) 0%,
+    color-mix(in srgb, var(--brand-teal-2) 92%, #54c4a8) 100%
+  );
+  --page-accent-contrast: #f7fffd;
+  --page-accent-ink: #e8fbf6;
 }
 
 body {
@@ -117,16 +121,12 @@ button {
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="not-found"] {
-  --c-21: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--c-2) 94%, #081127),
-    color-mix(in srgb, var(--c-3) 88%, #102143)
-  );
-  --c-22: color-mix(in srgb, var(--c-4) 88%, #132246);
-  --c-23: 0 14px 36px -12px color-mix(in srgb, #020617 62%, transparent);
+  --c-21: linear-gradient(145deg, var(--dark-surface-1), var(--dark-surface-2));
+  --c-22: var(--dark-border-strong);
+  --c-23: var(--dark-shadow-soft);
   --c-24: var(--c-6);
   --c-25: var(--c-5);
-  --c-26: var(--c-12);
+  --c-26: var(--c-11);
 }
 
 .app-body {

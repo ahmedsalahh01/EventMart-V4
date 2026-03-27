@@ -11,17 +11,13 @@
 
 html[data-interface-theme="dark"] [data-theme-scope="checkout"] {
   --checkout-ink: var(--c-6);
-  --checkout-muted: color-mix(in srgb, var(--c-14) 64%, var(--c-5));
-  --checkout-panel: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--c-2) 92%, #11213a) 0%,
-    color-mix(in srgb, var(--c-3) 96%, #081121) 100%
-  );
-  --checkout-panel-border: color-mix(in srgb, var(--c-14) 14%, transparent);
-  --checkout-shadow: 0 28px 70px -44px color-mix(in srgb, #020617 72%, transparent);
-  --checkout-soft: color-mix(in srgb, var(--c-2) 88%, transparent);
-  --checkout-success: color-mix(in srgb, var(--c-12) 18%, var(--c-2));
-  --checkout-danger: color-mix(in srgb, var(--c-18) 22%, var(--c-2));
+  --checkout-muted: color-mix(in srgb, var(--c-14) 72%, var(--c-5));
+  --checkout-panel: var(--dark-panel-gradient);
+  --checkout-panel-border: var(--dark-border-soft);
+  --checkout-shadow: var(--dark-shadow-strong);
+  --checkout-soft: color-mix(in srgb, var(--dark-surface-2) 88%, transparent);
+  --checkout-success: color-mix(in srgb, var(--c-12) 18%, var(--dark-surface-1));
+  --checkout-danger: color-mix(in srgb, var(--c-18) 22%, var(--dark-surface-1));
 }
 
 .checkout-page {

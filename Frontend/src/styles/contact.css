@@ -17,25 +17,37 @@
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="contact"] {
-  --c-21: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--c-2) 96%, #071126) 0%,
-    color-mix(in srgb, var(--c-3) 88%, #071024) 100%
-  );
-  --c-22: color-mix(in srgb, var(--c-2) 96%, #081127);
+  --c-21: linear-gradient(145deg, var(--dark-surface-1) 0%, var(--dark-surface-2) 100%);
+  --c-22: var(--dark-surface-1);
   --c-23: var(--c-4);
-  --c-24: 0 8px 32px -8px color-mix(in srgb, var(--c-1) 40%, transparent);
-  --c-25: var(--c-6);
+  --c-24: var(--dark-shadow-soft);
+  --c-25: var(--c-1);
   --c-26: var(--c-5);
   --c-27: var(--c-6);
-  --c-28: var(--c-12);
-  --c-29: color-mix(in srgb, var(--c-3) 90%, #071024);
-  --c-30: var(--c-4);
-  --c-31: var(--c-12);
+  --c-28: var(--c-11);
+  --c-29: var(--dark-surface-2);
+  --c-30: var(--dark-border-strong);
+  --c-31: var(--page-accent-gradient);
   --c-32: var(--page-accent-gradient);
   --c-33: var(--c-1);
   --c-34: var(--page-accent-ink);
   --c-35: var(--page-accent-ink);
+}
+
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .contact-intro > p:not(.contact-kicker) {
+  color: var(--page-hero-copy);
+}
+
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .details-list p,
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .details-list a,
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .contact-form input,
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .contact-form textarea {
+  color: color-mix(in srgb, var(--c-14) 84%, var(--c-6));
+}
+
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .contact-form input::placeholder,
+html[data-interface-theme="dark"] [data-theme-scope="contact"] .contact-form textarea::placeholder {
+  color: color-mix(in srgb, var(--c-5) 92%, transparent);
 }
 
 .contact-page {
