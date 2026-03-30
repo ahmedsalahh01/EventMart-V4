@@ -52,7 +52,7 @@ function AboutPage() {
             <h2 id="how-title">How</h2>
             <p>
               EventMart helps users by combining organized product categories, recommendations, and guided shopping
-              experiences. Customers can browse equipment, discover deals, and build packages based on their needs.
+              experiences. Customers can browse equipment, discover deals, and find the right setup based on their needs.
             </p>
           </div>
         </div>

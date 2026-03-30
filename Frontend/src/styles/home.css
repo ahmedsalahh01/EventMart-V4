@@ -523,7 +523,6 @@ html[data-interface-theme="dark"] #themeIconMoon {
 
 .market-section,
 .quick-categories,
-.package-builder,
 .trust-section {
   margin-top: 34px;
 }
@@ -833,53 +832,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
   color: var(--c-9);
 }
 
-.btn-primary-pack{
-  color: var(--c-50);
-  background: var(--c-67);
-  border: 1px solid var(--c-69);
-}
-
-
-
-.btn-primary-pack:hover::after{
-  background: var(--c-43)
-  
-}
-
-.btn-secondary-pack{
-  color: var(--c-70);
-}
-
-.package-actions .btn-secondary-pack {
-  background: color-mix(in srgb, var(--c-2) 12%, transparent);
-  border-color: color-mix(in srgb, var(--c-2) 24%, transparent);
-  color: var(--c-1);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--c-2) 20%, transparent),
-    0 18px 32px -24px color-mix(in srgb, var(--c-9) 48%, transparent);
-  backdrop-filter: blur(16px);
-}
-
-.package-actions .btn-primary-pack:hover,
-.package-actions .btn-primary-pack:focus-visible {
-  background: var(--c-67);
-  border-color: var(--c-69);
-  color: var(--c-50);
-}
-
-.package-actions .btn-secondary-pack::after {
-  content: none;
-}
-
-.package-actions .btn-secondary-pack:hover,
-.package-actions .btn-secondary-pack:focus-visible {
-  background: var(--c-1);
-  border-color: var(--c-1);
-  color: var(--c-9);
-}
-
 .hero-actions .btn-primary,
-.package-actions .btn-primary-pack,
 .reg-text {
   position: relative;
   overflow: hidden;
@@ -892,8 +845,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
     box-shadow 0.3s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.hero-actions .btn-primary,
-.package-actions .btn-primary-pack {
+.hero-actions .btn-primary {
   background: var(--c-1);
   border: 2px solid var(--c-1);
   color: var(--c-50);
@@ -915,7 +867,6 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
 }
 
 .hero-actions .btn-primary::before,
-.package-actions .btn-primary-pack::before,
 .reg-text::before {
   content: "";
   position: absolute;
@@ -931,7 +882,6 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
 }
 
 .hero-actions .btn-primary .cta-orbit-label,
-.package-actions .btn-primary-pack .cta-orbit-label,
 .reg-text > * {
   position: relative;
   z-index: 1;
@@ -939,8 +889,6 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
 
 .hero-actions .btn-primary:hover::before,
 .hero-actions .btn-primary:focus-visible::before,
-.package-actions .btn-primary-pack:hover::before,
-.package-actions .btn-primary-pack:focus-visible::before,
 .reg-text:hover::before,
 .reg-text:focus-visible::before {
   transform: scale(5.2);
@@ -948,8 +896,6 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
 
 .hero-actions .btn-primary:hover,
 .hero-actions .btn-primary:focus-visible,
-.package-actions .btn-primary-pack:hover,
-.package-actions .btn-primary-pack:focus-visible,
 .reg-text:hover,
 .reg-text:focus-visible,
 .navbar-home:not(.navbar-home-scrolled) .reg-text:hover,
@@ -962,13 +908,11 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
 }
 
 .hero-actions .btn-primary:active,
-.package-actions .btn-primary-pack:active,
 .reg-text:active {
   transform: scale(1);
 }
 
-.hero-actions .btn-secondary,
-.package-actions .btn-secondary-pack {
+.hero-actions .btn-secondary {
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -987,18 +931,15 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-p
   backdrop-filter: blur(16px);
 }
 
-html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-secondary,
-html[data-interface-theme="dark"] [data-theme-scope="home"] .package-actions .btn-secondary-pack {
+html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-secondary {
   background: var(--dark-button-fill);
 }
 
-.hero-actions .btn-secondary::after,
-.package-actions .btn-secondary-pack::after {
+.hero-actions .btn-secondary::after {
   content: none;
 }
 
-.hero-actions .btn-secondary::before,
-.package-actions .btn-secondary-pack::before {
+.hero-actions .btn-secondary::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1012,23 +953,18 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .package-actions .bt
   transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.hero-actions .btn-secondary > *,
-.package-actions .btn-secondary-pack > * {
+.hero-actions .btn-secondary > * {
   position: relative;
   z-index: 1;
 }
 
 .hero-actions .btn-secondary:hover::before,
-.hero-actions .btn-secondary:focus-visible::before,
-.package-actions .btn-secondary-pack:hover::before,
-.package-actions .btn-secondary-pack:focus-visible::before {
+.hero-actions .btn-secondary:focus-visible::before {
   transform: scale(5.2);
 }
 
 .hero-actions .btn-secondary:hover,
-.hero-actions .btn-secondary:focus-visible,
-.package-actions .btn-secondary-pack:hover,
-.package-actions .btn-secondary-pack:focus-visible {
+.hero-actions .btn-secondary:focus-visible {
   background: transparent;
   color: var(--c-1);
   border-color: color-mix(in srgb, var(--c-2) 18%, transparent);
@@ -1036,8 +972,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .package-actions .bt
   box-shadow: 0 0 20px color-mix(in srgb, #2e9e84 36%, transparent);
 }
 
-.hero-actions .btn-secondary:active,
-.package-actions .btn-secondary-pack:active {
+.hero-actions .btn-secondary:active {
   transform: scale(1);
 }
 
@@ -1180,7 +1115,6 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .package-actions .bt
 
 .section-head h2,
 .quick-categories h2,
-.package-copy h2,
 .trust-section h2 {
   font-size: clamp(1.8rem, 3vw, 2.5rem);
   line-height: 1.15;
@@ -1349,7 +1283,6 @@ html[data-interface-theme="dark"] .quick-categories .section-mini-title {
 .deal-card h3,
 .rent-card h3,
 .trust-card h3,
-.package-features h3,
 .purpose-card h3 {
   font-size: 1.12rem;
   line-height: 1.35;
@@ -1430,70 +1363,6 @@ html[data-interface-theme="dark"] .quick-categories .section-mini-title {
 .card-btn:hover {
   background: var(--c-51);
   color: var(--c-1);
-}
-
-/* =========================
-   Package Builder
-   ========================= */
-
-.package-builder {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  background: var(--page-heading-bg);
-  color: var(--c-1);
-  border: 1px solid var(--c-52);
-  border-radius: 32px;
-  padding: 38px;
-  display: grid;
-  grid-template-columns: 1.08fr 0.92fr;
-  gap: 28px;
-  box-shadow: var(--c-53);
-}
-
-.package-builder h2{
-  color: var(--c-1);
-  padding-top:70px;
-}
-
-.package-copy h2 {
-  margin-bottom: 14px;
-}
-
-.package-copy p {
-  color: color-mix(in srgb, var(--c-1) 84%, var(--c-10));
-  max-width: 620px;
-  font-size: 1rem;
-}
-
-.package-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 24px;
-}
-
-.package-features {
-  display: grid;
-  gap: 16px;
-}
-
-.package-features article {
-  padding: 22px;
-  background: color-mix(in srgb, var(--c-2) 12%, transparent);
-  border-radius: 20px;
-  border: 1px solid color-mix(in srgb, var(--c-2) 22%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--c-2) 18%, transparent);
-  backdrop-filter: blur(14px);
-}
-
-.package-features h3 {
-  color: var(--c-1);
-}
-
-.package-features p {
-  color: color-mix(in srgb, var(--c-1) 78%, var(--c-10));
-  font-size: 0.96rem;
 }
 
 /* =========================
@@ -1861,8 +1730,7 @@ html[data-interface-theme="dark"] .footer-bottom p {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .market-hero,
-  .package-builder {
+  .market-hero {
     grid-template-columns: 1fr;
   }
 
@@ -1958,10 +1826,6 @@ html[data-interface-theme="dark"] .footer-bottom p {
   .purpose-grid,
   .trust-grid {
     grid-template-columns: 1fr;
-  }
-
-  .package-builder {
-    padding: 30px 22px;
   }
 
   .footer-inner {
@@ -2062,8 +1926,7 @@ html[data-interface-theme="dark"] .footer-bottom p {
     border-radius: 18px;
   }
 
-  .quick-categories,
-  .package-builder {
+  .quick-categories {
     padding-left: 16px;
     padding-right: 16px;
   }

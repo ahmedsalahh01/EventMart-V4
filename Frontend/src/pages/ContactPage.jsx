@@ -28,7 +28,7 @@ function ContactPage() {
         <section className="contact-intro">
           <h1>Tell us what you need for your event.</h1>
           <p>
-            Whether you want to rent equipment, request a custom package, or ask about product availability, our team
+            Whether you want to rent equipment, ask about product availability, or plan the right setup, our team
             will get back to you as soon as possible.
           </p>
         </section>

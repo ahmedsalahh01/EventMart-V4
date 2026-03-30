@@ -1,10 +1,13 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import ProductCard from "../components/shop/ProductCard";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
+import useSmartRecommendations from "../hooks/useSmartRecommendations";
 import useRequireAuth from "../hooks/useRequireAuth";
+import { resolveEventType } from "../lib/eventTypeConfig";
 import {
   ONE_SIZE_LABEL,
   buildProductOptionState,
@@ -17,18 +20,35 @@ import {
   formatMoney,
   getModeLabel,
   getProductImages,
+  loadProducts,
   loadProductBySlug,
   uploadCustomizationFile
 } from "../lib/products";
+import { finishProductDwell, startProductDwell, trackEventTypeSelection, trackProductView } from "../lib/userBehavior";
 import "../styles/shop.css";
+
+const INTEREST_CAROUSEL_GAP = 18;
+const INTEREST_CAROUSEL_MOVE_MS = 2000;
+const INTEREST_CAROUSEL_CYCLE_MS = 5000;
+
+function getInterestVisibleCount(width) {
+  const safeWidth = Number(width || 0);
+
+  if (safeWidth >= 1380) return 4;
+  if (safeWidth >= 1040) return 3;
+  if (safeWidth >= 720) return 2;
+  return 1;
+}
 
 function ProductDetailPage() {
   const { slug } = useParams();
+  const location = useLocation();
   const { theme } = useTheme();
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const { token } = useAuth();
   const { requireAuth } = useRequireAuth();
   const [product, setProduct] = useState(null);
+  const [catalog, setCatalog] = useState([]);
   const [status, setStatus] = useState("Loading product...");
   const [error, setError] = useState("");
   const [selectedMode, setSelectedMode] = useState("buy");
@@ -41,9 +61,36 @@ function ProductDetailPage() {
   const [actionTone, setActionTone] = useState("info");
   const [uploads, setUploads] = useState({ design: null, mockup: null });
   const [uploadErrors, setUploadErrors] = useState({ design: "", mockup: "" });
+  const [interestCarouselIndex, setInterestCarouselIndex] = useState(0);
+  const [interestVisibleCount, setInterestVisibleCount] = useState(1);
+  const [interestViewportWidth, setInterestViewportWidth] = useState(0);
+  const interestViewportRef = useRef(null);
+  const activeEventType = resolveEventType(new URLSearchParams(location.search).get("eventType"));
+  const shopBackLink = location.search ? `/shop${location.search}` : "/shop";
 
   useEffect(() => {
     let cancelled = false;
+
+    loadProducts()
+      .then((rows) => {
+        if (!cancelled) {
+          setCatalog(Array.isArray(rows) ? rows : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCatalog([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadedProductId = "";
 
     async function loadProduct() {
       setStatus("Loading product...");
@@ -70,6 +117,15 @@ function ProductDetailPage() {
         setActionTone("info");
         setStatus("");
         bumpMetric(nextProduct.id, "product_view", 1);
+        loadedProductId = String(nextProduct.id || "");
+        trackProductView(nextProduct, {
+          category: nextProduct.category,
+          eventType: activeEventType
+        });
+        if (activeEventType) {
+          trackEventTypeSelection(activeEventType, { source: "product-detail" });
+        }
+        startProductDwell(nextProduct.id);
       } catch (loadError) {
         if (cancelled) return;
         setProduct(null);
@@ -82,8 +138,11 @@ function ProductDetailPage() {
 
     return () => {
       cancelled = true;
+      if (loadedProductId) {
+        finishProductDwell(loadedProductId);
+      }
     };
-  }, [slug]);
+  }, [activeEventType, slug]);
 
   const optionState = product
     ? buildProductOptionState(product, { color: selectedColor, size: selectedSize })
@@ -99,6 +158,64 @@ function ProductDetailPage() {
   const qualityPoints = Array.isArray(product?.quality_points) && product.quality_points.length
     ? product.quality_points
     : [];
+  const { recommendations: interestRecommendations } = useSmartRecommendations({
+    cartItems: items,
+    currentCategory: product?.category || "",
+    currentEventType: activeEventType,
+    currentMode: selectedMode,
+    currentProduct: product,
+    limit: 4,
+    products: catalog
+  });
+  const interestMaxIndex = Math.max(0, interestRecommendations.length - interestVisibleCount);
+  const hasInterestControls = interestRecommendations.length > interestVisibleCount;
+  const interestSlideWidth = interestViewportWidth
+    ? Math.max(0, (interestViewportWidth - (INTEREST_CAROUSEL_GAP * (interestVisibleCount - 1))) / interestVisibleCount)
+    : 0;
+  const interestTrackOffset = interestCarouselIndex * (interestSlideWidth + INTEREST_CAROUSEL_GAP);
+
+  useEffect(() => {
+    function updateInterestLayout() {
+      const viewportWidth = interestViewportRef.current?.clientWidth || 0;
+      const widthBasis = viewportWidth || (typeof window !== "undefined" ? window.innerWidth : 0);
+      setInterestViewportWidth(viewportWidth);
+      setInterestVisibleCount(getInterestVisibleCount(widthBasis));
+    }
+
+    updateInterestLayout();
+
+    let resizeObserver = null;
+
+    if (typeof ResizeObserver === "function" && interestViewportRef.current) {
+      resizeObserver = new ResizeObserver(() => updateInterestLayout());
+      resizeObserver.observe(interestViewportRef.current);
+    }
+
+    window.addEventListener("resize", updateInterestLayout);
+
+    return () => {
+      window.removeEventListener("resize", updateInterestLayout);
+      resizeObserver?.disconnect();
+    };
+  }, [interestRecommendations.length]);
+
+  useEffect(() => {
+    setInterestCarouselIndex(0);
+  }, [product?.id]);
+
+  useEffect(() => {
+    setInterestCarouselIndex((current) => Math.min(current, interestMaxIndex));
+  }, [interestMaxIndex]);
+
+  useEffect(() => {
+    if (interestMaxIndex <= 0) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setInterestCarouselIndex((current) => (current >= interestMaxIndex ? 0 : current + 1));
+    }, INTEREST_CAROUSEL_CYCLE_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [interestMaxIndex]);
 
   function applySelection(nextSelection) {
     if (!product) return;
@@ -160,7 +277,7 @@ function ProductDetailPage() {
       return;
     }
 
-    if (!requireAuth({ returnTo: `/shop/${product.slug}` })) {
+    if (!requireAuth({ returnTo: `/shop/${product.slug}${location.search || ""}` })) {
       return;
     }
 
@@ -202,7 +319,8 @@ function ProductDetailPage() {
           selected_size: activeVariation.size,
           sku: activeVariation.sku,
           stock: activeVariation.quantity,
-          variation_id: activeVariation.id
+          variation_id: activeVariation.id,
+          event_type: activeEventType
         }
       );
       bumpMetric(product.id, "add_to_cart", quantity);
@@ -225,6 +343,16 @@ function ProductDetailPage() {
     }
   }
 
+  function handleInterestPrev() {
+    if (interestMaxIndex <= 0) return;
+    setInterestCarouselIndex((current) => (current <= 0 ? interestMaxIndex : current - 1));
+  }
+
+  function handleInterestNext() {
+    if (interestMaxIndex <= 0) return;
+    setInterestCarouselIndex((current) => (current >= interestMaxIndex ? 0 : current + 1));
+  }
+
   if (status) {
     return (
       <main className="product-detail-shell" data-theme-scope="shop">
@@ -242,7 +370,7 @@ function ProductDetailPage() {
           <p className="product-detail-kicker">Product unavailable</p>
           <h1>This product page is not available.</h1>
           <p>{error || "We couldn't find that product."}</p>
-          <Link className="product-detail-back-link" to="/shop">
+          <Link className="product-detail-back-link" to={shopBackLink}>
             Back to shop
           </Link>
         </section>
@@ -274,7 +402,7 @@ function ProductDetailPage() {
     >
       <div className="product-detail-page">
         <nav className="product-detail-breadcrumbs" aria-label="Breadcrumb">
-          <Link to="/shop">Shop</Link>
+          <Link to={shopBackLink}>Shop</Link>
           <span>/</span>
           <span>{product.name}</span>
         </nav>
@@ -513,8 +641,75 @@ function ProductDetailPage() {
 
               {actionMessage ? <p className={`cart-msg cart-msg-${actionTone}`}>{actionMessage}</p> : null}
             </section>
+
           </div>
         </section>
+
+        {interestRecommendations.length ? (
+          <section className="product-detail-interest-section" aria-labelledby="product-detail-interest-title">
+            <div className="product-detail-interest-head">
+              <h2 id="product-detail-interest-title">You might be also interested in:</h2>
+            </div>
+
+            <div className={`product-detail-interest-carousel${hasInterestControls ? " has-controls" : ""}`}>
+              {hasInterestControls ? (
+                <button
+                  aria-label="Show previous products"
+                  className="product-detail-interest-arrow is-left"
+                  onClick={handleInterestPrev}
+                  type="button"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="m15 5-7 7 7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ) : null}
+
+              <div className="product-detail-interest-viewport" ref={interestViewportRef}>
+                <div
+                  className="product-detail-interest-track"
+                  style={{
+                    gap: `${INTEREST_CAROUSEL_GAP}px`,
+                    transform: `translateX(-${interestTrackOffset}px)`,
+                    transitionDuration: `${INTEREST_CAROUSEL_MOVE_MS}ms`
+                  }}
+                >
+                  {interestRecommendations.map((entry) => (
+                    <div
+                      key={entry.product.id}
+                      className="product-detail-interest-slide"
+                      style={interestSlideWidth ? { width: `${interestSlideWidth}px` } : undefined}
+                    >
+                      <ProductCard
+                        product={entry.product}
+                        onOpen={(nextProduct) => {
+                          trackProductView(nextProduct, {
+                            category: product.category,
+                            eventType: activeEventType
+                          });
+                        }}
+                        isFeatured={Boolean(entry.product.featured)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {hasInterestControls ? (
+                <button
+                  aria-label="Show next products"
+                  className="product-detail-interest-arrow is-right"
+                  onClick={handleInterestNext}
+                  type="button"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="m9 5 7 7-7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
       </div>
     </motion.main>
   );

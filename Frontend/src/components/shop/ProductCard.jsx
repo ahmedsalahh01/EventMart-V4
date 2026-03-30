@@ -1,9 +1,10 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { formatMoney, getProductImages, getProductRating } from "../../lib/products";
 import { useTheme } from "../../contexts/ThemeContext";
 
 function ProductCard({ product, onOpen, isFeatured = false }) {
+  const location = useLocation();
   const { theme } = useTheme();
   const gallery = getProductImages(product, theme);
   const buyExists = product.buy_enabled && product.buy_price !== null;
@@ -65,7 +66,10 @@ function ProductCard({ product, onOpen, isFeatured = false }) {
         setIsHovered(false);
         setActiveImageIndex(0);
       }}
-      to={`/shop/${encodeURIComponent(product.slug || product.id)}`}
+      to={{
+        pathname: `/shop/${encodeURIComponent(product.slug || product.id)}`,
+        search: location.search || ""
+      }}
     >
       <div className="product-media">
         <img key={imageSrc} src={imageSrc} alt={product.name} />

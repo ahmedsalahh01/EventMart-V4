@@ -1,13 +1,17 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import Footer from "../components/Footer";
+import SmartRecommendationBar from "../components/SmartRecommendationBar";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
-import Footer from "../components/Footer";
 import useRequireAuth from "../hooks/useRequireAuth";
 import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
+import { calculateCartSummary } from "../lib/checkout";
+import { buildEventTypeShopPath, getEventTypeConfig } from "../lib/eventTypeConfig";
 import { deleteCustomizationUploads, formatMoney, getProductImage } from "../lib/products";
+import { getSelectedEventType } from "../lib/userBehavior";
 import "./../styles/cart.css";
 
 function CartPage() {
@@ -18,15 +22,14 @@ function CartPage() {
   const { items, itemCount, updateQuantity, updateRentalDays, removeItem, clearCart } = useCart();
   const { requireAuth } = useRequireAuth();
   const [checkoutMessage, setCheckoutMessage] = useState("");
+  const [selectedEventType, setSelectedEventType] = useState(() => getSelectedEventType() || "");
 
-  const subtotal = items.reduce((total, item) => {
-    const multiplier = item.mode === "rent" ? Number(item.rental_days || 1) : 1;
-    return total + Number(item.unit_price || 0) * Number(item.quantity || 0) * multiplier;
-  }, 0);
+  const summary = useMemo(() => calculateCartSummary(items), [items]);
+
   const currency = items[0]?.currency || "USD";
   const hasItems = items.length > 0;
   const authLabel = isAuthenticated && firstName ? `Hi, ${firstName}` : "Sign In";
-  const cartTitle = "Shopping Cart";
+  const cartTitle = selectedEventType ? `${getEventTypeConfig(selectedEventType)?.label || "Event"} Cart` : "Shopping Cart";
   const showCartIcon = shouldShowCartIcon(isAuthenticated);
 
   useEffect(() => {
@@ -285,17 +288,13 @@ function CartPage() {
           <aside className="summary-panel">
             <h2>Order Summary</h2>
             <div className="summary-row">
-              <span>Subtotal</span>
-              <strong id="summarySubtotal">{formatMoney(subtotal, currency)}</strong>
-            </div>
-            <div className="summary-row">
-              <span>Delivery</span>
-              <strong className="muted-strong">Calculated at checkout</strong>
+              <span>Items subtotal</span>
+              <strong>{formatMoney(summary.subtotal, currency)}</strong>
             </div>
             <hr />
             <div className="summary-row total-row">
               <span>Total</span>
-              <strong id="summaryTotal">{formatMoney(subtotal, currency)}</strong>
+              <strong id="summaryTotal">{formatMoney(summary.total, currency)}</strong>
             </div>
             <button
               type="button"
@@ -310,6 +309,18 @@ function CartPage() {
             {checkoutMessage ? <p className="summary-note">{checkoutMessage}</p> : null}
           </aside>
         </div>
+
+        {hasItems ? (
+          <SmartRecommendationBar
+            cartItems={items}
+            className="market-section"
+            currentEventType={selectedEventType}
+            ctaLabel="Shop Matching Products"
+            ctaTo={selectedEventType ? buildEventTypeShopPath(selectedEventType) : "/shop"}
+            limit={4}
+            title="Recommended for Your Cart"
+          />
+        ) : null}
       </main>
 
       <Footer />

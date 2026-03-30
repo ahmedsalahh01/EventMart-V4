@@ -1,10 +1,13 @@
 import { motion } from "framer-motion";
 import { Fragment, useEffect, useState } from "react";
+import { getEventTypeConfig, listEventTypes, resolveEventType } from "../lib/eventTypeConfig";
 import { loadProducts } from "../lib/products";
+import { rankProductsForEventType } from "../lib/recommendationEngine";
 import "./../styles/ai-planner.css";
 import { sendAIPlannerMessage } from "../lib/api";
+import { trackEventTypeSelection } from "../lib/userBehavior";
 
-const EVENT_TYPES = ["Wedding", "Conference", "Concert", "Birthday", "Corporate", "Festival", "Exhibition"];
+const EVENT_TYPES = listEventTypes();
 const VENUE_TYPES = ["Indoor", "Outdoor", "Hybrid", "Rooftop", "Open Hall"];
 const PLANNER_MODES = ["quick", "creative", "intelligent"];
 
@@ -45,31 +48,19 @@ function getDisplayPrice(product) {
 }
 
 function pickProductsByEventType(eventType, products) {
-  const categoryByType = {
-    wedding: ["Woodworks", "Sound Systems", "Stages"],
-    conference: ["Sound Systems", "Merchandise", "Woodworks"],
-    concert: ["Stages", "Sound Systems", "Lighting"],
-    birthday: ["Merchandise", "Sound Systems", "Woodworks"],
-    corporate: ["Sound Systems", "Woodworks", "Stages"],
-    festival: ["Stages", "Lighting", "Sound Systems"],
-    exhibition: ["Woodworks", "Merchandise", "Stages"]
-  };
-
-  const targets = categoryByType[String(eventType || "").toLowerCase()] || [];
-  const ranked = products.filter((product) => {
-    if (!targets.length) return true;
-    return targets.some((target) => String(product.category || "").toLowerCase().includes(target.toLowerCase()));
-  });
-
-  return ranked.slice(0, 5);
+  const resolvedEventType = resolveEventType(eventType);
+  if (!resolvedEventType) return products.slice(0, 5);
+  return rankProductsForEventType(products, resolvedEventType).slice(0, 5);
 }
 
 function buildLocalPlannerReply(prompt, context, products) {
-  const eventType = context?.eventType || "Event";
+  const resolvedEventType = resolveEventType(context?.eventType);
+  const eventTypeConfig = getEventTypeConfig(resolvedEventType);
+  const eventType = eventTypeConfig?.plannerLabel || context?.eventType || "Event";
   const attendees = Number(context?.attendees || 0) || 100;
   const budget = Number(context?.budget || 0) || 5000;
   const venue = context?.venue || "Indoor";
-  const picked = pickProductsByEventType(eventType, products);
+  const picked = pickProductsByEventType(resolvedEventType, products);
 
   const lines = [
     `### Your ${eventType} Plan`,
@@ -489,8 +480,10 @@ function AIPlannerPage() {
     event.preventDefault();
     if (isTyping) return;
 
+    const eventTypeConfig = getEventTypeConfig(planner.eventType);
     const context = {
       eventType: planner.eventType,
+      eventTypeLabel: eventTypeConfig?.plannerLabel || planner.eventType,
       attendees: Number(planner.attendees),
       budget: Number(planner.budget),
       venue: planner.venue,
@@ -501,7 +494,11 @@ function AIPlannerPage() {
       }))
     };
 
-    const prompt = `Plan a ${context.eventType} for ${context.attendees} attendees, budget ${context.budget}, venue type ${context.venue}, in ${context.mode} mode.`;
+    if (planner.eventType) {
+      trackEventTypeSelection(planner.eventType, { source: "ai-planner-quick-form" });
+    }
+
+    const prompt = `Plan a ${context.eventTypeLabel || context.eventType} for ${context.attendees} attendees, budget ${context.budget}, venue type ${context.venue}, in ${context.mode} mode.`;
     addMessage("user", prompt);
     await submitPlannerPrompt(prompt, context);
   }
@@ -521,6 +518,7 @@ function AIPlannerPage() {
 
     const context = {
       eventType: planner.eventType || "",
+      eventTypeLabel: getEventTypeConfig(planner.eventType)?.plannerLabel || planner.eventType || "",
       attendees: Number(planner.attendees || 0),
       budget: Number(planner.budget || 0),
       venue: planner.venue || "",
@@ -539,9 +537,9 @@ function AIPlannerPage() {
       <main className="planner-page" data-theme-scope="planner">
         <header className="planner-header">
           <div className="planner-header-content">
-            <p className="planner-kicker">Powered by real AI planning</p>
+            <p className="planner-kicker">Powered by catalog-aware planning</p>
             <h1>AI Event Planner</h1>
-            <p>Get personalized equipment recommendations, fast equipment bundles, and event timelines built around your setup.</p>
+            <p>Get personalized equipment recommendations and event timelines built around your setup.</p>
             <div className="planner-hero-meta" aria-label="Planner capabilities">
               <span>Catalog-aware recommendations</span>
               <span>Budget-smart suggestions</span>
@@ -568,8 +566,8 @@ function AIPlannerPage() {
               >
                 <option value="">Choose event type</option>
                 {EVENT_TYPES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
+                  <option key={value.slug} value={value.slug}>
+                    {value.label}
                   </option>
                 ))}
               </select>
@@ -638,7 +636,7 @@ function AIPlannerPage() {
                 <h2>Planner Chat</h2>
                 <p className="panel-copy">Describe your event in your own words and let the planner refine the setup step by step.</p>
               </div>
-              <span className="planner-status">AI online</span>
+              <span className="planner-status">Planner ready</span>
             </div>
 
             <div id="chatHistory" className="chat-history">

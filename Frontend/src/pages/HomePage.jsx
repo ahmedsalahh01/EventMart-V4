@@ -1,6 +1,11 @@
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import SmartRecommendationBar from "../components/SmartRecommendationBar";
+import { buildEventTypeShopPath, listEventTypes } from "../lib/eventTypeConfig";
 import { HOME_HERO_SHOWCASE_IMAGES } from "../lib/homeHeroShowcaseImages";
+import { loadProducts } from "../lib/products";
+import { getSelectedEventType, trackCategoryView, trackEventTypeSelection } from "../lib/userBehavior";
 
 const HERO_RIBBON_REPEAT_COUNT = 4;
 
@@ -27,6 +32,23 @@ const HERO_RIBBON_ROWS = [
 ];
 
 function HomePage() {
+  const [products, setProducts] = useState([]);
+  const [selectedEventType, setSelectedEventType] = useState(() => getSelectedEventType() || "birthday");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadProducts().then((rows) => {
+      if (!cancelled) {
+        setProducts(rows);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function handleHeroSearchSubmit(event) {
     event.preventDefault();
   }
@@ -59,10 +81,10 @@ function HomePage() {
             <h1 id="hero-title">Get Your Event- SIMPLE.</h1>
             <p className="hero-text">
               Shop or rent curated event equipment in minutes. Compare products, discover recommendations, unlock deals,
-              and build a full setup package for your event from one place.
+              and discover the right setup for your event from one place.
             </p>
             <div className="hero-actions">
-              <Link to="/shop" className="btn-primary">
+              <Link to={buildEventTypeShopPath(selectedEventType)} className="btn-primary">
                 <span className="cta-orbit-label">Explore Shop</span>
               </Link>
               <Link to="/ai-planner" className="btn-secondary btn-secondary-ai">
@@ -129,10 +151,11 @@ function HomePage() {
                 .map((category, index) => (
                   <Link
                     key={`${category}-${index}`}
-                    to="/shop"
+                    to={`/shop?category=${encodeURIComponent(category)}`}
                     className="category-chip"
                     aria-hidden={index > 7 ? "true" : undefined}
                     tabIndex={index > 7 ? -1 : undefined}
+                    onClick={() => trackCategoryView(category, { source: "home-category-strip" })}
                   >
                     {category}
                   </Link>
@@ -141,103 +164,15 @@ function HomePage() {
           </div>
         </section>
 
-        <section className="market-section" aria-labelledby="recommended-title">
-          <div className="section-head">
-            <div>
-              <h2 id="recommended-title">Recommended For You</h2>
-            </div>
-            <Link to="/shop" className="section-link">
-              View All Products
-            </Link>
-          </div>
-
-          <div className="product-grid">
-            {[
-              ["Portable Sound System Pro", "4.9 rating â€¢ 128 reviews", "$420", "or rent from $75/day"],
-              ["Stage Lighting Starter Kit", "4.8 rating â€¢ 96 reviews", "$360", "or rent from $62/day"],
-              ["LED Backdrop Display Panel", "4.7 rating â€¢ 84 reviews", "$590", "or rent from $95/day"],
-              ["DJ Booth Performance Set", "4.9 rating â€¢ 142 reviews", "$510", "or rent from $88/day"]
-            ].map(([title, , price, sub]) => (
-              <article key={title} className="market-card">
-                <img src="/assets/equipment-collage.jpg" alt={title} />
-                <div className="market-card-body">
-                  <h3>{title}</h3>
-                  <p className="card-price">
-                    {price} <span>{sub}</span>
-                  </p>
-                  <Link to="/shop" className="card-btn">
-                    View Item
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="package-builder" className="package-builder" aria-labelledby="package-title">
-          <div className="package-copy">
-            <h2 id="package-title">Create Your Own Package Now!</h2>
-            <p>
-              Build a complete equipment package based on guest count, event type, venue size, and budget. EventMart
-              recommends matching products so you can launch faster.
-            </p>
-            <div className="package-actions">
-              <Link to="/shop" className="btn-primary-pack">
-                <span className="cta-orbit-label">Start Building</span>
-              </Link>
-              <Link to="/shop" className="btn-secondary-pack">
-                <span className="cta-orbit-label">Browse Packages</span>
-              </Link>
-            </div>
-          </div>
-
-          <div className="package-features" aria-label="Package builder highlights">
-            <article>
-              <h3>Smart Bundle Suggestions</h3>
-              <p>Get auto-matched products for sound, lighting, stage, and accessories.</p>
-            </article>
-            <article>
-              <h3>Flexible Budget Control</h3>
-              <p>Choose rent or buy options per item without rebuilding your full setup.</p>
-            </article>
-            <article>
-              <h3>One-Click Checkout Flow</h3>
-              <p>Move from planning to secured equipment in a streamlined purchase path.</p>
-            </article>
-          </div>
-        </section>
-
-        <section className="market-section" aria-labelledby="deals-title">
-          <div className="section-head">
-            <div>
-              <h2 id="deals-title">Latest Deals!</h2>
-            </div>
-            <Link to="/shop" className="section-link">
-              See More Deals
-            </Link>
-          </div>
-
-          <div className="deal-grid">
-            {[
-              ["-25%", "Conference Audio Package", "$390", "$520", "Buy now or rent from $70/day"],
-              ["-18%", "Wedding Light Tunnel Kit", "$450", "$550", "Limited offer â€¢ 2 days left"],
-              ["Rent + Buy", "Outdoor LED Screen Set", "$780", "$940", "Rent from $130/day with setup support"]
-            ].map(([badge, title, price, strike, sub]) => (
-              <article key={title} className="deal-card">
-                <span className="deal-badge">{badge}</span>
-                <img src="/assets/equipment-collage.jpg" alt={title} />
-                <h3>{title}</h3>
-                <p className="deal-price">
-                  <strong>{price}</strong> <span>{strike}</span>
-                </p>
-                <p className="deal-sub">{sub}</p>
-                <Link to="/shop" className="card-btn">
-                  Claim Deal
-                </Link>
-              </article>
-            ))}
-          </div>
-        </section>
+        <SmartRecommendationBar
+          className="market-section"
+          ctaLabel="View All Products"
+          ctaTo={buildEventTypeShopPath(selectedEventType)}
+          currentEventType={selectedEventType}
+          limit={4}
+          products={products}
+          title="Recommended For You"
+        />
 
         <section className="market-section purpose-section" aria-labelledby="purpose-title">
           <div className="section-head">
@@ -247,53 +182,19 @@ function HomePage() {
           </div>
 
           <div className="purpose-grid">
-            {[
-              ["Weddings", "Elegant lighting, stage decor, and premium audio."],
-              ["Birthdays", "Fun bundles with sound, LED, and party accessories."],
-              ["Corporate Events", "Professional AV, podium setups, and presentation gear."],
-              ["Concerts", "Performance-grade systems for live audience impact."],
-              ["Outdoor Events", "Weather-ready staging and high-visibility display kits."],
-              ["Private Parties", "Compact all-in-one packs for fast personal setups."]
-            ].map(([title, text]) => (
-              <Link key={title} to="/shop" className="purpose-card">
-                <h3>{title}</h3>
-                <p>{text}</p>
+            {listEventTypes().map((eventType) => (
+              <Link
+                key={eventType.slug}
+                to={buildEventTypeShopPath(eventType.slug)}
+                className="purpose-card"
+                onClick={() => {
+                  setSelectedEventType(eventType.slug);
+                  trackEventTypeSelection(eventType.slug, { source: "home-event-card" });
+                }}
+              >
+                <h3>{eventType.label}</h3>
+                <p>{eventType.cardDescription}</p>
               </Link>
-            ))}
-          </div>
-        </section>
-
-        <section className="market-section" aria-labelledby="rent-title">
-          <div className="section-head">
-            <div>
-              <h2 id="rent-title">Explore Essentials.</h2>
-            </div>
-          </div>
-
-          <div className="rent-grid">
-            {["Stage Riser Kit", "Portable Truss + Lights", "Event Speaker Tower", "LED Booth Package"].map((title) => (
-              <article key={title} className="rent-card">
-                <img src="/assets/equipment-collage.jpg" alt={title} />
-                <h3>{title}</h3>
-                <div className="rent-pricing">
-                  <p>
-                    <span>Buy</span>
-                    <strong>$1,250</strong>
-                  </p>
-                  <p>
-                    <span>Rent / day</span>
-                    <strong>$120</strong>
-                  </p>
-                </div>
-                <div className="rent-actions">
-                  <Link to="/shop" className="btn-primary btn-fill">
-                    Buy
-                  </Link>
-                  <Link to="/shop" className="btn-secondary btn-fill">
-                    Rent
-                  </Link>
-                </div>
-              </article>
             ))}
           </div>
         </section>
@@ -310,8 +211,8 @@ function HomePage() {
             {[
               ["Shop or Rent Easily", "Switch between purchase and rental options instantly for each product."],
               ["Curated Event Equipment", "Only high-demand equipment categories with clear specs and pricing."],
-              ["Smart Recommendations", "Discover relevant items and bundles based on what planners actually need."],
-              ["Build Packages Fast", "Create complete setups in a guided flow and move to checkout quickly."]
+              ["Smart Recommendations", "Discover relevant items based on what planners actually need."],
+              ["Plan Faster", "Move from discovery to checkout with fewer steps and clearer product choices."]
             ].map(([title, text]) => (
               <article key={title} className="trust-card">
                 <h3>{title}</h3>

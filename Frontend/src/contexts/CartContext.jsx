@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { normalizeCartItem } from "../lib/cart";
+import { getSelectedEventType, syncCartBehavior, trackAddToCart } from "../lib/userBehavior";
 
 const CartContext = createContext(null);
 const STORAGE_KEY = "eventmart_cart_v1";
@@ -67,6 +68,9 @@ function CartProvider({ children }) {
             rental_days: item.mode === "rent" ? Math.max(1, Number(item.rental_days || 1)) : 1,
             unit_price: unitPrice,
             stock,
+            category: product.category || item.category || "General",
+            subcategory: product.subcategory || item.subcategory || "General",
+            description: product.description || item.description || "",
             variation_id: variationId,
             selected_color: String(options.selected_color || item.selected_color || ""),
             selected_size: String(options.selected_size || item.selected_size || ""),
@@ -76,20 +80,20 @@ function CartProvider({ children }) {
               : item.customization_uploads,
             customization_requested:
               Boolean(options.customization_requested) || item.customization_requested,
-            dark_images:
-              Array.isArray(product.dark_images) && product.dark_images.length
-                ? product.dark_images
-                : item.dark_images,
-            image_url: product.image_url || item.image_url,
-            light_images:
-              Array.isArray(product.light_images) && product.light_images.length
-                ? product.light_images
-                : item.light_images
+            image_url: product.image_url || product.images?.[0] || item.image_url,
+            images:
+              Array.isArray(product.images) && product.images.length
+                ? product.images
+                : item.images,
+            customizable: Boolean(product.customizable || item.customizable),
+            buy_enabled: Boolean(product.buy_enabled ?? item.buy_enabled),
+            rent_enabled: Boolean(product.rent_enabled ?? item.rent_enabled),
+            event_type_hint: String(options.event_type || item.event_type_hint || getSelectedEventType() || "")
           };
         });
       }
 
-      return [
+        return [
         ...current,
         normalizeCartItem({
           cart_item_key: cartItemKey,
@@ -97,9 +101,11 @@ function CartProvider({ children }) {
           product_id: String(product.product_id || ""),
           name: product.name,
           slug: product.slug || "",
-          dark_images: Array.isArray(product.dark_images) ? product.dark_images : [],
-          image_url: product.image_url || "",
-          light_images: Array.isArray(product.light_images) ? product.light_images : [],
+          category: product.category || "General",
+          subcategory: product.subcategory || "General",
+          description: product.description || "",
+          image_url: product.image_url || product.images?.[0] || "",
+          images: Array.isArray(product.images) ? product.images : [],
           mode,
           variation_id: variationId,
           selected_color: String(options.selected_color || ""),
@@ -113,9 +119,20 @@ function CartProvider({ children }) {
           rental_days: mode === "rent" ? 1 : 1,
           unit_price: unitPrice,
           currency: product.currency || "USD",
-          stock
+          stock,
+          customizable: Boolean(product.customizable),
+          buy_enabled: Boolean(product.buy_enabled),
+          rent_enabled: Boolean(product.rent_enabled),
+          event_type_hint: String(options.event_type || getSelectedEventType() || "")
         })
       ];
+    });
+
+    trackAddToCart(product, {
+      quantity,
+      mode,
+      eventType: options.event_type || getSelectedEventType(),
+      customizationRequested: Boolean(options.customization_requested)
     });
   }
 
@@ -150,6 +167,10 @@ function CartProvider({ children }) {
   }
 
   const itemCount = items.reduce((total, item) => total + Number(item.quantity || 0), 0);
+
+  useEffect(() => {
+    syncCartBehavior(items, { eventType: getSelectedEventType() });
+  }, [items]);
 
   const value = useMemo(
     () => ({

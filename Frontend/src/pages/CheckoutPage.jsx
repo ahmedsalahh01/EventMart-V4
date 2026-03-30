@@ -35,7 +35,6 @@ function CheckoutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [geoStatus, setGeoStatus] = useState("");
-
   const summary = useMemo(() => calculateCartSummary(items), [items]);
   const currency = items[0]?.currency || "USD";
   const isInstapayPayment = form.billing.paymentMethod === "instapay";

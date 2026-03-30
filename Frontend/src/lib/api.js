@@ -219,3 +219,10 @@ export async function sendAIPlannerMessage(data) {
     body: data
   });
 }
+
+export async function requestSmartRecommendationRerank(data) {
+  return apiRequest("/api/recommendations/smart", {
+    method: "POST",
+    body: data
+  });
+}

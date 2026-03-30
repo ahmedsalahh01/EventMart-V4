@@ -32,6 +32,22 @@ function normalizeImageList(value) {
     });
 }
 
+function mergeUniqueImageLists(...values) {
+  const seen = new Set();
+  const merged = [];
+
+  values.forEach((value) => {
+    normalizeImageList(value).forEach((image) => {
+      if (!seen.has(image)) {
+        seen.add(image);
+        merged.push(image);
+      }
+    });
+  });
+
+  return merged;
+}
+
 function normalizeUploadList(value) {
   const list = Array.isArray(value)
     ? value
@@ -61,6 +77,13 @@ export function normalizeCartItem(item) {
   const quantity = stock > 0 ? Math.min(rawQuantity, stock) : rawQuantity;
   const rentalDays = Math.max(1, Number(item?.rental_days || item?.rentalDays || 1));
   const mode = item?.mode === "rent" ? "rent" : "buy";
+  const images = mergeUniqueImageLists(
+    item?.images,
+    item?.light_images,
+    item?.dark_images,
+    item?.image_url,
+    item?.image
+  );
   const variationId = item?.variation_id === null || item?.variation_id === undefined || item?.variation_id === ""
     ? item?.variationId
     : item?.variation_id;
@@ -72,9 +95,13 @@ export function normalizeCartItem(item) {
     product_id: String(item?.product_id ?? ""),
     name: String(item?.name ?? "Unnamed Item"),
     slug: String(item?.slug ?? ""),
-    dark_images: normalizeImageList(item?.dark_images),
-    image_url: String(item?.image_url ?? item?.image ?? ""),
-    light_images: normalizeImageList(item?.light_images),
+    category: String(item?.category ?? "General"),
+    subcategory: String(item?.subcategory ?? "General"),
+    description: String(item?.description ?? ""),
+    dark_images: images,
+    image_url: images[0] || String(item?.image_url ?? item?.image ?? ""),
+    images,
+    light_images: images,
     mode,
     variation_id:
       variationId === null || variationId === undefined || variationId === ""
@@ -89,6 +116,10 @@ export function normalizeCartItem(item) {
     rental_days: mode === "rent" ? rentalDays : 1,
     unit_price: Math.max(0, Number(item?.unit_price ?? item?.price ?? 0)),
     currency: String(item?.currency || "USD"),
-    stock
+    stock,
+    customizable: Boolean(item?.customizable),
+    buy_enabled: Boolean(item?.buy_enabled ?? mode === "buy"),
+    rent_enabled: Boolean(item?.rent_enabled ?? mode === "rent"),
+    event_type_hint: String(item?.event_type_hint ?? item?.eventTypeHint ?? "")
   };
 }

@@ -1,12 +1,18 @@
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import AppScaleFrame from "./AppScaleFrame";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
+import { trackTrafficSource } from "../lib/userBehavior";
 
 function AppShell({ children }) {
   const location = useLocation();
   const isCartRoute = location.pathname === "/cart";
   const isAuthRoute = location.pathname === "/auth";
+
+  useEffect(() => {
+    trackTrafficSource();
+  }, []);
 
   if (isAuthRoute) {
     return (

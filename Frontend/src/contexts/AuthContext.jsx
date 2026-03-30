@@ -1,5 +1,7 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { apiRequest } from "../lib/api";
+import { clearSmartRecommendationCache } from "../lib/smartRecommendationService";
+import { announceBehaviorScopeChange, resetGuestBehaviorState } from "../lib/userBehavior";
 
 const AuthContext = createContext(null);
 const STORAGE_KEY = "eventmart_auth_v1";
@@ -40,6 +42,8 @@ function AuthProvider({ children }) {
       body: payload
     });
     persist({ token: result.token, user: result.user });
+    clearSmartRecommendationCache();
+    announceBehaviorScopeChange();
     return result;
   }
 
@@ -49,6 +53,8 @@ function AuthProvider({ children }) {
       body: payload
     });
     persist({ token: result.token, user: result.user });
+    clearSmartRecommendationCache();
+    announceBehaviorScopeChange();
     return result;
   }
 
@@ -59,6 +65,8 @@ function AuthProvider({ children }) {
       // Ignore storage errors.
     }
     setSession({ token: "", user: null });
+    clearSmartRecommendationCache();
+    resetGuestBehaviorState();
   }
 
   function updateSession(nextSession) {

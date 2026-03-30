@@ -563,7 +563,7 @@ export async function fetchEgyptLocationDetails(
   return normalized;
 }
 
-export function calculateCartSummary(items) {
+export function calculateCartSummary(items, options = {}) {
   const list = Array.isArray(items) ? items : [];
   const subtotal = roundCurrency(
     list.reduce((sum, item) => {
@@ -572,19 +572,25 @@ export function calculateCartSummary(items) {
       return sum + Number(item?.unit_price || 0) * quantity * multiplier;
     }, 0)
   );
+  const discount = 0;
+  const customizationFees = 0;
+  const shipping = 0;
   const total = subtotal;
   const depositRequired = roundCurrency(total * 0.3);
   const itemCount = list.reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
 
   return {
+    customizationFees,
+    discount,
     subtotal,
+    shipping,
     total,
     depositRequired,
     itemCount
   };
 }
 
-export function buildCheckoutPayload(form, items) {
+export function buildCheckoutPayload(form, items, options = {}) {
   const shippingPhone = sanitizePhone(form?.shipping?.phoneNumber);
   const shippingAddress = buildCombinedShippingAddress(
     form?.shipping?.shipmentAddress,
@@ -781,8 +787,8 @@ export function createLocalInstapayConfirmationOrder({ form, items, summary, cur
     currency,
     subtotal: Number(summary?.subtotal || 0),
     tax: 0,
-    discount: 0,
-    shipping: 0,
+    discount: Number(summary?.discount || 0),
+    shipping: Number(summary?.shipping || 0),
     total: Number(summary?.total || 0),
     depositRequired: Number(summary?.depositRequired || 0),
     depositPaid: Number(summary?.depositRequired || 0),

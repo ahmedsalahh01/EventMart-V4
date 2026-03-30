@@ -1,5 +1,5 @@
-import { apiRequest, buildApiUrl, resolveApiBaseUrl } from "./api";
-import { materializeProductDetail } from "./productDetail";
+import { apiRequest, buildApiUrl, resolveApiBaseUrl } from "./api.js";
+import { materializeProductDetail } from "./productDetail.js";
 
 const STORAGE_KEY = "eventmart_products_v1";
 const METRICS_KEY = "eventmart_product_metrics_v1";
@@ -50,6 +50,22 @@ function normalizeImageList(value) {
       }
       return [];
     });
+}
+
+function mergeUniqueImageLists(...values) {
+  const seen = new Set();
+  const merged = [];
+
+  values.forEach((value) => {
+    normalizeImageList(value).forEach((image) => {
+      if (!seen.has(image)) {
+        seen.add(image);
+        merged.push(image);
+      }
+    });
+  });
+
+  return merged;
 }
 
 function normalizeBaseUrl(value) {
@@ -130,8 +146,12 @@ function toNum(value, fallback = null) {
 export function normalizeProduct(row) {
   const localId = String(row.id);
   const normalizedProductId = normalizeProductIdInput(row.product_id);
-  const lightImages = normalizeImageList(row.light_images);
-  const darkImages = normalizeImageList(row.dark_images);
+  const galleryImages = mergeUniqueImageLists(
+    row.images,
+    row.light_images,
+    row.dark_images,
+    row.image_url
+  );
   const legacyImageUrl = String(row.image_url || "").trim();
   const qualityPoints = Array.isArray(row.quality_points)
     ? row.quality_points
@@ -148,6 +168,14 @@ export function normalizeProduct(row) {
       : row.stock !== undefined
         ? toNum(row.stock, 0)
       : 0;
+  const tags = Array.isArray(row.tags)
+    ? row.tags
+    : typeof row.tags === "string"
+      ? row.tags
+          .split(/\r?\n|,/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
   const detail = materializeProductDetail({
     colors: row.colors,
     quantity_available: quantityAvailable,
@@ -156,22 +184,20 @@ export function normalizeProduct(row) {
     variations: row.variations
   });
 
-  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
-    lightImages.push(legacyImageUrl);
-  }
-
   const product = {
     id: localId,
     product_id: PRODUCT_ID_REGEX.test(normalizedProductId)
       ? normalizedProductId
       : fallbackProductId(row.product_id || localId),
+    sku: String(row.sku || ""),
     slug: String(row.slug || fallbackProductSlug(row.name, row.product_id, localId)),
     name: String(row.name || "Unnamed Product"),
     category: String(row.category || "General"),
     subcategory: String(row.subcategory || "General"),
-    dark_images: darkImages,
-    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
-    light_images: lightImages,
+    dark_images: galleryImages,
+    image_url: galleryImages[0] || legacyImageUrl,
+    images: galleryImages,
+    light_images: galleryImages,
     description: String(row.description || ""),
     quality: String(row.quality || ""),
     quality_points: qualityPoints,
@@ -184,7 +210,13 @@ export function normalizeProduct(row) {
     rent_enabled: Boolean(row.rent_enabled),
     buy_price: toNum(row.buy_price, null),
     rent_price_per_day: toNum(row.rent_price_per_day, null),
+    base_price: toNum(row.base_price, null),
     currency: String(row.currency || "USD"),
+    event_type: String(row.event_type || ""),
+    tags,
+    customization_fee: toNum(row.customization_fee, 0),
+    venue_type: String(row.venue_type || ""),
+    delivery_class: String(row.delivery_class || ""),
     featured: Boolean(row.featured),
     active: row.active !== false,
     quantity_available: quantityAvailable,
@@ -198,15 +230,14 @@ export function normalizeProduct(row) {
 }
 
 export function getProductImages(product, theme = "light") {
-  const lightImages = normalizeImageList(product?.light_images).map(resolveProductImageUrl);
-  const darkImages = normalizeImageList(product?.dark_images).map(resolveProductImageUrl);
-  const legacyImages = normalizeImageList(product?.image_url).map(resolveProductImageUrl);
-  const preferredImages = theme === "dark" ? darkImages : lightImages;
-  const fallbackImages = theme === "dark" ? lightImages : darkImages;
+  const images = mergeUniqueImageLists(
+    product?.images,
+    product?.light_images,
+    product?.dark_images,
+    product?.image_url
+  ).map(resolveProductImageUrl);
 
-  if (preferredImages.length) return preferredImages;
-  if (fallbackImages.length) return fallbackImages;
-  if (legacyImages.length) return legacyImages;
+  if (images.length) return images;
   return [fallbackImage()];
 }
 
