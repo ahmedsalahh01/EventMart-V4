@@ -3,15 +3,17 @@ export const METRICS_KEY = "eventmart_product_metrics_v1";
 const LOCAL_API_URL = "http://localhost:4000";
 const PRODUCTION_API_URL = "https://eventmart-v4-production.up.railway.app";
 const PRODUCTS_PATH = "/api/products";
+const PACKAGES_PATH = "/api/packages";
 const PRODUCT_IMAGE_UPLOAD_PATHS = ["/api/product-images/upload", "/product-images/upload"];
 const PRODUCT_IMAGE_DELETE_PATHS = ["/api/product-images", "/product-images"];
 const USERS_PATH = "/api/users";
+const PACKAGE_STORAGE_KEY = "eventmart_admin_packages_v1";
 
 const ISO_CURRENCY_ALPHA_REGEX = /^[A-Z]{3}$/;
 const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
 const DEFAULT_CURRENCY_ALPHA = "EGP";
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/320x220?text=EventMart";
-export const MAX_IMAGES_PER_MODE = 10;
+export const MAX_PRODUCT_IMAGES = 10;
 export const ONE_SIZE_LABEL = "One Size";
 const CURRENCY_NUMERIC_TO_ALPHA = Object.freeze({
   "008": "ALL",
@@ -67,6 +69,55 @@ function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
   }
 
   return "";
+}
+
+function getPackageFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
+  const configuredFallback = getFallbackApiBaseUrl(baseUrl, location);
+  if (configuredFallback) {
+    return configuredFallback;
+  }
+
+  if (isLocalHostname(location?.hostname) && normalizeBaseUrl(baseUrl) !== LOCAL_API_URL) {
+    return LOCAL_API_URL;
+  }
+
+  return "";
+}
+
+function readLocalStorage() {
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+
+  if (globalThis?.localStorage) {
+    return globalThis.localStorage;
+  }
+
+  return null;
+}
+
+function slugifyValue(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function shouldUsePackageStorageFallback(error) {
+  const status = Number(error?.status || 0);
+  if (status === 404) {
+    return true;
+  }
+
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("could not reach the api server") ||
+    message.includes("cannot get /api/packages") ||
+    message.includes("cannot post /api/packages") ||
+    message.includes("cannot put /api/packages") ||
+    message.includes("cannot delete /api/packages")
+  );
 }
 
 function randomId() {
@@ -162,6 +213,19 @@ function normalizeImageList(value) {
     });
 }
 
+function mergeUniqueImageLists(...sources) {
+  const seen = new Set();
+
+  return sources
+    .flatMap((source) => normalizeImageList(source))
+    .filter((item) => {
+      const key = String(item || "").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 export function isLocalImageEntry(value) {
   return Boolean(value && typeof value === "object" && value.kind === "local" && value.file);
 }
@@ -204,18 +268,19 @@ export function isMissingImageUploadEndpointError(error) {
 }
 
 function resolveImageCollections(row) {
-  const lightImages = normalizeImageList(row?.light_images);
-  const darkImages = normalizeImageList(row?.dark_images);
-  const legacyImageUrl = String(row?.image_url ?? "").trim();
-
-  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
-    lightImages.push(legacyImageUrl);
-  }
+  const sharedImages = mergeUniqueImageLists(
+    row?.images,
+    row?.light_images,
+    row?.dark_images,
+    row?.image_url
+  );
+  const primaryImage = sharedImages[0] || String(row?.image_url ?? "").trim();
 
   return {
-    dark_images: darkImages,
-    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
-    light_images: lightImages
+    dark_images: sharedImages,
+    image_url: primaryImage,
+    images: sharedImages,
+    light_images: sharedImages
   };
 }
 
@@ -275,6 +340,16 @@ async function apiRequestJson(path, options = {}) {
           status: response.status,
           url
         });
+
+        const shouldRetryOnStatus =
+          Array.isArray(options.retryStatusCodes) &&
+          options.retryStatusCodes.includes(response.status) &&
+          index < attemptBaseUrls.length - 1;
+
+        if (shouldRetryOnStatus) {
+          continue;
+        }
+
         const error = new Error(apiErrorMessage(payload, response.status));
         error.status = response.status;
         throw error;
@@ -298,10 +373,10 @@ async function apiRequestJson(path, options = {}) {
   throw createNetworkApiError(attemptBaseUrls);
 }
 
-export async function uploadProductImage(file, { productId, themeMode }) {
+export async function uploadProductImage(file, { productId, themeMode } = {}) {
   const params = new URLSearchParams({
     product_id: String(productId || "").trim(),
-    theme_mode: String(themeMode || "").trim(),
+    theme_mode: String(themeMode || "light").trim(),
     filename: String(file?.name || "image")
   });
 
@@ -741,6 +816,7 @@ function mapApiProduct(row) {
     currency: getSafeCurrencyAlpha(row.currency, DEFAULT_CURRENCY_ALPHA),
     description: String(row.description ?? ""),
     id: mappedId,
+    images: imageCollections.images,
     image_url: imageCollections.image_url,
     light_images: imageCollections.light_images,
     dark_images: imageCollections.dark_images,
@@ -764,6 +840,182 @@ function mapApiProduct(row) {
     updated_at: String(row.updated_at ?? ""),
     variations
   };
+}
+
+export function buildPackageMinimumQuantityNotice(productName, minimumQuantity) {
+  const safeName = String(productName || "this item").trim() || "this item";
+  const safeMinimum = Math.max(1, Number(minimumQuantity || 1));
+  return `Selecting fewer than ${safeMinimum} unit${safeMinimum === 1 ? "" : "s"} of ${safeName} may apply extra fees.`;
+}
+
+function mapApiPackage(row) {
+  const items = Array.isArray(row?.items) ? row.items : [];
+
+  return {
+    active: row?.active !== false,
+    created_at: String(row?.created_at ?? ""),
+    id: Number(row?.id || 0),
+    items: items.map((item, index) => {
+      const product = item?.product && typeof item.product === "object" ? item.product : {};
+      const minimumQuantity = Math.max(1, Number(item?.minimum_quantity || 1));
+
+      return {
+        id: Number(item?.id || 0),
+        minimumQuantity: String(minimumQuantity),
+        minimumQuantityNotice:
+          String(item?.minimum_quantity_notice || "").trim()
+          || buildPackageMinimumQuantityNotice(product?.name, minimumQuantity),
+        product: {
+          active: product?.active !== false,
+          buy_price: product?.buy_price === null || product?.buy_price === undefined ? null : Number(product.buy_price),
+          category: String(product?.category || ""),
+          currency: String(product?.currency || DEFAULT_CURRENCY_ALPHA),
+          id: Number(product?.id || item?.product_id || 0),
+          image_url: String(product?.image_url || ""),
+          name: String(product?.name || ""),
+          product_id: String(product?.product_id || ""),
+          rent_price_per_day:
+            product?.rent_price_per_day === null || product?.rent_price_per_day === undefined
+              ? null
+              : Number(product.rent_price_per_day),
+          subcategory: String(product?.subcategory || "")
+        },
+        productId: String(item?.product_id || product?.id || ""),
+        sortOrder: Number(item?.sort_order ?? index)
+      };
+    }),
+    name: String(row?.name || ""),
+    slug: String(row?.slug || ""),
+    updated_at: String(row?.updated_at ?? "")
+  };
+}
+
+function nextStoredPackageId(packages) {
+  return packages.reduce((max, pkg) => {
+    const currentId = Number(pkg?.id || 0);
+    return currentId > max ? currentId : max;
+  }, 0) + 1;
+}
+
+function normalizeStoredPackageItem(item, index) {
+  const product = item?.product && typeof item.product === "object" ? item.product : {};
+  const minimumQuantity = Math.max(
+    1,
+    Number(item?.minimumQuantity ?? item?.minimum_quantity ?? 1)
+  );
+
+  return {
+    id: Number(item?.id || index + 1),
+    minimumQuantity: String(minimumQuantity),
+    minimumQuantityNotice:
+      String(item?.minimumQuantityNotice || item?.minimum_quantity_notice || "").trim()
+      || buildPackageMinimumQuantityNotice(product?.name, minimumQuantity),
+    product,
+    productId: String(item?.productId || item?.product_id || product?.id || ""),
+    sortOrder: Number(item?.sortOrder ?? item?.sort_order ?? index)
+  };
+}
+
+function normalizeStoredPackage(pkg, index) {
+  const items = Array.isArray(pkg?.items) ? pkg.items : [];
+  const id = Number(pkg?.id || index + 1);
+  const name = String(pkg?.name || "").trim();
+  const baseSlug = slugifyValue(pkg?.slug || name) || `package-${id}`;
+
+  return {
+    active: pkg?.active !== false,
+    created_at: String(pkg?.created_at || ""),
+    id,
+    items: items.map((item, itemIndex) => normalizeStoredPackageItem(item, itemIndex)),
+    name,
+    slug: baseSlug,
+    updated_at: String(pkg?.updated_at || "")
+  };
+}
+
+function readStoredPackages() {
+  const storage = readLocalStorage();
+  if (!storage) {
+    return [];
+  }
+
+  try {
+    const raw = storage.getItem(PACKAGE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeStoredPackage) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredPackages(packages) {
+  const storage = readLocalStorage();
+  if (!storage) {
+    return packages;
+  }
+
+  storage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(packages));
+  return packages;
+}
+
+function createStoredPackageSlug(name, packages, editingId = null) {
+  const baseSlug = slugifyValue(name) || "package";
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (
+    packages.some(
+      (pkg) =>
+        Number(pkg?.id || 0) !== Number(editingId || 0) &&
+        String(pkg?.slug || "").trim().toLowerCase() === candidate
+    )
+  ) {
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+function savePackageToStorage(pkg, editingId) {
+  const packages = readStoredPackages();
+  const now = new Date().toISOString();
+  const packageId =
+    Number(editingId) > 0
+      ? Number(editingId)
+      : nextStoredPackageId(packages);
+  const existingPackage = packages.find((entry) => Number(entry?.id || 0) === packageId) || null;
+
+  const nextPackage = normalizeStoredPackage({
+    active: pkg?.active !== false,
+    created_at: existingPackage?.created_at || now,
+    id: packageId,
+    items: (Array.isArray(pkg?.items) ? pkg.items : []).map((item, index) => ({
+      id: existingPackage?.items?.[index]?.id || index + 1,
+      minimumQuantity: String(Math.max(1, Number(item?.minimum_quantity ?? item?.minimumQuantity ?? 1))),
+      minimumQuantityNotice: buildPackageMinimumQuantityNotice("", item?.minimum_quantity ?? item?.minimumQuantity ?? 1),
+      product: {},
+      productId: String(item?.product_id || item?.productId || ""),
+      sortOrder: index
+    })),
+    name: String(pkg?.name || "").trim(),
+    slug: createStoredPackageSlug(pkg?.name, packages, packageId),
+    updated_at: now
+  });
+
+  const nextPackages = existingPackage
+    ? packages.map((entry) => (Number(entry?.id || 0) === packageId ? nextPackage : entry))
+    : [...packages, nextPackage];
+
+  writeStoredPackages(nextPackages);
+  return nextPackage;
+}
+
+function removePackageFromStorage(id) {
+  const packageId = Number(id || 0);
+  const packages = readStoredPackages();
+  const nextPackages = packages.filter((entry) => Number(entry?.id || 0) !== packageId);
+  writeStoredPackages(nextPackages);
 }
 
 function ensureUniqueProductIds(list) {
@@ -802,6 +1054,25 @@ export async function loadUsers() {
   }));
 }
 
+export async function loadPackages() {
+  const runtimeLocation = readRuntimeLocation();
+  const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
+
+  try {
+    const rows = await apiRequestJson(PACKAGES_PATH, {
+      fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
+      retryStatusCodes: [404]
+    });
+    return Array.isArray(rows) ? rows.map(mapApiPackage) : [];
+  } catch (error) {
+    if (shouldUsePackageStorageFallback(error)) {
+      return readStoredPackages();
+    }
+
+    throw error;
+  }
+}
+
 export async function saveProduct(product, editingId) {
   if (editingId) {
     const routeId = Number(editingId);
@@ -821,6 +1092,50 @@ export async function saveProduct(product, editingId) {
   });
 }
 
+export async function savePackage(pkg, editingId) {
+  const runtimeLocation = readRuntimeLocation();
+  const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
+  const packageApiOptions = {
+    fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
+    retryStatusCodes: [404]
+  };
+
+  if (editingId) {
+    const routeId = Number(editingId);
+    if (!Number.isInteger(routeId) || routeId <= 0) {
+      throw new Error("Package update requires a numeric database id.");
+    }
+
+    try {
+      return await apiRequestJson(`${PACKAGES_PATH}/${routeId}`, {
+        ...packageApiOptions,
+        body: pkg,
+        method: "PUT"
+      });
+    } catch (error) {
+      if (shouldUsePackageStorageFallback(error)) {
+        return savePackageToStorage(pkg, routeId);
+      }
+
+      throw error;
+    }
+  }
+
+  try {
+    return await apiRequestJson(PACKAGES_PATH, {
+      ...packageApiOptions,
+      body: pkg,
+      method: "POST"
+    });
+  } catch (error) {
+    if (shouldUsePackageStorageFallback(error)) {
+      return savePackageToStorage(pkg, null);
+    }
+
+    throw error;
+  }
+}
+
 export async function removeProduct(id) {
   const routeId = Number(id);
   if (!Number.isInteger(routeId) || routeId <= 0) {
@@ -832,6 +1147,31 @@ export async function removeProduct(id) {
   });
 }
 
+export async function removePackage(id) {
+  const routeId = Number(id);
+  if (!Number.isInteger(routeId) || routeId <= 0) {
+    throw new Error("Package deletion requires a numeric database id.");
+  }
+
+  const runtimeLocation = readRuntimeLocation();
+  const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
+
+  try {
+    return await apiRequestJson(`${PACKAGES_PATH}/${routeId}`, {
+      fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
+      method: "DELETE",
+      retryStatusCodes: [404]
+    });
+  } catch (error) {
+    if (shouldUsePackageStorageFallback(error)) {
+      removePackageFromStorage(routeId);
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 export function createEmptyProductForm(products) {
   return {
     active: true,
@@ -841,9 +1181,8 @@ export function createEmptyProductForm(products) {
     colors: "",
     currency: DEFAULT_CURRENCY_ALPHA,
     description: "",
-    dark_images: [],
     featured: false,
-    light_images: [],
+    images: [],
     name: "",
     overhead_cost: "0",
     product_id: generateNextProductId(products),
@@ -862,14 +1201,25 @@ export function createEmptyProductForm(products) {
   };
 }
 
+export function createEmptyPackageItem() {
+  return {
+    id: randomId(),
+    minimumQuantity: "1",
+    productId: ""
+  };
+}
+
+export function createEmptyPackageForm() {
+  return {
+    active: true,
+    items: [createEmptyPackageItem()],
+    name: ""
+  };
+}
+
 export function buildFormFromProduct(product) {
-  const lightImages = normalizeImageList(product.light_images);
-  const darkImages = normalizeImageList(product.dark_images);
+  const imageCollections = resolveImageCollections(product);
   const sizeMode = normalizeSizeModeInput(product.size_mode);
-  const legacyImages =
-    !lightImages.length && !darkImages.length
-      ? normalizeImageList(product.image_url)
-      : [];
 
   return {
     active: Boolean(product.active),
@@ -879,9 +1229,8 @@ export function buildFormFromProduct(product) {
     colors: Array.isArray(product.colors) ? product.colors.join("\n") : "",
     currency: getSafeCurrencyAlpha(product.currency, DEFAULT_CURRENCY_ALPHA),
     description: product.description || "",
-    dark_images: darkImages,
     featured: Boolean(product.featured),
-    light_images: lightImages.length ? lightImages : legacyImages,
+    images: imageCollections.images,
     name: product.name,
     overhead_cost: product.overhead_cost ?? 0,
     product_id: product.product_id || fallbackProductId(product.id),
@@ -911,6 +1260,20 @@ export function buildFormFromProduct(product) {
   };
 }
 
+export function buildFormFromPackage(pkg) {
+  return {
+    active: Boolean(pkg?.active),
+    items: Array.isArray(pkg?.items) && pkg.items.length
+      ? pkg.items.map((item) => ({
+          id: item.id || randomId(),
+          minimumQuantity: String(item.minimumQuantity || item.minimum_quantity || 1),
+          productId: String(item.productId || item.product_id || item?.product?.id || "")
+        }))
+      : [createEmptyPackageItem()],
+    name: String(pkg?.name || "")
+  };
+}
+
 export function buildProductPayload(form, { editingId, products }) {
   const normalizedProductId = normalizeProductIdInput(form.product_id);
   const normalizedCurrency = normalizeCurrencyCodeInput(form.currency);
@@ -920,8 +1283,7 @@ export function buildProductPayload(form, { editingId, products }) {
     .filter(Boolean);
   const buyEnabled = Boolean(form.buy_enabled);
   const rentEnabled = Boolean(form.rent_enabled);
-  const lightImages = normalizeImageList(form.light_images);
-  const darkImages = normalizeImageList(form.dark_images);
+  const images = mergeUniqueImageLists(form.images);
   const sizeMode = normalizeSizeModeInput(form.size_mode);
   const colors = getCatalogColorOptions(form.colors);
   const sizes = getCatalogSizeOptions(form.sizes, sizeMode);
@@ -955,12 +1317,8 @@ export function buildProductPayload(form, { editingId, products }) {
     throw new Error("Name, category, and subcategory are required.");
   }
 
-  if (lightImages.length > MAX_IMAGES_PER_MODE) {
-    throw new Error("You can upload up to 10 light mode images per product.");
-  }
-
-  if (darkImages.length > MAX_IMAGES_PER_MODE) {
-    throw new Error("You can upload up to 10 dark mode images per product.");
+  if (images.length > MAX_PRODUCT_IMAGES) {
+    throw new Error("You can upload up to 10 shared attachments per product.");
   }
 
   const variationRows = Array.isArray(form.variations) ? form.variations : [];
@@ -1055,10 +1413,11 @@ export function buildProductPayload(form, { editingId, products }) {
     colors: normalizedColors,
     currency: normalizedCurrency,
     description: String(form.description || "").trim(),
-    dark_images: darkImages,
+    dark_images: images,
     featured: Boolean(form.featured),
-    image_url: lightImages[0] || darkImages[0] || "",
-    light_images: lightImages,
+    image_url: images[0] || "",
+    images,
+    light_images: images,
     name,
     overhead_cost: toNum(form.overhead_cost, 0),
     product_id: normalizedProductId,
@@ -1074,6 +1433,51 @@ export function buildProductPayload(form, { editingId, products }) {
     customizable: Boolean(form.customizable),
     unit_cost: toNum(form.unit_cost, 0),
     variations: normalizedVariations
+  };
+}
+
+export function buildPackagePayload(form) {
+  const name = String(form?.name || "").trim();
+  const active = Boolean(form?.active);
+  const rows = Array.isArray(form?.items) ? form.items : [];
+
+  if (!name) {
+    throw new Error("Package name is required.");
+  }
+
+  if (!rows.length) {
+    throw new Error("Add at least one package item.");
+  }
+
+  const seenProductIds = new Set();
+  const items = rows.map((row, index) => {
+    const productId = Number(row?.productId || 0);
+    const minimumQuantity = Number(row?.minimumQuantity || 0);
+
+    if (!Number.isInteger(productId) || productId <= 0) {
+      throw new Error(`Package item ${index + 1} must select a product.`);
+    }
+
+    if (!Number.isInteger(minimumQuantity) || minimumQuantity < 1) {
+      throw new Error(`Package item ${index + 1} minimum quantity must be at least 1.`);
+    }
+
+    if (seenProductIds.has(productId)) {
+      throw new Error("Each product can only appear once in a package.");
+    }
+
+    seenProductIds.add(productId);
+
+    return {
+      minimum_quantity: minimumQuantity,
+      product_id: productId
+    };
+  });
+
+  return {
+    active,
+    items,
+    name
   };
 }
 
@@ -1155,16 +1559,34 @@ export function userMatchesSearch(user, query) {
   return `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(query);
 }
 
+export function packageMatchesSearch(pkg, query) {
+  if (!query) return true;
+
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+
+  return [
+    pkg?.name,
+    ...(Array.isArray(pkg?.items)
+      ? pkg.items.flatMap((item) => [
+          item?.product?.name,
+          item?.product?.category,
+          item?.product?.subcategory,
+          item?.product?.product_id
+        ])
+      : [])
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
 export function getProductImage(product, theme = "light", index = 0) {
-  const lightImages = normalizeImageList(product?.light_images);
-  const darkImages = normalizeImageList(product?.dark_images);
-  const preferredImages = theme === "dark" ? darkImages : lightImages;
-  const fallbackImages = theme === "dark" ? lightImages : darkImages;
-  const images = preferredImages.length
-    ? preferredImages
-    : fallbackImages.length
-      ? fallbackImages
-      : normalizeImageList(product?.image_url);
+  const images = mergeUniqueImageLists(
+    product?.images,
+    product?.light_images,
+    product?.dark_images,
+    product?.image_url
+  );
 
   return resolveAssetUrl(
     images[index] || images[0] || product?.image_url || "",

@@ -1,5 +1,5 @@
 import {
-  MAX_IMAGES_PER_MODE,
+  MAX_PRODUCT_IMAGES,
   ONE_SIZE_LABEL,
   getCatalogColorOptions,
   getCatalogSizeOptions,
@@ -21,19 +21,19 @@ function ProductForm({
   onSubmit,
   onVariationChange
 }) {
-  function renderImageGroup(themeMode, title, description) {
-    const images = form[`${themeMode}_images`] || [];
-    const isAtLimit = images.length >= MAX_IMAGES_PER_MODE;
+  function renderImageGroup() {
+    const images = form.images || [];
+    const isAtLimit = images.length >= MAX_PRODUCT_IMAGES;
 
     return (
       <div className="image-upload-card">
         <div className="image-upload-head">
           <div>
-            <h4>{title}</h4>
-            <p>{description}</p>
+            <h4>Attachments</h4>
+            <p>Upload one shared image set that will be used across storefront themes.</p>
           </div>
           <span className={`image-count${isAtLimit ? " limit" : ""}`}>
-            {images.length}/{MAX_IMAGES_PER_MODE}
+            {images.length}/{MAX_PRODUCT_IMAGES}
           </span>
         </div>
 
@@ -43,13 +43,13 @@ function ProductForm({
             disabled={isSaving || isAtLimit}
             multiple
             onChange={(event) => {
-              onImageSelect(themeMode, event.target.files);
+              onImageSelect(event.target.files);
               event.target.value = "";
             }}
             type="file"
           />
           <strong>Choose images from your computer</strong>
-          <span>PNG, JPG, WEBP, GIF, SVG, or AVIF. Up to 10 images per mode.</span>
+          <span>PNG, JPG, WEBP, GIF, SVG, or AVIF. Up to 10 shared attachments.</span>
         </label>
 
         {images.length ? (
@@ -57,18 +57,18 @@ function ProductForm({
             {images.map((image, index) => (
               <figure
                 className="image-preview-card"
-                key={getImagePreviewKey(image, `${themeMode}-${index}`)}
+                key={getImagePreviewKey(image, `attachment-${index}`)}
               >
                 <img
-                  alt={`${title} preview ${index + 1}`}
+                  alt={`Attachment preview ${index + 1}`}
                   loading="lazy"
                   src={resolveAssetUrl(image)}
                 />
                 <figcaption>
-                  <span>{`${title} ${index + 1}`}</span>
+                  <span>{`Attachment ${index + 1}`}</span>
                   <button
                     className="btn ghost image-remove-btn"
-                    onClick={() => onImageRemove(themeMode, index)}
+                    onClick={() => onImageRemove(index)}
                     type="button"
                   >
                     Remove
@@ -78,7 +78,7 @@ function ProductForm({
             ))}
           </div>
         ) : (
-          <p className="helper-text">No {themeMode} mode images selected yet.</p>
+          <p className="helper-text">No attachments selected yet.</p>
         )}
       </div>
     );
@@ -246,18 +246,9 @@ function ProductForm({
           </div>
 
           <div className="field field-wide">
-            <label>Product Images</label>
+            <label>Attachments</label>
             <div className="image-upload-grid">
-              {renderImageGroup(
-                "light",
-                "Light Mode",
-                "These images will be shown when the storefront is in light mode."
-              )}
-              {renderImageGroup(
-                "dark",
-                "Dark Mode",
-                "These images will be shown when the storefront is in dark mode."
-              )}
+              {renderImageGroup()}
             </div>
           </div>
 

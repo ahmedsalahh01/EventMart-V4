@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import ProductForm from "../components/ProductForm";
 import ProductList from "../components/ProductList";
 import {
-  MAX_IMAGES_PER_MODE,
+  MAX_PRODUCT_IMAGES,
   ONE_SIZE_LABEL,
   buildFormFromProduct,
   formatProductActionError,
@@ -67,8 +67,7 @@ function syncVariationRows(variations, formState) {
 }
 
 function revokeFormPreviewUrls(form) {
-  (form?.light_images || []).forEach(revokeLocalImageEntry);
-  (form?.dark_images || []).forEach(revokeLocalImageEntry);
+  (form?.images || []).forEach(revokeLocalImageEntry);
 }
 
 function readFileAsDataUrl(file) {
@@ -169,8 +168,7 @@ function createValidationForm(form) {
 
   return {
     ...form,
-    dark_images: mapImages(form.dark_images),
-    light_images: mapImages(form.light_images)
+    images: mapImages(form.images)
   };
 }
 
@@ -191,8 +189,7 @@ async function createInlineFallbackForm(form) {
 
   return {
     ...form,
-    dark_images: await mapImages(form.dark_images),
-    light_images: await mapImages(form.light_images)
+    images: await mapImages(form.images)
   };
 }
 
@@ -214,8 +211,7 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
         !current.category &&
         !current.subcategory &&
         !current.description &&
-        current.light_images.length === 0 &&
-        current.dark_images.length === 0 &&
+        current.images.length === 0 &&
         !current.colors &&
         !current.quality &&
         !current.quality_points &&
@@ -347,15 +343,14 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
     });
   }
 
-  async function handleImageSelect(themeMode, fileList) {
+  async function handleImageSelect(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
 
-    const fieldName = themeMode === "dark" ? "dark_images" : "light_images";
-    const currentCount = form[fieldName]?.length || 0;
+    const currentCount = form.images?.length || 0;
 
-    if (currentCount + files.length > MAX_IMAGES_PER_MODE) {
-      setPageError(`You can upload up to ${MAX_IMAGES_PER_MODE} ${themeMode} mode images per product.`);
+    if (currentCount + files.length > MAX_PRODUCT_IMAGES) {
+      setPageError(`You can upload up to ${MAX_PRODUCT_IMAGES} shared attachments per product.`);
       return;
     }
 
@@ -374,7 +369,7 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
     try {
       setForm((current) => ({
         ...current,
-        [fieldName]: [...current[fieldName], ...files.map(createLocalImageEntry)]
+        images: [...current.images, ...files.map(createLocalImageEntry)]
       }));
       setNotice("");
       setPageError("");
@@ -383,15 +378,14 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
     }
   }
 
-  function handleImageRemove(themeMode, indexToRemove) {
-    const fieldName = themeMode === "dark" ? "dark_images" : "light_images";
-    const removedImage = form[fieldName]?.[indexToRemove];
+  function handleImageRemove(indexToRemove) {
+    const removedImage = form.images?.[indexToRemove];
 
     revokeLocalImageEntry(removedImage);
 
     setForm((current) => ({
       ...current,
-      [fieldName]: current[fieldName].filter((_, index) => index !== indexToRemove)
+      images: current.images.filter((_, index) => index !== indexToRemove)
     }));
     setNotice("");
     setPageError("");
@@ -428,15 +422,12 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
     try {
       buildProductPayload(createValidationForm(form), { editingId, products });
 
-      const uploadImages = async (themeMode, images) => {
+      const uploadImages = async (images) => {
         const nextUrls = [];
 
         for (const image of images || []) {
           if (isLocalImageEntry(image)) {
-            const uploadedUrl = await uploadProductImage(image.file, {
-              productId: form.product_id,
-              themeMode
-            });
+            const uploadedUrl = await uploadProductImage(image.file, { productId: form.product_id });
             uploadedUrls.push(uploadedUrl);
             nextUrls.push(uploadedUrl);
             continue;
@@ -453,8 +444,7 @@ function ProductsPage({ error, isLoading, onProductsRefresh, products }) {
       try {
         preparedForm = {
           ...form,
-          dark_images: await uploadImages("dark", form.dark_images),
-          light_images: await uploadImages("light", form.light_images)
+          images: await uploadImages(form.images)
         };
       } catch (uploadError) {
         if (!isMissingImageUploadEndpointError(uploadError)) {

@@ -42,8 +42,7 @@ function ProductList({
         {products.map((product) => {
           const buy = product.buy_enabled ? formatMoney(product.buy_price, product.currency) : "-";
           const rent = product.rent_enabled ? formatMoney(product.rent_price_per_day, product.currency) : "-";
-          const lightCount = Array.isArray(product.light_images) ? product.light_images.length : 0;
-          const darkCount = Array.isArray(product.dark_images) ? product.dark_images.length : 0;
+          const imageCount = Array.isArray(product.images) ? product.images.length : 0;
 
           return (
             <article className="admin-product-card" key={product.id}>
@@ -68,9 +67,7 @@ function ProductList({
                   {product.customizable ? "Customizable" : "Standard"}
                 </p>
                 <p className="meta">Featured badge: {product.featured ? "On" : "Off"}</p>
-                <p className="meta">
-                  Light images: {lightCount} | Dark images: {darkCount}
-                </p>
+                <p className="meta">Attachments: {imageCount}</p>
                 <p className="price-line">
                   Buy: {buy} | Rent/day: {rent}
                 </p>
