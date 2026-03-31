@@ -4,17 +4,21 @@ import AppScaleFrame from "./components/AppScaleFrame";
 import AdminLayout from "./components/AdminLayout";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import DashboardPage from "./pages/DashboardPage";
+import PackagesPage from "./pages/PackagesPage";
 import ProductsPage from "./pages/ProductsPage";
 import UsersPage from "./pages/UsersPage";
-import { METRICS_KEY, loadProducts, loadUsers } from "./lib/admin";
+import { METRICS_KEY, loadPackages, loadProducts, loadUsers } from "./lib/admin";
 
 function App() {
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [packages, setPackages] = useState([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
   const [productsError, setProductsError] = useState("");
   const [usersError, setUsersError] = useState("");
+  const [packagesError, setPackagesError] = useState("");
   const [metricsRevision, setMetricsRevision] = useState(0);
 
   async function refreshProducts() {
@@ -51,9 +55,27 @@ function App() {
     }
   }
 
+  async function refreshPackages() {
+    setPackagesLoading(true);
+    setPackagesError("");
+
+    try {
+      const rows = await loadPackages();
+      setPackages(rows);
+      return rows;
+    } catch (error) {
+      setPackages([]);
+      setPackagesError(error?.message || "Unable to load packages.");
+      throw error;
+    } finally {
+      setPackagesLoading(false);
+    }
+  }
+
   useEffect(() => {
     void refreshProducts().catch(() => {});
     void refreshUsers().catch(() => {});
+    void refreshPackages().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -113,6 +135,19 @@ function App() {
                 metricsRevision={metricsRevision}
                 onRefresh={refreshProducts}
                 products={products}
+              />
+            }
+          />
+          <Route
+            path="/packages"
+            element={
+              <PackagesPage
+                error={packagesError}
+                isLoading={packagesLoading}
+                onPackagesRefresh={refreshPackages}
+                packages={packages}
+                products={products}
+                productsError={productsError}
               />
             }
           />

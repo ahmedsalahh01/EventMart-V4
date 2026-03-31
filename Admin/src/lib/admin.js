@@ -848,28 +848,105 @@ export function buildPackageMinimumQuantityNotice(productName, minimumQuantity) 
   return `Selecting fewer than ${safeMinimum} unit${safeMinimum === 1 ? "" : "s"} of ${safeName} may apply extra fees.`;
 }
 
+export function createEmptyPackageDiscountTier() {
+  return {
+    discountPercent: "0",
+    id: randomId(),
+    label: "",
+    maxQuantity: "",
+    minQuantity: "1",
+    unitPriceOverride: ""
+  };
+}
+
+function normalizePackageDiscountTierRow(tier, index) {
+  return {
+    discountPercent: String(toNum(tier?.discountPercent ?? tier?.discount_percent, 0) ?? 0),
+    id: tier?.id || randomId(),
+    label: String(tier?.label || ""),
+    maxQuantity:
+      tier?.maxQuantity === null || tier?.maxQuantity === undefined || tier?.maxQuantity === ""
+        ? ""
+        : String(Math.max(1, Number(tier.maxQuantity))),
+    minQuantity: String(Math.max(1, Number((tier?.minQuantity ?? tier?.min_quantity ?? (index === 0 ? 1 : 0)) || 1))),
+    unitPriceOverride:
+      tier?.unitPriceOverride === null || tier?.unitPriceOverride === undefined || tier?.unitPriceOverride === ""
+        ? ""
+        : String(toNum(tier.unitPriceOverride, 0) ?? 0)
+  };
+}
+
+function normalizePackageDiscountTierRows(value) {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.length ? rows.map(normalizePackageDiscountTierRow) : [createEmptyPackageDiscountTier()];
+}
+
+function normalizePackageContextDefaults(value) {
+  return {
+    budget: String(value?.budget ?? ""),
+    deliveryPlace: String(value?.deliveryPlace ?? value?.delivery_place ?? ""),
+    eventType: String(value?.eventType ?? value?.event_type ?? ""),
+    guestCount: String(value?.guestCount ?? value?.guest_count ?? ""),
+    venueSize: String(value?.venueSize ?? value?.venue_size ?? ""),
+    venueType: String(value?.venueType ?? value?.venue_type ?? "")
+  };
+}
+
+function normalizePackageItemFormRow(item, index) {
+  const product = item?.product && typeof item.product === "object" ? item.product : {};
+  const minimumQuantity = Math.max(1, Number(item?.minimumQuantity ?? item?.minimum_quantity ?? 1));
+  const defaultQuantity = Math.max(
+    minimumQuantity,
+    Number(item?.defaultQuantity ?? item?.default_quantity ?? minimumQuantity)
+  );
+
+  return {
+    appliesToEventTypes: normalizeTextList(
+      item?.appliesToEventTypes ?? item?.applies_to_event_types,
+      80
+    ).join("\n"),
+    appliesToVenueTypes: normalizeTextList(
+      item?.appliesToVenueTypes ?? item?.applies_to_venue_types,
+      80
+    ).join("\n"),
+    defaultQuantity: String(defaultQuantity),
+    discountTiers: normalizePackageDiscountTierRows(item?.discountTiers ?? item?.discount_tiers),
+    id: item?.id || randomId(),
+    minimumQuantity: String(minimumQuantity),
+    minimumQuantityNotice:
+      String(item?.minimumQuantityNotice || item?.minimum_quantity_notice || "").trim()
+      || buildPackageMinimumQuantityNotice(product?.name, minimumQuantity),
+    notes: String(item?.notes || ""),
+    preferredMode: String(item?.preferredMode ?? item?.preferred_mode ?? "buy"),
+    product,
+    productId: String(item?.productId || item?.product_id || product?.id || ""),
+    required: Boolean(item?.required ?? item?.is_required),
+    sortOrder: Number(item?.sortOrder ?? item?.sort_order ?? index)
+  };
+}
+
 function mapApiPackage(row) {
   const items = Array.isArray(row?.items) ? row.items : [];
 
   return {
     active: row?.active !== false,
+    contextDefaults: normalizePackageContextDefaults(row?.contextDefaults || row?.context_defaults || {}),
     created_at: String(row?.created_at ?? ""),
+    description: String(row?.description || ""),
+    eventType: String(row?.eventType ?? row?.event_type ?? ""),
     id: Number(row?.id || 0),
     items: items.map((item, index) => {
-      const product = item?.product && typeof item.product === "object" ? item.product : {};
-      const minimumQuantity = Math.max(1, Number(item?.minimum_quantity || 1));
+      const rowItem = normalizePackageItemFormRow(item, index);
+      const product = rowItem.product && typeof rowItem.product === "object" ? rowItem.product : {};
 
       return {
-        id: Number(item?.id || 0),
-        minimumQuantity: String(minimumQuantity),
-        minimumQuantityNotice:
-          String(item?.minimum_quantity_notice || "").trim()
-          || buildPackageMinimumQuantityNotice(product?.name, minimumQuantity),
+        ...rowItem,
         product: {
           active: product?.active !== false,
           buy_price: product?.buy_price === null || product?.buy_price === undefined ? null : Number(product.buy_price),
           category: String(product?.category || ""),
           currency: String(product?.currency || DEFAULT_CURRENCY_ALPHA),
+          description: String(product?.description || ""),
           id: Number(product?.id || item?.product_id || 0),
           image_url: String(product?.image_url || ""),
           name: String(product?.name || ""),
@@ -879,14 +956,15 @@ function mapApiPackage(row) {
               ? null
               : Number(product.rent_price_per_day),
           subcategory: String(product?.subcategory || "")
-        },
-        productId: String(item?.product_id || product?.id || ""),
-        sortOrder: Number(item?.sort_order ?? index)
+        }
       };
     }),
     name: String(row?.name || ""),
+    preview: row?.preview && typeof row.preview === "object" ? row.preview : null,
     slug: String(row?.slug || ""),
-    updated_at: String(row?.updated_at ?? "")
+    status: String(row?.status || "draft"),
+    updated_at: String(row?.updated_at ?? ""),
+    visibility: String(row?.visibility || "public")
   };
 }
 
@@ -898,22 +976,7 @@ function nextStoredPackageId(packages) {
 }
 
 function normalizeStoredPackageItem(item, index) {
-  const product = item?.product && typeof item.product === "object" ? item.product : {};
-  const minimumQuantity = Math.max(
-    1,
-    Number(item?.minimumQuantity ?? item?.minimum_quantity ?? 1)
-  );
-
-  return {
-    id: Number(item?.id || index + 1),
-    minimumQuantity: String(minimumQuantity),
-    minimumQuantityNotice:
-      String(item?.minimumQuantityNotice || item?.minimum_quantity_notice || "").trim()
-      || buildPackageMinimumQuantityNotice(product?.name, minimumQuantity),
-    product,
-    productId: String(item?.productId || item?.product_id || product?.id || ""),
-    sortOrder: Number(item?.sortOrder ?? item?.sort_order ?? index)
-  };
+  return normalizePackageItemFormRow(item, index);
 }
 
 function normalizeStoredPackage(pkg, index) {
@@ -924,12 +987,18 @@ function normalizeStoredPackage(pkg, index) {
 
   return {
     active: pkg?.active !== false,
+    contextDefaults: normalizePackageContextDefaults(pkg?.contextDefaults || pkg?.context_defaults || {}),
     created_at: String(pkg?.created_at || ""),
+    description: String(pkg?.description || ""),
+    eventType: String(pkg?.eventType ?? pkg?.event_type ?? ""),
     id,
     items: items.map((item, itemIndex) => normalizeStoredPackageItem(item, itemIndex)),
     name,
+    preview: pkg?.preview && typeof pkg.preview === "object" ? pkg.preview : null,
     slug: baseSlug,
-    updated_at: String(pkg?.updated_at || "")
+    status: String(pkg?.status || "draft"),
+    updated_at: String(pkg?.updated_at || ""),
+    visibility: String(pkg?.visibility || "public")
   };
 }
 
@@ -988,19 +1057,36 @@ function savePackageToStorage(pkg, editingId) {
 
   const nextPackage = normalizeStoredPackage({
     active: pkg?.active !== false,
+    contextDefaults: pkg?.contextDefaults || pkg?.context_defaults || {},
     created_at: existingPackage?.created_at || now,
+    description: String(pkg?.description || "").trim(),
+    eventType: String(pkg?.eventType ?? pkg?.event_type ?? "").trim(),
     id: packageId,
     items: (Array.isArray(pkg?.items) ? pkg.items : []).map((item, index) => ({
+      appliesToEventTypes: item?.applies_to_event_types || item?.appliesToEventTypes || [],
+      appliesToVenueTypes: item?.applies_to_venue_types || item?.appliesToVenueTypes || [],
+      defaultQuantity: String(
+        Math.max(
+          Number(item?.minimum_quantity ?? item?.minimumQuantity ?? 1),
+          Number(item?.default_quantity ?? item?.defaultQuantity ?? item?.minimum_quantity ?? item?.minimumQuantity ?? 1)
+        )
+      ),
+      discountTiers: item?.discount_tiers || item?.discountTiers || [],
       id: existingPackage?.items?.[index]?.id || index + 1,
       minimumQuantity: String(Math.max(1, Number(item?.minimum_quantity ?? item?.minimumQuantity ?? 1))),
       minimumQuantityNotice: buildPackageMinimumQuantityNotice("", item?.minimum_quantity ?? item?.minimumQuantity ?? 1),
+      notes: String(item?.notes || ""),
+      preferredMode: String(item?.preferred_mode || item?.preferredMode || "buy"),
       product: {},
       productId: String(item?.product_id || item?.productId || ""),
+      required: Boolean(item?.is_required ?? item?.required),
       sortOrder: index
     })),
     name: String(pkg?.name || "").trim(),
+    status: String(pkg?.status || "draft").trim() || "draft",
     slug: createStoredPackageSlug(pkg?.name, packages, packageId),
-    updated_at: now
+    updated_at: now,
+    visibility: String(pkg?.visibility || "public").trim() || "public"
   });
 
   const nextPackages = existingPackage
@@ -1059,7 +1145,7 @@ export async function loadPackages() {
   const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
 
   try {
-    const rows = await apiRequestJson(PACKAGES_PATH, {
+    const rows = await apiRequestJson(`${PACKAGES_PATH}?all=1`, {
       fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
       retryStatusCodes: [404]
     });
@@ -1071,6 +1157,22 @@ export async function loadPackages() {
 
     throw error;
   }
+}
+
+export async function previewPackageDraft(pkg, options = {}) {
+  const runtimeLocation = readRuntimeLocation();
+  const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
+
+  return apiRequestJson(`${PACKAGES_PATH}/preview`, {
+    body: {
+      context: options.context || pkg?.contextDefaults || {},
+      package: pkg,
+      packageGroupId: options.packageGroupId || `admin-preview-${Date.now()}`
+    },
+    fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
+    method: "POST",
+    retryStatusCodes: [404]
+  });
 }
 
 export async function saveProduct(product, editingId) {
@@ -1203,17 +1305,29 @@ export function createEmptyProductForm(products) {
 
 export function createEmptyPackageItem() {
   return {
+    appliesToEventTypes: "",
+    appliesToVenueTypes: "",
+    defaultQuantity: "1",
+    discountTiers: [createEmptyPackageDiscountTier()],
     id: randomId(),
     minimumQuantity: "1",
-    productId: ""
+    notes: "",
+    preferredMode: "buy",
+    productId: "",
+    required: true
   };
 }
 
 export function createEmptyPackageForm() {
   return {
     active: true,
+    contextDefaults: normalizePackageContextDefaults({}),
+    description: "",
+    eventType: "",
     items: [createEmptyPackageItem()],
-    name: ""
+    name: "",
+    status: "draft",
+    visibility: "public"
   };
 }
 
@@ -1263,14 +1377,15 @@ export function buildFormFromProduct(product) {
 export function buildFormFromPackage(pkg) {
   return {
     active: Boolean(pkg?.active),
+    contextDefaults: normalizePackageContextDefaults(pkg?.contextDefaults || pkg?.context_defaults || {}),
+    description: String(pkg?.description || ""),
+    eventType: String(pkg?.eventType ?? pkg?.event_type ?? ""),
     items: Array.isArray(pkg?.items) && pkg.items.length
-      ? pkg.items.map((item) => ({
-          id: item.id || randomId(),
-          minimumQuantity: String(item.minimumQuantity || item.minimum_quantity || 1),
-          productId: String(item.productId || item.product_id || item?.product?.id || "")
-        }))
+      ? pkg.items.map((item, index) => normalizePackageItemFormRow(item, index))
       : [createEmptyPackageItem()],
-    name: String(pkg?.name || "")
+    name: String(pkg?.name || ""),
+    status: String(pkg?.status || "draft"),
+    visibility: String(pkg?.visibility || "public")
   };
 }
 
@@ -1438,6 +1553,10 @@ export function buildProductPayload(form, { editingId, products }) {
 
 export function buildPackagePayload(form) {
   const name = String(form?.name || "").trim();
+  const description = String(form?.description || "").trim();
+  const eventType = String(form?.eventType || "").trim();
+  const visibility = String(form?.visibility || "public").trim().toLowerCase() || "public";
+  const status = String(form?.status || "draft").trim().toLowerCase() || "draft";
   const active = Boolean(form?.active);
   const rows = Array.isArray(form?.items) ? form.items : [];
 
@@ -1453,6 +1572,9 @@ export function buildPackagePayload(form) {
   const items = rows.map((row, index) => {
     const productId = Number(row?.productId || 0);
     const minimumQuantity = Number(row?.minimumQuantity || 0);
+    const defaultQuantity = Number(row?.defaultQuantity || minimumQuantity || 0);
+    const preferredMode = String(row?.preferredMode || "").trim().toLowerCase();
+    const discountTierRows = Array.isArray(row?.discountTiers) ? row.discountTiers : [];
 
     if (!Number.isInteger(productId) || productId <= 0) {
       throw new Error(`Package item ${index + 1} must select a product.`);
@@ -1462,22 +1584,86 @@ export function buildPackagePayload(form) {
       throw new Error(`Package item ${index + 1} minimum quantity must be at least 1.`);
     }
 
+    if (!Number.isInteger(defaultQuantity) || defaultQuantity < minimumQuantity) {
+      throw new Error(`Package item ${index + 1} default quantity must be at least the minimum quantity.`);
+    }
+
     if (seenProductIds.has(productId)) {
       throw new Error("Each product can only appear once in a package.");
     }
 
     seenProductIds.add(productId);
 
+    const discountTiers = discountTierRows
+      .filter((tier) =>
+        String(tier?.minQuantity || "").trim() ||
+        String(tier?.maxQuantity || "").trim() ||
+        String(tier?.discountPercent || "").trim() ||
+        String(tier?.label || "").trim() ||
+        String(tier?.unitPriceOverride || "").trim()
+      )
+      .map((tier, tierIndex) => {
+        const minQuantity = Number(tier?.minQuantity || 0);
+        const maxQuantityRaw = String(tier?.maxQuantity || "").trim();
+        const maxQuantity = maxQuantityRaw ? Number(maxQuantityRaw) : null;
+        const discountPercent = Number(tier?.discountPercent || 0);
+        const unitPriceOverrideRaw = String(tier?.unitPriceOverride || "").trim();
+        const unitPriceOverride = unitPriceOverrideRaw ? Number(unitPriceOverrideRaw) : null;
+
+        if (!Number.isInteger(minQuantity) || minQuantity < 1) {
+          throw new Error(`Package item ${index + 1} discount tier ${tierIndex + 1} requires a minimum quantity of at least 1.`);
+        }
+
+        if (maxQuantity !== null && (!Number.isInteger(maxQuantity) || maxQuantity < minQuantity)) {
+          throw new Error(`Package item ${index + 1} discount tier ${tierIndex + 1} max quantity must be blank or greater than the minimum quantity.`);
+        }
+
+        if (Number.isNaN(discountPercent) || discountPercent < 0) {
+          throw new Error(`Package item ${index + 1} discount tier ${tierIndex + 1} discount percent must be 0 or higher.`);
+        }
+
+        if (unitPriceOverride !== null && (Number.isNaN(unitPriceOverride) || unitPriceOverride < 0)) {
+          throw new Error(`Package item ${index + 1} discount tier ${tierIndex + 1} unit price override must be 0 or higher.`);
+        }
+
+        return {
+          discountPercent,
+          label: String(tier?.label || "").trim(),
+          maxQuantity,
+          minQuantity,
+          unitPriceOverride
+        };
+      });
+
     return {
+      applies_to_event_types: normalizeTextList(row?.appliesToEventTypes, 80),
+      applies_to_venue_types: normalizeTextList(row?.appliesToVenueTypes, 80),
+      default_quantity: defaultQuantity,
+      discount_tiers: discountTiers,
+      is_required: Boolean(row?.required),
       minimum_quantity: minimumQuantity,
+      notes: String(row?.notes || "").trim(),
+      preferred_mode: preferredMode === "rent" ? "rent" : "buy",
       product_id: productId
     };
   });
 
   return {
     active,
+    contextDefaults: {
+      budget: toNum(form?.contextDefaults?.budget, 0) ?? 0,
+      deliveryPlace: String(form?.contextDefaults?.deliveryPlace || "").trim(),
+      eventType: String(form?.contextDefaults?.eventType || eventType).trim(),
+      guestCount: toNum(form?.contextDefaults?.guestCount, 0) ?? 0,
+      venueSize: String(form?.contextDefaults?.venueSize || "").trim(),
+      venueType: String(form?.contextDefaults?.venueType || "").trim()
+    },
+    description,
+    event_type: eventType,
     items,
-    name
+    name,
+    status,
+    visibility
   };
 }
 
@@ -1566,8 +1752,13 @@ export function packageMatchesSearch(pkg, query) {
 
   return [
     pkg?.name,
+    pkg?.description,
+    pkg?.eventType,
+    pkg?.status,
+    pkg?.visibility,
     ...(Array.isArray(pkg?.items)
       ? pkg.items.flatMap((item) => [
+          item?.notes,
           item?.product?.name,
           item?.product?.category,
           item?.product?.subcategory,
