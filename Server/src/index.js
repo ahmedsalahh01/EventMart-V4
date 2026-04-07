@@ -7,6 +7,11 @@ const fs = require("fs");
 const path = require("path");
 const pool = require("./db");
 const {
+  deleteManagedProductImage,
+  isManagedProductImageUrl: isManagedCloudinaryProductImageUrl,
+  uploadProductImageBuffer: uploadProductImageToCloudinary
+} = require("./lib/cloudinary");
+const {
   ONE_SIZE_LABEL,
   buildVariationKey,
   isVariationAvailable,
@@ -25,13 +30,16 @@ const {
   buildPublicOrderId,
   buildShippingSummary,
   calculateDeliveryEstimate,
-  calculateTotals,
   extractEgyptAddressFromReversePayload,
   isCoordinateWithinEgypt,
   normalizeOrderCartItems,
   roundCurrency,
   validateCheckoutSubmission
 } = require("./lib/checkout");
+const { applyPricingToResolvedLines, getBuilderCategory, normalizePackageMeta } = require("./lib/packageBuilder");
+const createAdminProductsRouter = require("./routes/adminProducts");
+const createPackagesRouter = require("./routes/packages");
+const recommendationRouter = require("./routes/recommendations");
 require("dotenv").config();
 
 const fsp = fs.promises;
@@ -40,16 +48,15 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || "eventmart_dev_secret_change_me";
 const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 const UPLOADS_DIR = path.resolve(__dirname, "../uploads");
 const PRODUCT_UPLOADS_DIR = path.join(UPLOADS_DIR, "products");
 const PRIVATE_UPLOADS_DIR = path.resolve(__dirname, "../private-uploads");
 const CUSTOMIZATION_UPLOADS_DIR = path.join(PRIVATE_UPLOADS_DIR, "customizations");
-const MAX_PRODUCT_IMAGES_PER_MODE = 10;
+const MAX_PRODUCT_IMAGES = 10;
 const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CUSTOMIZATION_UPLOAD_BYTES = 10 * 1024 * 1024;
+const PRODUCT_CATALOG_CACHE_TTL_MS = 15000;
 const DATA_IMAGE_URL_REGEX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)$/;
 const PRODUCT_IMAGE_UPLOAD_PARSER = express.raw({ limit: "10mb", type: () => true });
 const CUSTOMIZATION_UPLOAD_PARSER = express.raw({ limit: "12mb", type: () => true });
@@ -59,6 +66,10 @@ const CUSTOMIZATION_UPLOAD_EXTENSIONS = Object.freeze({
   "image/png": "png"
 });
 const CUSTOMIZATION_UPLOAD_ALLOWED_EXTENSIONS = new Set(["pdf", "png"]);
+const productCatalogCache = {
+  expiresAt: 0,
+  rows: null
+};
 
 const allowedOrigins = Array.from(
   new Set(
@@ -132,6 +143,9 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "120mb" }));
+app.use("/api/recommendations", recommendationRouter);
+app.use("/api/admin/products", createAdminProductsRouter({ pool }));
+app.use("/api", createPackagesRouter({ pool }));
 app.use("/uploads", express.static(UPLOADS_DIR));
 app.use((error, _req, res, next) => {
   if (error?.type === "entity.too.large") {
@@ -263,12 +277,11 @@ function fallbackPlannerReply(prompt, context, products) {
 
   const categoryHints = {
     wedding: ["wood", "sound", "stage"],
-    conference: ["sound", "merch", "wood"],
-    concert: ["stage", "sound", "light"],
+    "private-party": ["merch", "giveaway", "sound"],
     birthday: ["merch", "sound", "wood"],
     corporate: ["sound", "stage", "wood"],
-    festival: ["stage", "sound", "light"],
-    exhibition: ["wood", "merch", "stage"]
+    outdoor: ["stage", "sound", "screen"],
+    indoor: ["light", "sound", "screen"]
   };
 
   const hints = categoryHints[eventType.toLowerCase()] || [];
@@ -317,35 +330,6 @@ function fallbackPlannerReply(prompt, context, products) {
   return lines.join("\n");
 }
 
-function formatPlannerReplyText(content) {
-  return String(content || "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]*\n[ \t]*/g, "\n")
-    .replace(/([^\n])\s+(###\s+)/g, "$1\n\n$2")
-    .replace(/([^\n])\s+-\s+(?=(?:\*\*|[A-Za-z0-9]))/g, "$1\n- ")
-    .replace(/\s+(You can refine this plan|I can refine this plan further)\b/g, "\n\n$1")
-    .trim();
-}
-
-function extractResponseText(payload) {
-  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
-    return formatPlannerReplyText(payload.output_text);
-  }
-
-  const chunks = [];
-  const output = Array.isArray(payload?.output) ? payload.output : [];
-
-  output.forEach((item) => {
-    const content = Array.isArray(item?.content) ? item.content : [];
-    content.forEach((part) => {
-      if (typeof part?.text === "string") chunks.push(part.text);
-      if (typeof part?.output_text === "string") chunks.push(part.output_text);
-    });
-  });
-
-  return formatPlannerReplyText(chunks.join("\n"));
-}
-
 const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
 const CURRENCY_REGEX = /^[A-Z]{3}$/;
 
@@ -385,19 +369,36 @@ function normalizeImageSourceList(value) {
     });
 }
 
+function mergeUniqueImageSourceLists(...values) {
+  const seen = new Set();
+  const merged = [];
+
+  values.forEach((value) => {
+    normalizeImageSourceList(value).forEach((image) => {
+      if (!seen.has(image)) {
+        seen.add(image);
+        merged.push(image);
+      }
+    });
+  });
+
+  return merged;
+}
+
 function resolveProductImageCollections(row) {
-  const lightImages = normalizeImageSourceList(row?.light_images);
-  const darkImages = normalizeImageSourceList(row?.dark_images);
+  const images = mergeUniqueImageSourceLists(
+    row?.images,
+    row?.light_images,
+    row?.dark_images,
+    row?.image_url
+  );
   const legacyImageUrl = String(row?.image_url || "").trim();
 
-  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
-    lightImages.push(legacyImageUrl);
-  }
-
   return {
-    dark_images: darkImages,
-    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
-    light_images: lightImages
+    dark_images: images,
+    image_url: images[0] || legacyImageUrl,
+    images,
+    light_images: images
   };
 }
 
@@ -420,6 +421,16 @@ function getImageExtensionFromFilename(fileName) {
   return extension.replace(/[^a-z0-9]/g, "").slice(0, 10);
 }
 
+function sanitizeStoredFilename(fileName) {
+  return path
+    .basename(String(fileName || "product-image"))
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
 function isSupportedImageExtension(extension) {
   return ["avif", "bmp", "gif", "jpg", "jpeg", "png", "svg", "webp"].includes(
     String(extension || "").toLowerCase()
@@ -432,12 +443,6 @@ function getPreferredImageExtension({ fileName, mimeType }) {
 
   const fromFileName = getImageExtensionFromFilename(fileName);
   return fromFileName || "bin";
-}
-
-function parseThemeMode(value) {
-  const themeMode = String(value || "").trim().toLowerCase();
-  if (themeMode === "light" || themeMode === "dark") return themeMode;
-  throw createHttpError(400, "theme_mode must be either 'light' or 'dark'.");
 }
 
 function parseProductCode(value) {
@@ -481,7 +486,10 @@ function decodeImageDataUrl(dataUrl) {
 }
 
 function isManagedProductUploadUrl(url) {
-  return String(url || "").startsWith("/uploads/products/");
+  return (
+    String(url || "").startsWith("/uploads/products/") ||
+    isManagedCloudinaryProductImageUrl(url)
+  );
 }
 
 function getManagedUploadPathFromUrl(url) {
@@ -523,6 +531,15 @@ async function pruneEmptyDirectories(filePath, rootDir) {
 }
 
 async function removeManagedProductUploadUrl(url) {
+  if (isManagedCloudinaryProductImageUrl(url)) {
+    try {
+      await deleteManagedProductImage(url);
+    } catch (error) {
+      console.warn("IMAGE CLEANUP WARNING:", error.message);
+    }
+    return;
+  }
+
   const absolutePath = getManagedUploadPathFromUrl(url);
   if (!absolutePath) return;
 
@@ -536,41 +553,34 @@ async function removeManagedProductUploadUrl(url) {
   }
 }
 
-async function saveUploadedProductImageBuffer(productCode, themeMode, buffer, { fileName, mimeType }) {
-  const themeDir = path.join(PRODUCT_UPLOADS_DIR, "catalog", productCode, themeMode);
-  const extension = getPreferredImageExtension({ fileName, mimeType });
+async function saveUploadedProductImageBuffer(productCode, buffer, { fileName, mimeType }) {
+  const upload = await uploadProductImageToCloudinary(buffer, {
+    fileName: `${sanitizeStoredFilename(fileName) || "product-image"}.${getPreferredImageExtension({ fileName, mimeType })}`,
+    folderSegments: ["catalog", productCode, "shared"],
+    mimeType
+  });
 
-  await fsp.mkdir(themeDir, { recursive: true });
-
-  const storedFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
-  const filePath = path.join(themeDir, storedFileName);
-
-  await fsp.writeFile(filePath, buffer);
-
-  return `/uploads/products/catalog/${productCode}/${themeMode}/${storedFileName}`;
+  return upload.secureUrl;
 }
 
-async function saveProductImageDataUrl(productId, themeMode, sortOrder, dataUrl) {
-  const { buffer, extension } = decodeImageDataUrl(dataUrl);
-  const themeDir = path.join(PRODUCT_UPLOADS_DIR, String(productId), themeMode);
+async function saveProductImageDataUrl(productCode, sortOrder, dataUrl) {
+  const { buffer, extension, mimeType } = decodeImageDataUrl(dataUrl);
+  const upload = await uploadProductImageToCloudinary(buffer, {
+    fileName: `inline-${sortOrder}.${extension}`,
+    folderSegments: ["catalog", productCode, "shared"],
+    mimeType
+  });
 
-  await fsp.mkdir(themeDir, { recursive: true });
-
-  const fileName = `${Date.now()}-${sortOrder}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
-  const filePath = path.join(themeDir, fileName);
-
-  await fsp.writeFile(filePath, buffer);
-
-  return `/uploads/products/${productId}/${themeMode}/${fileName}`;
+  return upload.secureUrl;
 }
 
-async function materializeProductImages(productId, themeMode, imageSources, createdUploadUrls) {
+async function materializeProductImages(productCode, imageSources, createdUploadUrls) {
   const resolvedUrls = [];
 
   for (let index = 0; index < imageSources.length; index += 1) {
     const source = imageSources[index];
     if (DATA_IMAGE_URL_REGEX.test(source)) {
-      const storedUrl = await saveProductImageDataUrl(productId, themeMode, index, source);
+      const storedUrl = await saveProductImageDataUrl(productCode, index, source);
       createdUploadUrls.push(storedUrl);
       resolvedUrls.push(storedUrl);
       continue;
@@ -666,6 +676,7 @@ const PRODUCT_SELECT_SQL = `
   SELECT
     p.id,
     p.product_id,
+    p.sku,
     p.name,
     p.slug,
     p.category,
@@ -681,7 +692,13 @@ const PRODUCT_SELECT_SQL = `
     p.rent_enabled,
     p.buy_price,
     p.rent_price_per_day,
+    COALESCE(p.base_price, p.buy_price, p.rent_price_per_day) AS base_price,
     p.currency,
+    COALESCE(p.event_type, '') AS event_type,
+    COALESCE(p.tags, '[]'::jsonb) AS tags,
+    COALESCE(p.customization_fee, 0) AS customization_fee,
+    COALESCE(p.venue_type, '') AS venue_type,
+    COALESCE(p.delivery_class, '') AS delivery_class,
     p.featured,
     p.active,
     p.created_at,
@@ -911,16 +928,16 @@ function normalizeProductPayload(body) {
     .toUpperCase();
   const sizeMode = normalizeSizeMode(body?.size_mode || body?.sizeMode);
   const legacyImageUrl = String(body?.image_url || "").trim();
-  const lightImages = normalizeImageSourceList(body?.light_images);
-  const darkImages = normalizeImageSourceList(body?.dark_images);
+  const images = mergeUniqueImageSourceLists(
+    body?.images,
+    body?.light_images,
+    body?.dark_images,
+    legacyImageUrl
+  );
   const quantityAvailable = parseWholeNumber(body?.quantity_available, "Quantity available");
   const variations = normalizeVariationPayloadList(body?.variations, sizeMode, quantityAvailable);
   const colors = normalizeTextList(body?.colors, 60);
   const sizes = sortSizes(normalizeTextList(body?.sizes, 40), sizeMode);
-
-  if (!lightImages.length && !darkImages.length && legacyImageUrl) {
-    lightImages.push(legacyImageUrl);
-  }
 
   if (!PRODUCT_ID_REGEX.test(productId)) {
     throw createHttpError(400, "Product ID must be exactly 5 digits like 00001.");
@@ -939,12 +956,8 @@ function normalizeProductPayload(body) {
     throw createHttpError(400, "Enable at least Buy or Rent.");
   }
 
-  if (lightImages.length > MAX_PRODUCT_IMAGES_PER_MODE) {
-    throw createHttpError(400, "A product can have up to 10 light mode images.");
-  }
-
-  if (darkImages.length > MAX_PRODUCT_IMAGES_PER_MODE) {
-    throw createHttpError(400, "A product can have up to 10 dark mode images.");
+  if (images.length > MAX_PRODUCT_IMAGES) {
+    throw createHttpError(400, "A product can have up to 10 images.");
   }
 
   const catalogShape = materializeProductCatalogShape({
@@ -1004,9 +1017,10 @@ function normalizeProductPayload(body) {
     reorder_level: parseWholeNumber(body?.reorder_level, "Reorder level"),
     unit_cost: parseOptionalNumber(body?.unit_cost, "Unit cost") ?? 0,
     overhead_cost: parseOptionalNumber(body?.overhead_cost, "Overhead cost") ?? 0,
-    image_url: lightImages[0] || darkImages[0] || legacyImageUrl,
-    light_images: lightImages,
-    dark_images: darkImages
+    image_url: images[0] || legacyImageUrl,
+    images,
+    light_images: images,
+    dark_images: images
   };
 }
 
@@ -1031,12 +1045,41 @@ function parseOptionalPositiveInteger(value, fieldLabel) {
   return number;
 }
 
+function readProductCatalogCache() {
+  if (Array.isArray(productCatalogCache.rows) && productCatalogCache.expiresAt > Date.now()) {
+    return productCatalogCache.rows;
+  }
+
+  return null;
+}
+
+function writeProductCatalogCache(rows) {
+  productCatalogCache.rows = Array.isArray(rows) ? rows : [];
+  productCatalogCache.expiresAt = Date.now() + PRODUCT_CATALOG_CACHE_TTL_MS;
+  return productCatalogCache.rows;
+}
+
+function clearProductCatalogCache() {
+  productCatalogCache.rows = null;
+  productCatalogCache.expiresAt = 0;
+}
+
 async function listProducts() {
+  const cachedRows = readProductCatalogCache();
+  if (cachedRows) {
+    return cachedRows;
+  }
+
   const result = await pool.query(`${PRODUCT_SELECT_SQL} ORDER BY p.id ASC`);
-  return result.rows.map(materializeProductRow);
+  return writeProductCatalogCache(result.rows.map(materializeProductRow));
 }
 
 async function getProductById(productId) {
+  const cachedRows = readProductCatalogCache();
+  if (cachedRows) {
+    return cachedRows.find((row) => Number(row?.id || 0) === Number(productId || 0)) || null;
+  }
+
   const result = await pool.query(`${PRODUCT_SELECT_SQL} WHERE p.id = $1 LIMIT 1`, [productId]);
   if (!result.rows[0]) return null;
 
@@ -1047,10 +1090,254 @@ async function getProductBySlug(slug) {
   const normalizedSlug = String(slug || "").trim().toLowerCase();
   if (!normalizedSlug) return null;
 
-  const result = await pool.query(`${PRODUCT_SELECT_SQL} WHERE LOWER(p.slug) = $1 LIMIT 1`, [normalizedSlug]);
+  const cachedRows = readProductCatalogCache();
+  if (cachedRows) {
+    return cachedRows.find((row) => String(row?.slug || "").trim().toLowerCase() === normalizedSlug) || null;
+  }
+
+  const result = await pool.query(`${PRODUCT_SELECT_SQL} WHERE p.slug = $1 LIMIT 1`, [normalizedSlug]);
   if (!result.rows[0]) return null;
 
   return materializeProductRow(result.rows[0]);
+}
+
+const PACKAGE_SELECT_SQL = `
+  SELECT
+    pkg.id,
+    pkg.name,
+    pkg.slug,
+    pkg.active,
+    pkg.created_at,
+    pkg.updated_at,
+    COALESCE(item_rows.items, '[]'::json) AS items
+  FROM packages pkg
+  LEFT JOIN LATERAL (
+    SELECT
+      COALESCE(
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'id', pi.id,
+            'product_id', pi.product_id,
+            'minimum_quantity', pi.minimum_quantity,
+            'sort_order', pi.sort_order,
+            'product', JSON_BUILD_OBJECT(
+              'id', p.id,
+              'product_id', p.product_id,
+              'name', p.name,
+              'category', p.category,
+              'subcategory', p.subcategory,
+              'buy_price', p.buy_price,
+              'rent_price_per_day', p.rent_price_per_day,
+              'currency', p.currency,
+              'featured', p.featured,
+              'active', p.active,
+              'image_url',
+              COALESCE(
+                (
+                  SELECT img.url
+                  FROM product_images img
+                  WHERE img.product_id = p.id
+                  ORDER BY img.sort_order ASC, img.id ASC
+                  LIMIT 1
+                ),
+                ''
+              )
+            )
+          )
+          ORDER BY pi.sort_order ASC, pi.id ASC
+        ),
+        '[]'::json
+      ) AS items
+    FROM package_items pi
+    JOIN products p ON p.id = pi.product_id
+    WHERE pi.package_id = pkg.id
+  ) item_rows ON TRUE
+`;
+
+function slugifyPackageName(name) {
+  const base = String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return base || "package";
+}
+
+function buildPackageMinimumQuantityNotice(productName, minimumQuantity) {
+  const safeName = normalizeCatalogText(productName, 160) || "this item";
+  const safeMinimum = Math.max(1, Number(minimumQuantity || 1));
+  return `Selecting fewer than ${safeMinimum} unit${safeMinimum === 1 ? "" : "s"} of ${safeName} may apply extra fees.`;
+}
+
+function materializePackageRow(row) {
+  const items = Array.isArray(row?.items) ? row.items : [];
+
+  return {
+    id: Number(row?.id || 0),
+    name: normalizeCatalogText(row?.name, 160),
+    slug: normalizeCatalogText(row?.slug, 180),
+    active: Boolean(row?.active),
+    created_at: row?.created_at || null,
+    updated_at: row?.updated_at || null,
+    items: items
+      .map((item, index) => {
+        const product = item?.product && typeof item.product === "object" ? item.product : {};
+        const minimumQuantity = Math.max(1, Number(item?.minimum_quantity || 1));
+
+        return {
+          id: Number(item?.id || 0),
+          product_id: Number(item?.product_id || product.id || 0),
+          minimum_quantity: minimumQuantity,
+          sort_order: Number(item?.sort_order ?? index),
+          minimum_quantity_notice: buildPackageMinimumQuantityNotice(product?.name, minimumQuantity),
+          product: {
+            id: Number(product?.id || item?.product_id || 0),
+            product_id: normalizeCatalogText(product?.product_id, 20),
+            name: normalizeCatalogText(product?.name, 160),
+            category: normalizeCatalogText(product?.category, 120),
+            subcategory: normalizeCatalogText(product?.subcategory, 120),
+            buy_price: product?.buy_price === null || product?.buy_price === undefined ? null : Number(product.buy_price),
+            rent_price_per_day:
+              product?.rent_price_per_day === null || product?.rent_price_per_day === undefined
+                ? null
+                : Number(product.rent_price_per_day),
+            currency: normalizeCatalogText(product?.currency, 10) || "USD",
+            featured: Boolean(product?.featured),
+            active: product?.active !== false,
+            image_url: String(product?.image_url || "").trim()
+          }
+        };
+      })
+      .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
+  };
+}
+
+function parsePackageRouteId(rawId) {
+  const packageId = Number(rawId);
+  if (!Number.isInteger(packageId) || packageId <= 0) {
+    throw createHttpError(400, "Package id must be a positive integer.");
+  }
+  return packageId;
+}
+
+async function ensureUniquePackageSlug(client, name, excludeId = null) {
+  const baseSlug = slugifyPackageName(name);
+  let suffix = 1;
+
+  while (true) {
+    const candidate = suffix === 1 ? baseSlug : `${baseSlug}-${suffix}`;
+    const result = await client.query(
+      `
+      SELECT id
+      FROM packages
+      WHERE LOWER(slug) = LOWER($1)
+        AND ($2::BIGINT IS NULL OR id <> $2)
+      LIMIT 1
+      `,
+      [candidate, excludeId]
+    );
+
+    if (!result.rows.length) {
+      return candidate;
+    }
+
+    suffix += 1;
+  }
+}
+
+function normalizePackagePayload(body) {
+  const name = normalizeCatalogText(body?.name, 160);
+  const rawItems = Array.isArray(body?.items) ? body.items : [];
+
+  if (!name) {
+    throw createHttpError(400, "Package name is required.");
+  }
+
+  if (!rawItems.length) {
+    throw createHttpError(400, "Add at least one product to the package.");
+  }
+
+  const seenProductIds = new Set();
+  const items = rawItems.map((entry, index) => {
+    const productId = parseOptionalPositiveInteger(entry?.product_id ?? entry?.productId, `Package item ${index + 1} product`);
+    const minimumQuantity = parseWholeNumber(entry?.minimum_quantity ?? entry?.minimumQuantity, `Package item ${index + 1} minimum quantity`);
+
+    if (!productId) {
+      throw createHttpError(400, `Package item ${index + 1} must select a product.`);
+    }
+
+    if (minimumQuantity < 1) {
+      throw createHttpError(400, `Package item ${index + 1} minimum quantity must be at least 1.`);
+    }
+
+    if (seenProductIds.has(productId)) {
+      throw createHttpError(400, "Each product can only appear once per package.");
+    }
+
+    seenProductIds.add(productId);
+
+    return {
+      product_id: productId,
+      minimum_quantity: minimumQuantity,
+      sort_order: index
+    };
+  });
+
+  return {
+    name,
+    active: parseBoolean(body?.active, true),
+    items
+  };
+}
+
+async function assertPackageProductsExist(client, items) {
+  const productIds = items.map((item) => Number(item.product_id));
+  const result = await client.query(
+    `
+    SELECT id
+    FROM products
+    WHERE id = ANY($1::BIGINT[])
+    `,
+    [productIds]
+  );
+
+  if (result.rows.length !== productIds.length) {
+    throw createHttpError(400, "One or more selected products no longer exist.");
+  }
+}
+
+async function syncPackageItems(client, packageId, pkg) {
+  await assertPackageProductsExist(client, pkg.items);
+  await client.query("DELETE FROM package_items WHERE package_id = $1", [packageId]);
+
+  for (const item of pkg.items) {
+    await client.query(
+      `
+      INSERT INTO package_items (
+        package_id,
+        product_id,
+        minimum_quantity,
+        sort_order,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, NOW())
+      `,
+      [packageId, item.product_id, item.minimum_quantity, item.sort_order]
+    );
+  }
+}
+
+async function listPackages() {
+  const result = await pool.query(`${PACKAGE_SELECT_SQL} ORDER BY pkg.updated_at DESC, pkg.id DESC`);
+  return result.rows.map(materializePackageRow);
+}
+
+async function getPackageById(packageId) {
+  const result = await pool.query(`${PACKAGE_SELECT_SQL} WHERE pkg.id = $1 LIMIT 1`, [packageId]);
+  if (!result.rows[0]) return null;
+
+  return materializePackageRow(result.rows[0]);
 }
 
 async function syncAggregateInventory(client, productId, reorderLevel = null, fallbackQuantity = 0) {
@@ -1148,45 +1435,21 @@ async function syncProductRelations(client, productId, product) {
   await syncAggregateInventory(client, productId, product.reorder_level, product.quantity_available);
 
   try {
-    const lightImageUrls = await materializeProductImages(
-      productId,
-      "light",
-      product.light_images,
-      createdUploadUrls
-    );
-    const darkImageUrls = await materializeProductImages(
-      productId,
-      "dark",
-      product.dark_images,
-      createdUploadUrls
-    );
+    const imageUrls = await materializeProductImages(product.product_id, product.images, createdUploadUrls);
 
     await client.query("DELETE FROM product_images WHERE product_id = $1", [productId]);
 
-    for (let index = 0; index < lightImageUrls.length; index += 1) {
+    for (let index = 0; index < imageUrls.length; index += 1) {
       await client.query(
         `
         INSERT INTO product_images (product_id, url, sort_order, theme_mode)
         VALUES ($1, $2, $3, 'light')
         `,
-        [productId, lightImageUrls[index], index]
+        [productId, imageUrls[index], index]
       );
     }
 
-    for (let index = 0; index < darkImageUrls.length; index += 1) {
-      await client.query(
-        `
-        INSERT INTO product_images (product_id, url, sort_order, theme_mode)
-        VALUES ($1, $2, $3, 'dark')
-        `,
-        [productId, darkImageUrls[index], index]
-      );
-    }
-
-    await cleanupUnusedProductUploads(previousUrls, [
-      ...lightImageUrls,
-      ...darkImageUrls
-    ]);
+    await cleanupUnusedProductUploads(previousUrls, imageUrls);
   } catch (error) {
     await Promise.all(createdUploadUrls.map(removeManagedProductUploadUrl));
     throw error;
@@ -1215,6 +1478,23 @@ function sendProductError(res, error, logPrefix) {
 
   if (error?.code === "23505") {
     return res.status(409).json({ error: "A product with this ID or slug already exists." });
+  }
+
+  console.error(logPrefix, error.message);
+
+  return res.status(500).json({
+    error: "Server error",
+    details: error.message
+  });
+}
+
+function sendPackageError(res, error, logPrefix) {
+  if (error?.status) {
+    return res.status(error.status).json({ error: error.message });
+  }
+
+  if (error?.code === "23505") {
+    return res.status(409).json({ error: "A package with this name already exists." });
   }
 
   console.error(logPrefix, error.message);
@@ -1266,6 +1546,9 @@ async function fetchProductsForCheckout(productIds, client = pool) {
       p.name,
       p.active,
       p.product_id,
+      p.category,
+      p.subcategory,
+      p.description,
       p.buy_enabled,
       p.rent_enabled,
       p.buy_price,
@@ -1558,7 +1841,7 @@ async function buildCheckoutLineItems(rawItems, { client = pool, userId } = {}) 
       continue;
     }
 
-    const unitPrice = item.mode === "rent" ? Number(product.rent_price_per_day) : Number(product.buy_price);
+    const unitPrice = getUnitPriceForMode(product, item.mode);
     if (!Number.isFinite(unitPrice) || unitPrice < 0) {
       itemErrors[`items.${index}`] = `${product.name} does not have a valid checkout price.`;
       continue;
@@ -1583,10 +1866,26 @@ async function buildCheckoutLineItems(rawItems, { client = pool, userId } = {}) 
 
     const multiplier = item.mode === "rent" ? Number(item.rentalDays || 1) : 1;
     const lineTotal = roundCurrency(unitPrice * Number(item.quantity || 0) * multiplier);
+    const packageMeta = item.packageMeta && typeof item.packageMeta === "object"
+      ? normalizePackageMeta(item.packageMeta, {
+          builderCategory: getBuilderCategory(product)
+        })
+      : null;
+
+    if (packageMeta) {
+      packageMeta.customizationRequested =
+        Boolean(item.customizationRequested) ||
+        Boolean((item.customizationUploadTokens || []).length) ||
+        Boolean(packageMeta.customizationRequested);
+    }
 
     lineItems.push({
+      builderCategory: packageMeta?.builderCategory || getBuilderCategory(product),
       productId: Number(product.id),
       productName: String(product.name || "Unnamed Product"),
+      category: String(product.category || "General"),
+      subcategory: String(product.subcategory || "General"),
+      description: String(product.description || ""),
       variationId: variation?.id ? Number(variation.id) : null,
       selectedColor: variation?.color || normalizeCatalogText(item.selectedColor, 60) || "Standard",
       selectedSize: variation?.size || (
@@ -1594,7 +1893,13 @@ async function buildCheckoutLineItems(rawItems, { client = pool, userId } = {}) 
           ? ONE_SIZE_LABEL
           : normalizeSizeLabel(item.selectedSize, product.size_mode)
       ) || "",
+      customizationRequested:
+        Boolean(item.customizationRequested) ||
+        Boolean((item.customizationUploadTokens || []).length),
       customizationUploadTokens: item.customizationUploadTokens || [],
+      deliveryClass: String(product.delivery_class || ""),
+      packageMeta,
+      productCustomizationFee: roundCurrency(Number(product.customization_fee || 0)),
       quantity: Number(item.quantity || 1),
       mode: item.mode,
       rentalDays: item.mode === "rent" ? Number(item.rentalDays || 1) : null,
@@ -1623,6 +1928,28 @@ async function buildCheckoutLineItems(rawItems, { client = pool, userId } = {}) 
   }
 
   return lineItems;
+}
+
+function buildCheckoutTotalsFromLineItems(lineItems) {
+  const pricing = applyPricingToResolvedLines(lineItems);
+  const fallbackDeliveryEstimate = calculateDeliveryEstimate(lineItems);
+  const pricedLineItems = pricing.lines.map((line) => ({
+    ...line,
+    lineTotal: Number(line.chargedLineTotal || line.lineTotal || 0)
+  }));
+
+  return {
+    deliveryEstimate: pricing.packageGroups[0]?.deliveryEstimate?.label || fallbackDeliveryEstimate.label,
+    lineItems: pricedLineItems,
+    totals: {
+      depositRequired: roundCurrency(pricing.total * 0.3),
+      discount: pricing.discount,
+      shipping: pricing.shipping,
+      subtotal: pricing.subtotal,
+      tax: 0,
+      total: pricing.total
+    }
+  };
 }
 
 function normalizeOrderResponse(row) {
@@ -1796,7 +2123,6 @@ app.post("/api/geolocation/reverse-egypt", async (req, res) => {
 app.post(["/product-images/upload", "/api/product-images/upload"], PRODUCT_IMAGE_UPLOAD_PARSER, async (req, res) => {
   try {
     const productCode = parseProductCode(req.query.product_id);
-    const themeMode = parseThemeMode(req.query.theme_mode);
     const mimeType = String(req.headers["content-type"] || "")
       .split(";")[0]
       .trim()
@@ -1817,7 +2143,7 @@ app.post(["/product-images/upload", "/api/product-images/upload"], PRODUCT_IMAGE
       throw createHttpError(400, "Each uploaded product image must be 5 MB or smaller.");
     }
 
-    const url = await saveUploadedProductImageBuffer(productCode, themeMode, buffer, {
+    const url = await saveUploadedProductImageBuffer(productCode, buffer, {
       fileName,
       mimeType
     });
@@ -2050,6 +2376,7 @@ app.post(["/products", "/api/products"], async (req, res) => {
       return productId;
     });
 
+    clearProductCatalogCache();
     const created = await getProductById(createdId);
     return res.status(201).json(created);
   } catch (err) {
@@ -2120,6 +2447,7 @@ app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
       await syncProductRelations(client, routeProductId, product);
     });
 
+    clearProductCatalogCache();
     const updated = await getProductById(routeProductId);
     return res.json(updated);
   } catch (err) {
@@ -2154,6 +2482,7 @@ app.delete(["/products/:id", "/api/products/:id"], async (req, res) => {
       existingUrls.filter((url) => isManagedProductUploadUrl(url)).map(removeManagedProductUploadUrl)
     );
     await Promise.all(storedPaths.map(removeManagedCustomizationFile));
+    clearProductCatalogCache();
 
     return res.status(204).send();
   } catch (err) {
@@ -2189,74 +2518,9 @@ app.post("/api/ai-planner", async (req, res) => {
     );
     const catalog = summarizeProductCatalog(catalogResult.rows);
 
-    if (!OPENAI_API_KEY || typeof fetch !== "function") {
-      return res.json({
-        message: fallbackPlannerReply(prompt, context, catalog),
-        source: "fallback"
-      });
-    }
-
-    const systemPrompt = [
-      "You are EventMart's AI Event Planner assistant.",
-      "Create practical recommendations using only products from the provided catalog.",
-      "Keep the answer structured with short sections and bullet points.",
-      "Format the reply in markdown with ### headings and put every bullet on its own line.",
-      "Always include: event summary, recommended products, and a concise timeline.",
-      "Avoid mentioning products not in the catalog."
-    ].join(" ");
-
-    const userPrompt = JSON.stringify({
-      request: prompt,
-      context,
-      catalog
-    });
-
-    const aiRes = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        temperature: 0.5,
-        max_output_tokens: 850,
-        input: [
-          {
-            role: "system",
-            content: [{ type: "input_text", text: systemPrompt }]
-          },
-          {
-            role: "user",
-            content: [{ type: "input_text", text: userPrompt }]
-          }
-        ]
-      })
-    });
-
-    if (!aiRes.ok) {
-      const errText = await aiRes.text();
-      console.error("AI PLANNER OPENAI ERROR:", aiRes.status, errText.slice(0, 600));
-      return res.json({
-        message: fallbackPlannerReply(prompt, context, catalog),
-        source: "fallback"
-      });
-    }
-
-    const payload = await aiRes.json();
-    const reply = extractResponseText(payload);
-
-    if (!reply) {
-      return res.json({
-        message: fallbackPlannerReply(prompt, context, catalog),
-        source: "fallback"
-      });
-    }
-
     return res.json({
-      message: reply,
-      source: "openai",
-      model: OPENAI_MODEL
+      message: fallbackPlannerReply(prompt, context, catalog),
+      source: "deterministic"
     });
   } catch (err) {
     console.error("AI PLANNER ROUTE ERROR:", err.message);
@@ -2489,9 +2753,8 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
     const previewLineItems = await buildCheckoutLineItems(checkoutInput.items, {
       userId: req.auth.userId
     });
-    const previewTotals = calculateTotals(previewLineItems);
+    const { deliveryEstimate, totals: previewTotals } = buildCheckoutTotalsFromLineItems(previewLineItems);
     const currency = String(previewLineItems[0]?.currency || "USD");
-    const deliveryEstimate = calculateDeliveryEstimate(previewLineItems);
 
     checkoutInput.billingDetails.advancePaymentRequiredPercentage = 30;
 
@@ -2513,7 +2776,7 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
         client,
         userId: req.auth.userId
       });
-      const totals = calculateTotals(lineItems);
+      const { lineItems: pricedLineItems, totals } = buildCheckoutTotalsFromLineItems(lineItems);
 
       if (totals.total !== previewTotals.total) {
         throw createHttpError(
@@ -2522,7 +2785,7 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
         );
       }
 
-      await reserveInventoryForLineItems(client, lineItems);
+      await reserveInventoryForLineItems(client, pricedLineItems);
 
       const orderInsert = await client.query(
         `
@@ -2588,7 +2851,7 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
 
       const orderId = orderInsert.rows[0].id;
 
-      for (const item of lineItems) {
+      for (const item of pricedLineItems) {
         const orderItemInsert = await client.query(
           `
           INSERT INTO order_items (
@@ -2605,7 +2868,7 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
             unit_cost_snapshot,
             line_total
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING id
           `,
           [
@@ -2616,7 +2879,7 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
             item.mode,
             item.selectedColor,
             item.selectedSize,
-            item.customizationUploadTokens.length > 0,
+            Boolean(item.customizationRequested) || item.customizationUploadTokens.length > 0,
             item.mode === "rent" ? item.rentalDays : null,
             item.unitPrice,
             item.unitCostSnapshot,

@@ -80,8 +80,17 @@ function normalizeOrderCartItems(items) {
       const mode = String(item?.mode || "").trim().toLowerCase() === "rent" ? "rent" : "buy";
 
       return {
+        customizationRequested: toBoolean(
+          item?.customization_requested ??
+          item?.customizationRequested
+        ),
         id: productId,
         mode,
+        packageMeta: item?.package_meta && typeof item.package_meta === "object"
+          ? item.package_meta
+          : item?.packageMeta && typeof item.packageMeta === "object"
+            ? item.packageMeta
+            : null,
         variationId: parseOptionalPositiveInteger(item?.variation_id ?? item?.variationId),
         selectedColor: sanitizeText(item?.selected_color ?? item?.selectedColor, 60),
         selectedSize: sanitizeText(item?.selected_size ?? item?.selectedSize, 40),
@@ -209,12 +218,16 @@ function buildPublicOrderId(date = new Date()) {
   return `EM-${year}${month}${day}-${suffix}`;
 }
 
-function calculateTotals(lineItems) {
+function calculateTotals(lineItems, options = {}) {
+  const list = Array.isArray(lineItems) ? lineItems : [];
   const subtotal = roundCurrency(
-    (Array.isArray(lineItems) ? lineItems : []).reduce(
-      (sum, item) => sum + Number(item?.lineTotal || 0),
-      0
-    )
+    list.reduce((sum, item) => {
+      if (item && item.unitPrice !== undefined) {
+        return sum + Number(item?.lineTotal || 0);
+      }
+
+      return sum + Number(item?.lineTotal || 0);
+    }, 0)
   );
   const shipping = 0;
   const tax = 0;
