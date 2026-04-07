@@ -580,6 +580,7 @@ export function calculateCartSummary(items, options = {}) {
   const itemCount = list.reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
 
   return {
+    baseSubtotal: subtotal,
     customizationFees,
     discount,
     subtotal,
@@ -641,7 +642,14 @@ export function buildCheckoutPayload(form, items, options = {}) {
       customization_upload_tokens: normalizeUploadTokenList(
         item?.customization_uploads || item?.customizationUploads
       ),
+      customization_requested: Boolean(item?.customization_requested || item?.customizationRequested),
       mode: item?.mode === "rent" ? "rent" : "buy",
+      package_meta:
+        item?.package_meta && typeof item.package_meta === "object"
+          ? item.package_meta
+          : item?.packageMeta && typeof item.packageMeta === "object"
+            ? item.packageMeta
+            : null,
       quantity: Math.max(1, Number(item?.quantity || 1)),
       rental_days: item?.mode === "rent" ? Math.max(1, Number(item?.rental_days || 1)) : 1
     }))

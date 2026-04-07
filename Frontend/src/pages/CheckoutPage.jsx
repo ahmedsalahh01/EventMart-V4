@@ -1,14 +1,14 @@
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
+import useCartPricingSummary from "../hooks/useCartPricingSummary";
 import { authRequest, apiRequest } from "../lib/api";
 import {
   EGYPT_GOVERNORATES,
   PAYMENT_METHOD_OPTIONS,
   buildCheckoutPayload,
-  calculateCartSummary,
   clearCheckoutDraft,
   createLocalInstapayConfirmationOrder,
   fetchEgyptLocationDetails,
@@ -35,7 +35,7 @@ function CheckoutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [geoStatus, setGeoStatus] = useState("");
-  const summary = useMemo(() => calculateCartSummary(items), [items]);
+  const { error: pricingError, isLoading: pricingLoading, summary } = useCartPricingSummary(items);
   const currency = items[0]?.currency || "USD";
   const isInstapayPayment = form.billing.paymentMethod === "instapay";
 
@@ -592,6 +592,7 @@ function CheckoutPage() {
           </section>
 
           {errors.items ? <p className="checkout-submit-status checkout-submit-status-error">{errors.items}</p> : null}
+          {pricingError ? <p className="checkout-submit-status checkout-submit-status-error">{pricingError}</p> : null}
           {status ? <p className={`checkout-submit-status ${status.includes("Confirming") ? "" : "checkout-submit-status-error"}`}>{status}</p> : null}
 
           <div className="checkout-actions">
@@ -642,6 +643,30 @@ function CheckoutPage() {
               <span>Subtotal</span>
               <strong>{formatMoney(summary.subtotal, currency)}</strong>
             </div>
+            {summary.itemDiscounts ? (
+              <div className="checkout-summary-row">
+                <span>Item discounts</span>
+                <strong>-{formatMoney(summary.itemDiscounts, currency)}</strong>
+              </div>
+            ) : null}
+            {summary.customizationFees ? (
+              <div className="checkout-summary-row">
+                <span>Customization fees</span>
+                <strong>{formatMoney(summary.customizationFees, currency)}</strong>
+              </div>
+            ) : null}
+            {summary.discount ? (
+              <div className="checkout-summary-row">
+                <span>Bundle discount</span>
+                <strong>-{formatMoney(summary.discount, currency)}</strong>
+              </div>
+            ) : null}
+            {summary.shipping ? (
+              <div className="checkout-summary-row">
+                <span>Shipping</span>
+                <strong>{formatMoney(summary.shipping, currency)}</strong>
+              </div>
+            ) : null}
             <div className="checkout-summary-row">
               <span>Advance due now</span>
               <strong>{formatMoney(summary.depositRequired, currency)}</strong>
@@ -650,6 +675,7 @@ function CheckoutPage() {
               <span>Total order value</span>
               <strong>{formatMoney(summary.total, currency)}</strong>
             </div>
+            {pricingLoading ? <p className="checkout-payment-note">Refreshing package pricing...</p> : null}
           </div>
         </aside>
       </div>

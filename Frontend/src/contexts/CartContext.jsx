@@ -49,9 +49,14 @@ function CartProvider({ children }) {
           .map((upload) => String(upload?.uploadToken || upload?.upload_token || "").trim())
           .filter(Boolean)
       : [];
+    const packageGroupKey =
+      options.package_meta && typeof options.package_meta === "object"
+        ? String(options.package_meta.packageGroupId || "").trim()
+        : "";
     const cartItemKey = [
       String(product.id),
       mode,
+      packageGroupKey || "standalone",
       variationId || "default",
       uploadTokens.join(":") || "plain"
     ].join("|");
@@ -80,6 +85,10 @@ function CartProvider({ children }) {
               : item.customization_uploads,
             customization_requested:
               Boolean(options.customization_requested) || item.customization_requested,
+            package_meta:
+              options.package_meta && typeof options.package_meta === "object"
+                ? options.package_meta
+                : item.package_meta || null,
             image_url: product.image_url || product.images?.[0] || item.image_url,
             images:
               Array.isArray(product.images) && product.images.length
@@ -115,6 +124,10 @@ function CartProvider({ children }) {
             ? options.customization_uploads
             : [],
           customization_requested: Boolean(options.customization_requested),
+          package_meta:
+            options.package_meta && typeof options.package_meta === "object"
+              ? options.package_meta
+              : null,
           quantity,
           rental_days: mode === "rent" ? 1 : 1,
           unit_price: unitPrice,

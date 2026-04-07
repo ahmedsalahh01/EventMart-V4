@@ -30,6 +30,20 @@ const HERO_RIBBON_ROWS = [
   { id: "top", slides: buildHeroRibbonSlides(TOP_HERO_RIBBON_IMAGES, "top") },
   { id: "bottom", slides: buildHeroRibbonSlides(BOTTOM_HERO_RIBBON_IMAGES, "bottom") }
 ];
+const PACKAGE_BUILDER_FEATURES = [
+  {
+    title: "Smart Bundle Suggestions",
+    text: "Get auto-matched products for sound, lighting, stage, and accessories."
+  },
+  {
+    title: "Flexible Budget Control",
+    text: "Choose rent or buy options per item without rebuilding your full setup."
+  },
+  {
+    title: "One-Click Checkout Flow",
+    text: "Move from planning to secured equipment in a streamlined purchase path."
+  }
+];
 
 function HomePage() {
   const [products, setProducts] = useState([]);
@@ -160,6 +174,40 @@ function HomePage() {
                     {category}
                   </Link>
                 ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="home-package-builder-section" aria-labelledby="package-builder-title">
+          <div className="home-package-builder-content">
+            <div className="home-package-builder-copy">
+              <p className="section-kicker section-kicker-light">Package Builder</p>
+              <h2 id="package-builder-title">Create Your Own Package Now!</h2>
+              <p className="home-package-builder-text">
+                Build a complete equipment package around your guest count, event type, venue size, and budget,
+                then move forward with live bundle discounts, delivery guidance, and checkout-ready totals.
+              </p>
+
+              <div className="home-package-builder-actions">
+                <Link className="home-package-builder-primary" to="/package-builder">
+                  Start Building
+                </Link>
+                <Link className="home-package-builder-secondary" to="/packages">
+                  Browse Packages
+                </Link>
+              </div>
+            </div>
+
+            <div className="home-package-builder-card-stack" aria-label="Package builder highlights">
+              {PACKAGE_BUILDER_FEATURES.map((feature) => (
+                <article className="home-package-builder-card" key={feature.title}>
+                  <div className="home-package-builder-card-icon" aria-hidden="true" />
+                  <div>
+                    <h3>{feature.title}</h3>
+                    <p>{feature.text}</p>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </section>

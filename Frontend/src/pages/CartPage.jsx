@@ -1,14 +1,14 @@
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import Footer from "../components/Footer";
 import SmartRecommendationBar from "../components/SmartRecommendationBar";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
+import useCartPricingSummary from "../hooks/useCartPricingSummary";
 import useRequireAuth from "../hooks/useRequireAuth";
 import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
-import { calculateCartSummary } from "../lib/checkout";
 import { buildEventTypeShopPath, getEventTypeConfig } from "../lib/eventTypeConfig";
 import { deleteCustomizationUploads, formatMoney, getProductImage } from "../lib/products";
 import { getSelectedEventType } from "../lib/userBehavior";
@@ -24,7 +24,7 @@ function CartPage() {
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [selectedEventType, setSelectedEventType] = useState(() => getSelectedEventType() || "");
 
-  const summary = useMemo(() => calculateCartSummary(items), [items]);
+  const { error: pricingError, isLoading: pricingLoading, summary } = useCartPricingSummary(items);
 
   const currency = items[0]?.currency || "USD";
   const hasItems = items.length > 0;
@@ -291,6 +291,30 @@ function CartPage() {
               <span>Items subtotal</span>
               <strong>{formatMoney(summary.subtotal, currency)}</strong>
             </div>
+            {summary.itemDiscounts ? (
+              <div className="summary-row">
+                <span>Item discounts</span>
+                <strong>-{formatMoney(summary.itemDiscounts, currency)}</strong>
+              </div>
+            ) : null}
+            {summary.customizationFees ? (
+              <div className="summary-row">
+                <span>Customization fees</span>
+                <strong>{formatMoney(summary.customizationFees, currency)}</strong>
+              </div>
+            ) : null}
+            {summary.discount ? (
+              <div className="summary-row">
+                <span>Bundle discount</span>
+                <strong>-{formatMoney(summary.discount, currency)}</strong>
+              </div>
+            ) : null}
+            {summary.shipping ? (
+              <div className="summary-row">
+                <span>Shipping</span>
+                <strong>{formatMoney(summary.shipping, currency)}</strong>
+              </div>
+            ) : null}
             <hr />
             <div className="summary-row total-row">
               <span>Total</span>
@@ -306,6 +330,8 @@ function CartPage() {
               <span>Checkout</span>
               <span aria-hidden="true">&rarr;</span>
             </button>
+            {pricingLoading ? <p className="summary-note">Refreshing package pricing...</p> : null}
+            {pricingError ? <p className="summary-note">{pricingError}</p> : null}
             {checkoutMessage ? <p className="summary-note">{checkoutMessage}</p> : null}
           </aside>
         </div>

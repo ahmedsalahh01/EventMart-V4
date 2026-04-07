@@ -91,6 +91,12 @@ export function normalizeCartItem(item) {
 
   return {
     cart_item_key: String(item?.cart_item_key ?? item?.cartItemKey ?? `${item?.id ?? ""}-${mode}`),
+    package_meta:
+      item?.package_meta && typeof item.package_meta === "object"
+        ? item.package_meta
+        : item?.packageMeta && typeof item.packageMeta === "object"
+          ? item.packageMeta
+          : null,
     id: String(item?.id ?? ""),
     product_id: String(item?.product_id ?? ""),
     name: String(item?.name ?? "Unnamed Item"),

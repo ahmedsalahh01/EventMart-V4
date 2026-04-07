@@ -14,6 +14,9 @@ import ContactPage from "./pages/ContactPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import OrderConfirmationPage from "./pages/OrderConfirmationPage";
+import PackageBuilderPage from "./pages/PackageBuilderPage";
+import PackageDetailPage from "./pages/PackageDetailPage";
+import PackagesPage from "./pages/PackagesPage";
 
 function App() {
   const location = useLocation();
@@ -61,6 +64,9 @@ function App() {
           />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/packages" element={<PackagesPage />} />
+          <Route path="/packages/:identifier" element={<PackageDetailPage />} />
+          <Route path="/package-builder" element={<PackageBuilderPage />} />
           <Route path="/signin" element={<Navigate to="/auth?tab=signin" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

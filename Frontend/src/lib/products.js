@@ -68,10 +68,6 @@ function mergeUniqueImageLists(...values) {
   return merged;
 }
 
-function normalizeBaseUrl(value) {
-  return String(value || "").trim().replace(/\/+$/, "");
-}
-
 export function resolveProductImageUrl(source) {
   const value = String(source || "").trim();
   if (!value) return fallbackImage();
@@ -255,59 +251,20 @@ export function clearStoredProducts() {
   }
 }
 
-export function readStoredProducts(baseUrl = resolveApiBaseUrl()) {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-
-    if (Array.isArray(parsed)) {
-      return [];
-    }
-
-    const storedBaseUrl = normalizeBaseUrl(parsed?.baseUrl);
-    const currentBaseUrl = normalizeBaseUrl(baseUrl);
-
-    if (storedBaseUrl && currentBaseUrl && storedBaseUrl !== currentBaseUrl) {
-      return [];
-    }
-
-    const rows = Array.isArray(parsed?.products) ? parsed.products : [];
-    return rows.map(normalizeProduct);
-  } catch (_error) {
-    return [];
-  }
-}
-
-function writeStoredProducts(products, baseUrl = resolveApiBaseUrl()) {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        baseUrl: normalizeBaseUrl(baseUrl),
-        products
-      })
-    );
-  } catch (_error) {
-    // Ignore storage write failures.
-  }
-}
-
 export async function loadProducts() {
   const baseUrl = resolveApiBaseUrl();
 
   try {
     const rows = await apiRequest("/api/products", { baseUrl });
+    clearStoredProducts();
     if (!Array.isArray(rows)) return [];
 
-    const products = rows
+    return rows
       .map(normalizeProduct)
       .filter((product) => product.active !== false);
-
-    writeStoredProducts(products, baseUrl);
-    return products;
   } catch (_error) {
-    return readStoredProducts(baseUrl);
+    clearStoredProducts();
+    return [];
   }
 }
 
@@ -356,16 +313,10 @@ export async function loadProductBySlug(slug) {
 
   try {
     const row = await apiRequest(`/api/products/slug/${encodeURIComponent(normalizedSlug)}`, { baseUrl });
+    clearStoredProducts();
     return row ? normalizeProduct(row) : null;
   } catch (error) {
-    const fallbackProduct = readStoredProducts(baseUrl).find(
-      (product) => String(product.slug || "").trim().toLowerCase() === normalizedSlug.toLowerCase()
-    );
-
-    if (fallbackProduct) {
-      return fallbackProduct;
-    }
-
+    clearStoredProducts();
     throw error;
   }
 }

@@ -1230,6 +1230,157 @@ html[data-interface-theme="dark"] .quick-categories .section-mini-title {
 
 
 /* =========================
+   Package Builder Feature
+   ========================= */
+
+.home-package-builder-section {
+  margin-top: 34px;
+  padding: clamp(28px, 4vw, 42px);
+  border-radius: 38px;
+  border: 1px solid color-mix(in srgb, var(--c-2) 14%, transparent);
+  background:
+    radial-gradient(circle at 84% 18%, color-mix(in srgb, #9ef4d4 18%, transparent) 0%, transparent 30%),
+    radial-gradient(circle at 16% 84%, color-mix(in srgb, #6fe9ff 12%, transparent) 0%, transparent 32%),
+    linear-gradient(140deg, #071a28 0%, #0a2635 44%, #0f4957 100%);
+  box-shadow: 0 30px 62px -36px color-mix(in srgb, var(--c-9) 56%, transparent);
+  overflow: hidden;
+  position: relative;
+}
+
+.home-package-builder-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--c-2) 8%, transparent) 0%, transparent 30%),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--c-2) 4%, transparent) 0 1px, transparent 1px 110px);
+  pointer-events: none;
+}
+
+.home-package-builder-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  gap: clamp(22px, 3vw, 36px);
+  align-items: center;
+}
+
+.home-package-builder-copy {
+  display: grid;
+  gap: 18px;
+}
+
+.home-package-builder-copy h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.45rem);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  color: var(--c-1);
+}
+
+.home-package-builder-text {
+  max-width: 680px;
+  color: color-mix(in srgb, var(--c-1) 78%, var(--c-10));
+  font-size: 1.02rem;
+}
+
+.home-package-builder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.home-package-builder-primary,
+.home-package-builder-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 24px;
+  border-radius: 999px;
+  font-weight: 700;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.home-package-builder-primary {
+  background: linear-gradient(135deg, var(--c-1) 0%, color-mix(in srgb, var(--c-10) 82%, var(--c-1)) 100%);
+  color: var(--c-50);
+  box-shadow: 0 22px 34px -24px color-mix(in srgb, #000000 46%, transparent);
+}
+
+.home-package-builder-secondary {
+  border: 1px solid color-mix(in srgb, var(--c-2) 20%, transparent);
+  background: color-mix(in srgb, var(--c-2) 9%, transparent);
+  color: var(--c-1);
+}
+
+.home-package-builder-primary:hover,
+.home-package-builder-primary:focus-visible,
+.home-package-builder-secondary:hover,
+.home-package-builder-secondary:focus-visible {
+  transform: translateY(-1px);
+}
+
+.home-package-builder-primary:hover,
+.home-package-builder-primary:focus-visible {
+  box-shadow: 0 26px 40px -24px color-mix(in srgb, #000000 56%, transparent);
+}
+
+.home-package-builder-secondary:hover,
+.home-package-builder-secondary:focus-visible {
+  border-color: color-mix(in srgb, var(--c-2) 30%, transparent);
+  background: color-mix(in srgb, var(--c-2) 14%, transparent);
+}
+
+.home-package-builder-card-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.home-package-builder-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: start;
+  padding: 22px 20px;
+  border-radius: 28px;
+  border: 1px solid color-mix(in srgb, var(--c-2) 18%, transparent);
+  background: color-mix(in srgb, var(--c-2) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--c-2) 12%, transparent),
+    0 20px 36px -28px color-mix(in srgb, #000000 56%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.home-package-builder-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--c-2) 58%, transparent) 0%, transparent 36%),
+    linear-gradient(135deg, color-mix(in srgb, var(--c-11) 78%, var(--c-12)) 0%, color-mix(in srgb, var(--c-12) 88%, var(--c-13)) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--c-2) 28%, transparent);
+}
+
+.home-package-builder-card h3 {
+  margin: 0 0 8px;
+  color: var(--c-1);
+  font-size: 1.14rem;
+}
+
+.home-package-builder-card p {
+  margin: 0;
+  color: color-mix(in srgb, var(--c-1) 74%, var(--c-10));
+  font-size: 0.96rem;
+  line-height: 1.7;
+}
+
+/* =========================
    Product Cards
    ========================= */
 
@@ -1828,6 +1979,10 @@ html[data-interface-theme="dark"] .footer-bottom p {
     grid-template-columns: 1fr;
   }
 
+  .home-package-builder-content {
+    grid-template-columns: 1fr;
+  }
+
   .footer-inner {
     width: min(var(--max-width), calc(100% - var(--page-inline)));
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1906,7 +2061,9 @@ html[data-interface-theme="dark"] .footer-bottom p {
 
   .btn-primary,
   .btn-secondary,
-  .btn-ghost-light {
+  .btn-ghost-light,
+  .home-package-builder-primary,
+  .home-package-builder-secondary {
     width: 100%;
   }
 
@@ -1929,6 +2086,15 @@ html[data-interface-theme="dark"] .footer-bottom p {
   .quick-categories {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .home-package-builder-section {
+    padding: 22px 18px;
+    border-radius: 28px;
+  }
+
+  .home-package-builder-card {
+    grid-template-columns: 1fr;
   }
 
   .section-head {

@@ -1,4 +1,3 @@
-const LOCAL_API_URL = "http://localhost:4000";
 const PRODUCTION_API_URL = "https://eventmart-v4-production.up.railway.app";
 
 function readImportMetaEnv() {
@@ -49,6 +48,23 @@ function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation(), env = 
   return "";
 }
 
+function normalizeApiPath(path) {
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function isPackageApiPath(path) {
+  const normalizedPath = normalizeApiPath(path);
+  return normalizedPath.startsWith("/api/packages") || normalizedPath.startsWith("/api/package-builder");
+}
+
+function createMissingApiRouteError({ baseUrl = resolveApiBaseUrl(), path = "" } = {}) {
+  const normalizedPath = normalizeApiPath(path);
+  return new Error(
+    `The configured API at ${normalizeBaseUrl(baseUrl) || resolveApiBaseUrl()} does not currently serve ${normalizedPath}. ` +
+    "Deploy the Server app from the current repo or point VITE_API_URL to a backend that includes this route."
+  );
+}
+
 export function sanitizeApiErrorMessage(rawValue) {
   const text = String(rawValue || "").trim();
   if (!text) {
@@ -73,7 +89,7 @@ function shouldRetryAgainstFallback({ path, url, baseUrl, fallbackBaseUrl, respo
     return false;
   }
 
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const normalizedPath = normalizeApiPath(path);
   if (!normalizedPath.startsWith("/api/")) {
     return false;
   }
@@ -81,11 +97,12 @@ function shouldRetryAgainstFallback({ path, url, baseUrl, fallbackBaseUrl, respo
   const status = Number(response?.status || 0);
   const message = String(text || "");
   const sameOriginRequest = Boolean(location?.origin) && getAbsoluteOrigin(url, location) === location.origin;
-  const targetsLocalBackend = baseUrl === LOCAL_API_URL;
+  const runningLocally = isLocalHostname(location?.hostname);
   const htmlRouteMiss = /cannot\s+(get|post|put|delete|patch)\s+\/api\//i.test(message);
   const htmlPayload = /<!doctype html|<html|<pre>/i.test(message);
 
-  return (sameOriginRequest || targetsLocalBackend) && (htmlRouteMiss || htmlPayload || status === 404 || status === 405);
+  return (sameOriginRequest || runningLocally) &&
+    (htmlRouteMiss || htmlPayload || status === 404 || status === 405);
 }
 
 function isNetworkFetchError(error) {
@@ -93,8 +110,12 @@ function isNetworkFetchError(error) {
   return message === "failed to fetch" || message.includes("networkerror");
 }
 
-function createNetworkApiError() {
-  return new Error("Could not reach the API server. Check VITE_API_URL and backend CORS availability.");
+function createNetworkApiError({ attemptBaseUrls = [], location = readRuntimeLocation(), path = "", previousError = null } = {}) {
+  const attemptedTargets = attemptBaseUrls.filter(Boolean).join(" or ");
+
+  return new Error(
+    `Could not reach the API server${attemptedTargets ? ` at ${attemptedTargets}` : ""}. Check VITE_API_URL and backend CORS availability.`
+  );
 }
 
 async function requestJson(url, options = {}) {
@@ -133,8 +154,8 @@ export function buildApiUrl(path, options = {}) {
 }
 
 export async function apiRequest(path, options = {}) {
-  const runtimeLocation = readRuntimeLocation();
-  const runtimeEnv = readImportMetaEnv();
+  const runtimeLocation = options.location || readRuntimeLocation();
+  const runtimeEnv = options.env || readImportMetaEnv();
   const primaryBaseUrl = normalizeBaseUrl(options.baseUrl || resolveApiBaseUrl({
     env: runtimeEnv,
     location: runtimeLocation
@@ -157,6 +178,20 @@ export async function apiRequest(path, options = {}) {
         return payload;
       }
 
+      const message =
+        payload?.error ||
+        payload?.details ||
+        `Request failed with status ${response.status}`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.payload = payload;
+      error.fieldErrors = payload?.fieldErrors || null;
+
+      if (index === 0 && response.status === 404 && isPackageApiPath(path) && fallbackBaseUrl && fallbackBaseUrl !== currentBaseUrl) {
+        lastError = error;
+        continue;
+      }
+
       if (
         index === 0 &&
         shouldRetryAgainstFallback({
@@ -169,17 +204,21 @@ export async function apiRequest(path, options = {}) {
           url
         })
       ) {
+        lastError = error;
         continue;
       }
 
-      const message =
-        payload?.error ||
-        payload?.details ||
-        `Request failed with status ${response.status}`;
-      const error = new Error(message);
-      error.status = response.status;
-      error.payload = payload;
-      error.fieldErrors = payload?.fieldErrors || null;
+      if (response.status === 404 && isPackageApiPath(path)) {
+        const routeError = createMissingApiRouteError({
+          baseUrl: currentBaseUrl,
+          path
+        });
+        routeError.status = response.status;
+        routeError.payload = payload;
+        routeError.fieldErrors = payload?.fieldErrors || null;
+        throw routeError;
+      }
+
       throw error;
     } catch (error) {
       const canRetryAfterNetworkFailure =
@@ -193,14 +232,24 @@ export async function apiRequest(path, options = {}) {
       }
 
       if (isNetworkFetchError(error)) {
-        throw createNetworkApiError();
+        throw createNetworkApiError({
+          attemptBaseUrls,
+          location: runtimeLocation,
+          path,
+          previousError: lastError
+        });
       }
 
       throw error;
     }
   }
 
-  throw lastError || new Error("Request failed.");
+  throw lastError || createNetworkApiError({
+    attemptBaseUrls,
+    location: runtimeLocation,
+    path,
+    previousError: lastError
+  });
 }
 
 export async function authRequest(path, token, options = {}) {
