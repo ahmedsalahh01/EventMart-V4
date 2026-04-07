@@ -1,91 +1,214 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   buildFormFromPackage,
   buildPackagePayload,
-  createEmptyPackageDiscountTier,
   createEmptyPackageForm,
   createEmptyPackageItem,
   formatMoney,
-  packageMatchesSearch,
-  previewPackageDraft,
   removePackage,
   savePackage
 } from "../lib/admin";
 
-const EVENT_TYPE_OPTIONS = [
-  { label: "Select event type", value: "" },
-  { label: "Private Party / Bachelorette", value: "private-party" },
-  { label: "Birthday", value: "birthday" },
-  { label: "Corporate", value: "corporate" },
-  { label: "Indoor", value: "indoor" },
-  { label: "Outdoor", value: "outdoor" },
-  { label: "Wedding", value: "wedding" }
-];
-
-const VENUE_TYPE_OPTIONS = [
-  { label: "Any venue type", value: "" },
+const PACKAGE_SPECIALITY_OPTIONS = [
   { label: "Indoor", value: "indoor" },
   { label: "Outdoor", value: "outdoor" },
   { label: "Hybrid", value: "hybrid" }
 ];
+const PACKAGE_ITEM_DISCOUNT_RATE = 0.15;
 
-const PACKAGE_STATUS_OPTIONS = [
-  { label: "Draft", value: "draft" },
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" }
-];
+function createSimplePackageItem() {
+  const item = createEmptyPackageItem();
 
-const PACKAGE_VISIBILITY_OPTIONS = [
-  { label: "Public", value: "public" },
-  { label: "Private", value: "private" },
-  { label: "Hidden", value: "hidden" }
-];
+  return {
+    ...item,
+    appliesToEventTypes: "",
+    appliesToVenueTypes: "",
+    defaultQuantity: "1",
+    discountTiers: [],
+    minimumQuantity: "1",
+    notes: "",
+    preferredMode: "buy",
+    required: true
+  };
+}
 
-const PACKAGE_MODE_OPTIONS = [
-  { label: "Buy", value: "buy" },
-  { label: "Rent", value: "rent" }
-];
+function createSimplePackageForm() {
+  const form = createEmptyPackageForm();
 
-function getPreviewSubtotal(summary) {
-  if (summary?.baseSubtotal !== null && summary?.baseSubtotal !== undefined) {
-    return Number(summary.baseSubtotal) || 0;
+  return {
+    ...form,
+    active: true,
+    contextDefaults: {
+      ...form.contextDefaults,
+      minimumPackagePrice: "",
+      venueType: "indoor"
+    },
+    items: [createSimplePackageItem()],
+    status: "active",
+    visibility: "public"
+  };
+}
+
+function simplifyLoadedPackage(pkg) {
+  const form = buildFormFromPackage(pkg);
+
+  return {
+    ...form,
+    active: true,
+    contextDefaults: {
+      ...form.contextDefaults,
+      minimumPackagePrice: form.contextDefaults?.minimumPackagePrice || "",
+      venueType: form.contextDefaults?.venueType || "indoor"
+    },
+    items: Array.isArray(form.items) && form.items.length
+      ? form.items.map((item) => ({
+          ...createSimplePackageItem(),
+          ...item,
+          defaultQuantity: String(item.minimumQuantity || item.defaultQuantity || 1),
+          minimumQuantity: String(item.minimumQuantity || 1),
+          preferredMode: item.preferredMode === "rent" ? "rent" : "buy"
+        }))
+      : [createSimplePackageItem()],
+    status: "active",
+    visibility: "public"
+  };
+}
+
+function resolveItemProduct(item, productMap) {
+  return productMap.get(String(item?.productId || item?.product?.id || "")) || item?.product || null;
+}
+
+function getUnitPrice(product, mode) {
+  if (!product) return 0;
+
+  if (mode === "rent") {
+    if (Number.isFinite(Number(product.rent_price_per_day))) {
+      return Number(product.rent_price_per_day);
+    }
+
+    return Number(product.buy_price || 0);
   }
 
-  return Number(summary?.subtotal || 0);
+  if (Number.isFinite(Number(product.buy_price))) {
+    return Number(product.buy_price);
+  }
+
+  return Number(product.rent_price_per_day || 0);
+}
+
+function getAvailableModes(product) {
+  if (!product) {
+    return [
+      { label: "Buy", value: "buy" },
+      { label: "Rent", value: "rent" }
+    ];
+  }
+
+  const options = [];
+
+  if (product.buy_enabled !== false && Number.isFinite(Number(product.buy_price))) {
+    options.push({ label: "Buy", value: "buy" });
+  }
+
+  if (product.rent_enabled && Number.isFinite(Number(product.rent_price_per_day))) {
+    options.push({ label: "Rent", value: "rent" });
+  }
+
+  return options.length ? options : [{ label: "Buy", value: "buy" }];
+}
+
+function buildPackageStartingSummary(form, productMap) {
+  const rows = Array.isArray(form?.items) ? form.items : [];
+  let subtotal = 0;
+  let currency = "EGP";
+
+  rows.forEach((item) => {
+    const product = resolveItemProduct(item, productMap);
+    if (!product) return;
+
+    const minimumQuantity = Math.max(0, Number(item?.minimumQuantity || 0));
+    const mode = item?.preferredMode === "rent" ? "rent" : "buy";
+    const unitPrice = getUnitPrice(product, mode);
+
+    if (Number.isFinite(unitPrice) && unitPrice > 0 && minimumQuantity > 0) {
+      subtotal += unitPrice * minimumQuantity;
+      currency = String(product.currency || currency);
+    }
+  });
+
+  const discount = subtotal * PACKAGE_ITEM_DISCOUNT_RATE;
+  const startingPrice = subtotal - discount;
+
+  return {
+    currency,
+    discount,
+    startingPrice,
+    subtotal
+  };
+}
+
+function buildSimplePackagePayload(form) {
+  return buildPackagePayload({
+    ...form,
+    active: true,
+    items: (Array.isArray(form.items) ? form.items : []).map((item) => ({
+      ...item,
+      appliesToEventTypes: "",
+      appliesToVenueTypes: "",
+      defaultQuantity: String(Math.max(1, Number(item.minimumQuantity || 1))),
+      discountTiers: [],
+      notes: "",
+      required: true
+    })),
+    status: "active",
+    visibility: "public"
+  });
 }
 
 function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products, productsError }) {
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(createEmptyPackageForm());
-  const [search, setSearch] = useState("");
+  const [form, setForm] = useState(createSimplePackageForm());
   const [notice, setNotice] = useState("");
   const [pageError, setPageError] = useState("");
-  const [previewPayload, setPreviewPayload] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isPreviewing, setIsPreviewing] = useState(false);
-  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+  const safePackages = Array.isArray(packages) ? packages : [];
+  const safeProducts = Array.isArray(products) ? products : [];
 
   const productMap = useMemo(
-    () => new Map((Array.isArray(products) ? products : []).map((product) => [String(product.id), product])),
-    [products]
+    () => new Map(safeProducts.map((product) => [String(product.id), product])),
+    [safeProducts]
   );
 
-  const filteredPackages = useMemo(
-    () => packages.filter((pkg) => packageMatchesSearch(pkg, deferredSearch)),
-    [deferredSearch, packages]
+  const startingSummary = useMemo(
+    () => buildPackageStartingSummary(form, productMap),
+    [form, productMap]
   );
 
-  function resetForm() {
+  function resetForm({ clearNotice = true } = {}) {
     setEditingId(null);
-    setForm(createEmptyPackageForm());
-    setPreviewPayload(null);
+    setForm(createSimplePackageForm());
+    if (clearNotice) {
+      setNotice("");
+    }
     setPageError("");
   }
 
-  function updateTopLevelField(field, value) {
+  function updateField(field, value) {
     setForm((current) => ({
       ...current,
       [field]: value
+    }));
+    setNotice("");
+    setPageError("");
+  }
+
+  function updateSpeciality(value) {
+    setForm((current) => ({
+      ...current,
+      contextDefaults: {
+        ...current.contextDefaults,
+        venueType: value
+      }
     }));
     setNotice("");
     setPageError("");
@@ -119,33 +242,10 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     setPageError("");
   }
 
-  function updateDiscountTier(itemIndex, tierIndex, field, value) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, index) => (
-        index === itemIndex
-          ? {
-              ...item,
-              discountTiers: item.discountTiers.map((tier, currentTierIndex) => (
-                currentTierIndex === tierIndex
-                  ? {
-                      ...tier,
-                      [field]: value
-                    }
-                  : tier
-              ))
-            }
-          : item
-      ))
-    }));
-    setNotice("");
-    setPageError("");
-  }
-
   function addItem() {
     setForm((current) => ({
       ...current,
-      items: [...current.items, createEmptyPackageItem()]
+      items: [...current.items, createSimplePackageItem()]
     }));
   }
 
@@ -153,59 +253,11 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     setForm((current) => ({
       ...current,
       items: current.items.length === 1
-        ? [createEmptyPackageItem()]
+        ? [createSimplePackageItem()]
         : current.items.filter((_, index) => index !== itemIndex)
     }));
-  }
-
-  function addDiscountTier(itemIndex) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, index) => (
-        index === itemIndex
-          ? {
-              ...item,
-              discountTiers: [...item.discountTiers, createEmptyPackageDiscountTier()]
-            }
-          : item
-      ))
-    }));
-  }
-
-  function removeDiscountTier(itemIndex, tierIndex) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, index) => (
-        index === itemIndex
-          ? {
-              ...item,
-              discountTiers:
-                item.discountTiers.length === 1
-                  ? [createEmptyPackageDiscountTier()]
-                  : item.discountTiers.filter((_, currentTierIndex) => currentTierIndex !== tierIndex)
-            }
-          : item
-      ))
-    }));
-  }
-
-  async function handlePreview() {
-    setIsPreviewing(true);
     setNotice("");
     setPageError("");
-
-    try {
-      const payload = buildPackagePayload(form);
-      const preview = await previewPackageDraft(payload, {
-        context: payload.contextDefaults
-      });
-      setPreviewPayload(preview);
-    } catch (previewError) {
-      setPreviewPayload(null);
-      setPageError(previewError?.message || "Unable to preview this package right now.");
-    } finally {
-      setIsPreviewing(false);
-    }
   }
 
   async function handleSubmit(event) {
@@ -215,13 +267,11 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     setPageError("");
 
     try {
-      const payload = buildPackagePayload(form);
+      const payload = buildSimplePackagePayload(form);
       await savePackage(payload, editingId);
       await onPackagesRefresh();
+      resetForm({ clearNotice: false });
       setNotice(editingId ? "Package updated successfully." : "Package created successfully.");
-      setPreviewPayload(null);
-      setEditingId(null);
-      setForm(createEmptyPackageForm());
     } catch (submitError) {
       setPageError(submitError?.message || "Unable to save this package.");
     } finally {
@@ -231,8 +281,7 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
 
   function handleEdit(pkg) {
     setEditingId(pkg.id);
-    setForm(buildFormFromPackage(pkg));
-    setPreviewPayload(pkg.preview ? { package: pkg, preview: pkg.preview } : null);
+    setForm(simplifyLoadedPackage(pkg));
     setNotice("");
     setPageError("");
     window.scrollTo({ behavior: "smooth", top: 0 });
@@ -259,29 +308,12 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     }
   }
 
-  function resolveProduct(item) {
-    return productMap.get(String(item?.productId || item?.product?.id || "")) || item?.product || null;
-  }
-
   return (
     <section className="admin-section">
       <div className="section-head">
         <div>
           <h2>Packages</h2>
-          <p className="muted">Create prebuilt packages, define package item rules, and preview bundled pricing.</p>
-        </div>
-
-        <div className="title-actions">
-          <button
-            className="btn ghost"
-            disabled={isLoading}
-            onClick={() => {
-              void onPackagesRefresh().catch(() => {});
-            }}
-            type="button"
-          >
-            Refresh Packages
-          </button>
+          <p className="muted">Simple package setup with name, speciality, minimum package price, starting price, and catalog items.</p>
         </div>
       </div>
 
@@ -319,49 +351,29 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
             <div className="package-editor-head">
               <div>
                 <h3>{editingId ? "Edit Package" : "Create Package"}</h3>
-                <p className="helper-text">
-                  Define package defaults, required items, quantity rules, and item-level discount tiers.
-                </p>
+                <p className="helper-text">Only the essentials: name, speciality, minimum package price, starting price, and items.</p>
               </div>
             </div>
 
             <div className="form-grid">
               <div className="field">
-                <label htmlFor="package-name">Package name</label>
+                <label htmlFor="package-name">Package Name</label>
                 <input
                   id="package-name"
-                  onChange={(event) => updateTopLevelField("name", event.target.value)}
-                  placeholder="Corporate Launch Bundle"
+                  onChange={(event) => updateField("name", event.target.value)}
+                  placeholder="Indoor Starter Bundle"
                   value={form.name}
                 />
               </div>
 
               <div className="field">
-                <label htmlFor="package-event-type">Event type</label>
+                <label htmlFor="package-speciality">Package Speciality</label>
                 <select
-                  id="package-event-type"
-                  onChange={(event) => {
-                    updateTopLevelField("eventType", event.target.value);
-                    updateContextField("eventType", event.target.value);
-                  }}
-                  value={form.eventType}
+                  id="package-speciality"
+                  onChange={(event) => updateSpeciality(event.target.value)}
+                  value={form.contextDefaults.venueType}
                 >
-                  {EVENT_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value || "empty"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field">
-                <label htmlFor="package-status">Status</label>
-                <select
-                  id="package-status"
-                  onChange={(event) => updateTopLevelField("status", event.target.value)}
-                  value={form.status}
-                >
-                  {PACKAGE_STATUS_OPTIONS.map((option) => (
+                  {PACKAGE_SPECIALITY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -370,114 +382,35 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
               </div>
 
               <div className="field">
-                <label htmlFor="package-visibility">Visibility</label>
-                <select
-                  id="package-visibility"
-                  onChange={(event) => updateTopLevelField("visibility", event.target.value)}
-                  value={form.visibility}
-                >
-                  {PACKAGE_VISIBILITY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field field-wide">
-                <label htmlFor="package-description">Description</label>
-                <textarea
-                  id="package-description"
-                  onChange={(event) => updateTopLevelField("description", event.target.value)}
-                  placeholder="Describe the event goals, included setup, and who this package is best for."
-                  rows="4"
-                  value={form.description}
-                />
-              </div>
-            </div>
-
-            <div className="checks-row package-checks-row">
-              <label>
+                <label htmlFor="package-minimum-price">Minimum Package Price</label>
                 <input
-                  checked={Boolean(form.active)}
-                  onChange={(event) => updateTopLevelField("active", event.target.checked)}
-                  type="checkbox"
+                  id="package-minimum-price"
+                  min="0"
+                  onChange={(event) => updateContextField("minimumPackagePrice", event.target.value)}
+                  placeholder="5000"
+                  type="number"
+                  value={form.contextDefaults.minimumPackagePrice}
                 />
-                Active
-              </label>
-            </div>
-
-            <div className="panel package-editor-panel">
-              <div className="package-editor-panel-head">
-                <h4>Context Defaults</h4>
-                <p className="helper-text">These values drive the package preview and package-builder starting state.</p>
+                <small>The customer must reach this discounted item total before continuing.</small>
               </div>
 
-              <div className="form-grid">
-                <div className="field">
-                  <label htmlFor="package-context-venue-type">Venue type</label>
-                  <select
-                    id="package-context-venue-type"
-                    onChange={(event) => updateContextField("venueType", event.target.value)}
-                    value={form.contextDefaults.venueType}
-                  >
-                    {VENUE_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value || "any"} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="field">
-                  <label htmlFor="package-context-venue-size">Venue size</label>
-                  <input
-                    id="package-context-venue-size"
-                    onChange={(event) => updateContextField("venueSize", event.target.value)}
-                    placeholder="Ballroom, expo hall, open ground..."
-                    value={form.contextDefaults.venueSize}
-                  />
-                </div>
-
-                <div className="field">
-                  <label htmlFor="package-context-guest-count">Guest count</label>
-                  <input
-                    id="package-context-guest-count"
-                    min="0"
-                    onChange={(event) => updateContextField("guestCount", event.target.value)}
-                    type="number"
-                    value={form.contextDefaults.guestCount}
-                  />
-                </div>
-
-                <div className="field">
-                  <label htmlFor="package-context-budget">Budget</label>
-                  <input
-                    id="package-context-budget"
-                    min="0"
-                    onChange={(event) => updateContextField("budget", event.target.value)}
-                    type="number"
-                    value={form.contextDefaults.budget}
-                  />
-                </div>
-
-                <div className="field field-wide">
-                  <label htmlFor="package-context-delivery-place">Delivery place</label>
-                  <input
-                    id="package-context-delivery-place"
-                    onChange={(event) => updateContextField("deliveryPlace", event.target.value)}
-                    placeholder="Cairo, Giza, Alexandria..."
-                    value={form.contextDefaults.deliveryPlace}
-                  />
+              <div className="field">
+                <label>Package Starting Price</label>
+                <div className="package-simple-price-card">
+                  <strong>{formatMoney(startingSummary.startingPrice, startingSummary.currency)}</strong>
+                  <span>
+                    Subtotal {formatMoney(startingSummary.subtotal, startingSummary.currency)}
+                    {" "}with item discounts of {formatMoney(startingSummary.discount, startingSummary.currency)}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="panel package-editor-panel">
+            <div className="package-editor-panel">
               <div className="package-editor-panel-head">
                 <div>
-                  <h4>Package Items</h4>
-                  <p className="helper-text">Select products, set minimum and default quantities, then define optional tier pricing.</p>
+                  <h4>Items From Shop Catalog</h4>
+                  <p className="helper-text">Each row includes item name, minimum quantity, and whether it is buy or rent.</p>
                 </div>
                 <button className="btn ghost" onClick={addItem} type="button">
                   Add Item
@@ -486,185 +419,96 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
 
               <div className="package-item-grid">
                 {form.items.map((item, itemIndex) => {
-                  const product = resolveProduct(item);
+                  const product = resolveItemProduct(item, productMap);
+                  const availableModes = getAvailableModes(product);
+                  const unitPrice = getUnitPrice(product, item.preferredMode);
+                  const itemTotal = unitPrice * Math.max(0, Number(item.minimumQuantity || 0));
+                  const itemDiscount = itemTotal * PACKAGE_ITEM_DISCOUNT_RATE;
+                  const discountedItemTotal = itemTotal - itemDiscount;
 
                   return (
-                    <article className="package-item-editor" key={item.id}>
-                      <div className="package-item-row">
-                        <div className="field">
-                          <label htmlFor={`package-item-product-${item.id}`}>Product</label>
-                          <select
-                            id={`package-item-product-${item.id}`}
-                            onChange={(event) => updateItem(itemIndex, "productId", event.target.value)}
-                            value={item.productId}
-                          >
-                            <option value="">Select a product</option>
-                            {products.map((productOption) => (
-                              <option key={productOption.id} value={productOption.id}>
-                                {productOption.name} ({productOption.category})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                    <div className="package-simple-item-row" key={item.id}>
+                      <div className="field">
+                        <label htmlFor={`package-item-product-${item.id}`}>Item Name</label>
+                        <select
+                          id={`package-item-product-${item.id}`}
+                          onChange={(event) => {
+                            const nextProduct = productMap.get(String(event.target.value));
+                            const nextModes = getAvailableModes(nextProduct);
 
-                        <div className="field">
-                          <label htmlFor={`package-item-min-${item.id}`}>Minimum qty</label>
-                          <input
-                            id={`package-item-min-${item.id}`}
-                            min="1"
-                            onChange={(event) => updateItem(itemIndex, "minimumQuantity", event.target.value)}
-                            type="number"
-                            value={item.minimumQuantity}
-                          />
-                        </div>
-
-                        <button className="btn ghost" onClick={() => removeItem(itemIndex)} type="button">
-                          Remove
-                        </button>
-
-                        <div className="field">
-                          <label htmlFor={`package-item-default-${item.id}`}>Default qty</label>
-                          <input
-                            id={`package-item-default-${item.id}`}
-                            min="1"
-                            onChange={(event) => updateItem(itemIndex, "defaultQuantity", event.target.value)}
-                            type="number"
-                            value={item.defaultQuantity}
-                          />
-                        </div>
-
-                        <div className="field">
-                          <label htmlFor={`package-item-mode-${item.id}`}>Preferred mode</label>
-                          <select
-                            id={`package-item-mode-${item.id}`}
-                            onChange={(event) => updateItem(itemIndex, "preferredMode", event.target.value)}
-                            value={item.preferredMode}
-                          >
-                            {PACKAGE_MODE_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="checks-row">
-                          <label>
-                            <input
-                              checked={Boolean(item.required)}
-                              onChange={(event) => updateItem(itemIndex, "required", event.target.checked)}
-                              type="checkbox"
-                            />
-                            Required item
-                          </label>
-                        </div>
+                            setForm((current) => ({
+                              ...current,
+                              items: current.items.map((currentItem, index) => (
+                                index === itemIndex
+                                  ? {
+                                      ...currentItem,
+                                      preferredMode: nextModes[0]?.value || "buy",
+                                      productId: event.target.value
+                                    }
+                                  : currentItem
+                              ))
+                            }));
+                            setNotice("");
+                            setPageError("");
+                          }}
+                          value={item.productId}
+                        >
+                          <option value="">Select a catalog item</option>
+                          {safeProducts.map((productOption) => (
+                            <option key={productOption.id} value={productOption.id}>
+                              {productOption.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
-                      {product?.id ? (
+                      <div className="field">
+                        <label htmlFor={`package-item-min-${item.id}`}>Item Min Qty</label>
+                        <input
+                          id={`package-item-min-${item.id}`}
+                          min="1"
+                          onChange={(event) => updateItem(itemIndex, "minimumQuantity", event.target.value)}
+                          type="number"
+                          value={item.minimumQuantity}
+                        />
+                      </div>
+
+                      <div className="field">
+                        <label htmlFor={`package-item-mode-${item.id}`}>Buy / Rent</label>
+                        <select
+                          id={`package-item-mode-${item.id}`}
+                          onChange={(event) => updateItem(itemIndex, "preferredMode", event.target.value)}
+                          value={item.preferredMode}
+                        >
+                          {availableModes.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button className="btn ghost" onClick={() => removeItem(itemIndex)} type="button">
+                        Remove
+                      </button>
+
+                      {product ? (
                         <div className="package-item-preview">
                           <strong>{product.name}</strong>
                           <span>
                             {product.category} / {product.subcategory}
-                            {product.buy_price !== null ? ` | Buy ${formatMoney(product.buy_price, product.currency)}` : ""}
-                            {product.rent_price_per_day !== null ? ` | Rent ${formatMoney(product.rent_price_per_day, product.currency)}/day` : ""}
+                            {" | "}
+                            Unit {formatMoney(unitPrice, product.currency || "EGP")}
+                            {" | "}
+                            Item discount {formatMoney(itemDiscount, product.currency || "EGP")}
+                            {" | "}
+                            Line total {formatMoney(discountedItemTotal, product.currency || "EGP")}
                           </span>
                         </div>
                       ) : (
-                        <p className="package-empty-note">Select a product to preview its catalog details here.</p>
+                        <p className="package-empty-note">Choose a catalog item to include it in the package.</p>
                       )}
-
-                      <div className="form-grid">
-                        <div className="field">
-                          <label htmlFor={`package-item-events-${item.id}`}>Applicable event types</label>
-                          <input
-                            id={`package-item-events-${item.id}`}
-                            onChange={(event) => updateItem(itemIndex, "appliesToEventTypes", event.target.value)}
-                            placeholder="birthday, corporate"
-                            value={item.appliesToEventTypes}
-                          />
-                          <small>Comma or new-line separated.</small>
-                        </div>
-
-                        <div className="field">
-                          <label htmlFor={`package-item-venues-${item.id}`}>Applicable venue types</label>
-                          <input
-                            id={`package-item-venues-${item.id}`}
-                            onChange={(event) => updateItem(itemIndex, "appliesToVenueTypes", event.target.value)}
-                            placeholder="indoor, outdoor"
-                            value={item.appliesToVenueTypes}
-                          />
-                          <small>Comma or new-line separated.</small>
-                        </div>
-
-                        <div className="field field-wide">
-                          <label htmlFor={`package-item-notes-${item.id}`}>Package item notes</label>
-                          <textarea
-                            id={`package-item-notes-${item.id}`}
-                            onChange={(event) => updateItem(itemIndex, "notes", event.target.value)}
-                            placeholder="Notes for package builders or admin preview."
-                            rows="3"
-                            value={item.notes}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="package-tier-editor">
-                        <div className="package-tier-editor-head">
-                          <div>
-                            <h5>Discount tiers</h5>
-                            <p className="helper-text">Add quantity-based discounts or unit-price overrides for this package item.</p>
-                          </div>
-                          <button className="btn ghost" onClick={() => addDiscountTier(itemIndex)} type="button">
-                            Add Tier
-                          </button>
-                        </div>
-
-                        <div className="package-tier-grid">
-                          {item.discountTiers.map((tier, tierIndex) => (
-                            <div className="package-tier-row" key={tier.id}>
-                              <input
-                                min="1"
-                                onChange={(event) => updateDiscountTier(itemIndex, tierIndex, "minQuantity", event.target.value)}
-                                placeholder="Min qty"
-                                type="number"
-                                value={tier.minQuantity}
-                              />
-                              <input
-                                min="1"
-                                onChange={(event) => updateDiscountTier(itemIndex, tierIndex, "maxQuantity", event.target.value)}
-                                placeholder="Max qty"
-                                type="number"
-                                value={tier.maxQuantity}
-                              />
-                              <input
-                                min="0"
-                                onChange={(event) => updateDiscountTier(itemIndex, tierIndex, "discountPercent", event.target.value)}
-                                placeholder="Discount %"
-                                step="0.01"
-                                type="number"
-                                value={tier.discountPercent}
-                              />
-                              <input
-                                min="0"
-                                onChange={(event) => updateDiscountTier(itemIndex, tierIndex, "unitPriceOverride", event.target.value)}
-                                placeholder="Unit override"
-                                step="0.01"
-                                type="number"
-                                value={tier.unitPriceOverride}
-                              />
-                              <input
-                                onChange={(event) => updateDiscountTier(itemIndex, tierIndex, "label", event.target.value)}
-                                placeholder="Tier label"
-                                value={tier.label}
-                              />
-                              <button className="btn ghost" onClick={() => removeDiscountTier(itemIndex, tierIndex)} type="button">
-                                Remove
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </article>
+                    </div>
                   );
                 })}
               </div>
@@ -674,146 +518,66 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
               <button className="btn primary" disabled={isSaving} type="submit">
                 {isSaving ? "Saving..." : editingId ? "Update Package" : "Create Package"}
               </button>
-              <button className="btn ghost" disabled={isPreviewing} onClick={() => { void handlePreview(); }} type="button">
-                {isPreviewing ? "Previewing..." : "Preview Pricing"}
-              </button>
               <button className="btn ghost" onClick={resetForm} type="button">
                 Reset
               </button>
             </div>
           </form>
 
-          <div className="section-stack">
-            <section className="panel">
-              <div className="package-editor-panel-head">
-                <div>
-                  <h3>Pricing Preview</h3>
-                  <p className="helper-text">Use the current form state to preview package totals, discount logic, and validation outcomes.</p>
-                </div>
+          <section className="panel">
+            <div className="package-editor-head">
+              <div>
+                <h3>Saved Packages</h3>
+                <p className="helper-text">Simple overview of each saved package.</p>
               </div>
+            </div>
 
-              {previewPayload?.preview ? (
-                <div className="package-preview-grid">
-                  <div className="package-preview-summary">
-                    <div className="stat-row">
-                      <strong>Subtotal</strong>
-                      <span>{formatMoney(getPreviewSubtotal(previewPayload.preview.summary), previewPayload.preview.summary.currency || "EGP")}</span>
-                    </div>
-                    <div className="stat-row">
-                      <strong>Item discounts</strong>
-                      <span>-{formatMoney(previewPayload.preview.summary.itemDiscounts || 0, previewPayload.preview.summary.currency || "EGP")}</span>
-                    </div>
-                    <div className="stat-row">
-                      <strong>Customization fees</strong>
-                      <span>{formatMoney(previewPayload.preview.summary.customizationFees || 0, previewPayload.preview.summary.currency || "EGP")}</span>
-                    </div>
-                    <div className="stat-row">
-                      <strong>Bundle discount</strong>
-                      <span>-{formatMoney(previewPayload.preview.summary.bundleDiscount || 0, previewPayload.preview.summary.currency || "EGP")}</span>
-                    </div>
-                    <div className="stat-row">
-                      <strong>Shipping</strong>
-                      <span>{formatMoney(previewPayload.preview.summary.shipping || 0, previewPayload.preview.summary.currency || "EGP")}</span>
-                    </div>
-                    <div className="stat-row">
-                      <strong>Final total</strong>
-                      <span>{formatMoney(previewPayload.preview.summary.finalTotal || 0, previewPayload.preview.summary.currency || "EGP")}</span>
-                    </div>
-                  </div>
-
-                  <div className="package-preview-validation-list">
-                    {(Array.isArray(previewPayload.preview.validations) && previewPayload.preview.validations.length
-                      ? previewPayload.preview.validations
-                      : [{ code: "admin-preview-ready", level: "success", message: "This package preview is valid and ready to publish." }])
-                      .map((issue) => (
-                        <p className={`package-preview-note is-${issue.level}`} key={`${issue.code}-${issue.message}`}>
-                          {issue.message}
-                        </p>
-                      ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="feedback-panel">
-                  <strong>No preview generated yet.</strong>
-                  <span>Click "Preview Pricing" to validate quantities, discounts, shipping, and bundle totals.</span>
-                </div>
-              )}
-            </section>
-
-            <section className="panel">
-              <div className="list-head">
-                <div>
-                  <h3>Saved Packages</h3>
-                  <p className="helper-text">Review existing packages, then edit or delete them as needed.</p>
-                </div>
-
-                <input
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search packages..."
-                  type="search"
-                  value={search}
-                />
+            {isLoading ? (
+              <div className="feedback-panel">
+                <strong>Loading packages...</strong>
+                <span>The package list will appear as soon as the API responds.</span>
               </div>
+            ) : null}
 
-              {isLoading ? (
-                <div className="feedback-panel">
-                  <strong>Loading packages...</strong>
-                  <span>The package list will appear as soon as the API responds.</span>
-                </div>
-              ) : null}
+            <div className="package-list">
+              {safePackages.length ? (
+                safePackages.map((pkg) => {
+                  const simpleForm = simplifyLoadedPackage(pkg);
+                  const summary = buildPackageStartingSummary(simpleForm, productMap);
 
-              <div className="package-list">
-                {filteredPackages.length ? (
-                  filteredPackages.map((pkg) => (
+                  return (
                     <article className="package-card" key={pkg.id}>
                       <div className="package-card-main">
                         <div className="package-card-head">
                           <div>
                             <h4>{pkg.name}</h4>
-                            <p className="meta">{pkg.eventType || "general"} | {pkg.visibility || "public"} | {pkg.status || "draft"}</p>
-                          </div>
-                          <div className="package-badge-row">
-                            <span className={`role-pill${pkg.active ? "" : " is-inactive"}`}>{pkg.active ? "Active" : "Inactive"}</span>
+                            <p className="meta">Speciality: {simpleForm.contextDefaults.venueType || "indoor"}</p>
                           </div>
                         </div>
 
-                        <p className="muted">{pkg.description || "No description provided for this package."}</p>
+                        <p className="price-line">Starting price {formatMoney(summary.startingPrice, summary.currency)}</p>
+                        <p className="meta">
+                          Minimum package price{" "}
+                          {formatMoney(Number(simpleForm.contextDefaults.minimumPackagePrice || 0), summary.currency)}
+                        </p>
 
                         <div className="package-card-items">
-                          {pkg.items.slice(0, 3).map((item) => {
-                            const product = resolveProduct(item);
-
+                          {simpleForm.items.map((item) => {
+                            const product = resolveItemProduct(item, productMap);
                             return (
                               <div className="package-card-item" key={item.id}>
-                                <img
-                                  alt={product?.name || "Package item"}
-                                  className="package-card-item-image"
-                                  src={product?.image_url || "https://placehold.co/160x160?text=EventMart"}
-                                />
                                 <div className="package-card-item-copy">
                                   <strong>{product?.name || "Catalog item"}</strong>
-                                  <span>Default qty {item.defaultQuantity} | Min qty {item.minimumQuantity}</span>
-                                  {Array.isArray(item.discountTiers) && item.discountTiers.length ? (
-                                    <p>
-                                      {item.discountTiers.filter((tier) =>
-                                        String(tier?.minQuantity || "").trim() ||
-                                        String(tier?.discountPercent || "").trim() ||
-                                        String(tier?.unitPriceOverride || "").trim()
-                                      ).length || 0}
-                                      {" "}tier rule(s) configured
-                                    </p>
-                                  ) : null}
+                                  <span>
+                                    Min qty {item.minimumQuantity}
+                                    {" | "}
+                                    {item.preferredMode === "rent" ? "Rent" : "Buy"}
+                                  </span>
                                 </div>
                               </div>
                             );
                           })}
                         </div>
-
-                        {pkg.preview?.summary ? (
-                          <p className="price-line">
-                            Preview total {formatMoney(pkg.preview.summary.finalTotal || 0, pkg.preview.summary.currency || "EGP")}
-                          </p>
-                        ) : null}
                       </div>
 
                       <div className="product-actions">
@@ -825,16 +589,16 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
                         </button>
                       </div>
                     </article>
-                  ))
-                ) : (
-                  <div className="feedback-panel">
-                    <strong>No packages found.</strong>
-                    <span>Adjust the search term or create a new package above.</span>
-                  </div>
-                )}
-              </div>
-            </section>
-          </div>
+                  );
+                })
+              ) : (
+                <div className="feedback-panel">
+                  <strong>No packages found.</strong>
+                  <span>Create your first package using the simple form on the left.</span>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </section>

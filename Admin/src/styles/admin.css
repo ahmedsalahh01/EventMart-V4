@@ -573,6 +573,45 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.package-simple-price-card {
+  display: grid;
+  gap: 6px;
+  min-height: 100%;
+  padding: 16px 18px;
+  border: 1px solid rgba(104, 234, 188, 0.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(34, 211, 238, 0.08), rgba(74, 222, 128, 0.12)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.package-simple-price-card strong {
+  color: #bbf7d0;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.package-simple-price-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.package-simple-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(120px, 0.6fr) minmax(140px, 0.7fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.package-simple-item-row > .btn {
+  align-self: end;
+}
+
 .package-item-preview {
   display: grid;
   gap: 8px;
@@ -1011,6 +1050,7 @@ button:disabled {
   }
 
   .package-item-row,
+  .package-simple-item-row,
   .package-card,
   .package-tier-row {
     grid-template-columns: 1fr;

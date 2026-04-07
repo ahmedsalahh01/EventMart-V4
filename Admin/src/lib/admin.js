@@ -887,6 +887,7 @@ function normalizePackageContextDefaults(value) {
     deliveryPlace: String(value?.deliveryPlace ?? value?.delivery_place ?? ""),
     eventType: String(value?.eventType ?? value?.event_type ?? ""),
     guestCount: String(value?.guestCount ?? value?.guest_count ?? ""),
+    minimumPackagePrice: String(value?.minimumPackagePrice ?? value?.minimum_package_price ?? ""),
     venueSize: String(value?.venueSize ?? value?.venue_size ?? ""),
     venueType: String(value?.venueType ?? value?.venue_type ?? "")
   };
@@ -1655,6 +1656,7 @@ export function buildPackagePayload(form) {
       deliveryPlace: String(form?.contextDefaults?.deliveryPlace || "").trim(),
       eventType: String(form?.contextDefaults?.eventType || eventType).trim(),
       guestCount: toNum(form?.contextDefaults?.guestCount, 0) ?? 0,
+      minimumPackagePrice: toNum(form?.contextDefaults?.minimumPackagePrice, 0) ?? 0,
       venueSize: String(form?.contextDefaults?.venueSize || "").trim(),
       venueType: String(form?.contextDefaults?.venueType || "").trim()
     },
