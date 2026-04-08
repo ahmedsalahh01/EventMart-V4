@@ -21,8 +21,9 @@ export async function loadPackageByIdentifier(identifier) {
   return apiRequest(`/api/packages/${encodeURIComponent(identifier)}`);
 }
 
-export async function previewPackageBuilder(payload) {
+export async function previewPackageBuilder(payload, options = {}) {
   return apiRequest("/api/package-builder/preview", {
+    ...options,
     body: payload,
     method: "POST"
   });
@@ -40,6 +41,78 @@ export async function previewPackageCart(items) {
     body: { items },
     method: "POST"
   });
+}
+
+export function normalizePackageMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["buy", "rent", "hybrid"].includes(normalized) ? normalized : "hybrid";
+}
+
+export function getPackageCurrency(pkg) {
+  const items = Array.isArray(pkg?.items) ? pkg.items : [];
+  const firstItemCurrency = items.find((item) => item?.product?.currency)?.product?.currency;
+  return String(firstItemCurrency || "EGP");
+}
+
+export function getPackageDisplayPrice(pkg) {
+  const configuredPrice = Number(pkg?.contextDefaults?.packagePrice || 0);
+  const currency = getPackageCurrency(pkg);
+
+  return {
+    amount: configuredPrice > 0 ? configuredPrice : 0,
+    currency,
+    source: configuredPrice > 0 ? "configured" : "missing"
+  };
+}
+
+export function getPackageVenueLabel(pkg) {
+  const venueType = String(pkg?.contextDefaults?.venueType || "").trim().toLowerCase();
+  if (venueType === "indoor") return "Indoor";
+  if (venueType === "outdoor") return "Outdoor";
+  if (venueType === "hybrid") return "Hybrid";
+  return "General";
+}
+
+export function getPackageAudienceLabel(pkg) {
+  const guestCount = Math.max(0, Number(pkg?.contextDefaults?.guestCount || 0));
+  return guestCount > 0 ? `${guestCount} people` : "Flexible guest count";
+}
+
+export function getPackageCustomizationLabel(pkg) {
+  const explicitValue = pkg?.contextDefaults?.customizationAvailable;
+  const hasCustomizableItem = Array.isArray(pkg?.items) && pkg.items.some((item) => Boolean(item?.product?.customizable));
+  const isCustomizable = explicitValue === undefined || explicitValue === null
+    ? hasCustomizableItem
+    : Boolean(explicitValue);
+
+  return isCustomizable ? "Customizable items" : "No customization";
+}
+
+export function getPackageModeLabel(pkg) {
+  const mode = normalizePackageMode(pkg?.contextDefaults?.packageMode);
+  if (mode === "buy") return "Buy only";
+  if (mode === "rent") return "Rent only";
+  return "Hybrid";
+}
+
+export function buildPackageDescription(pkg) {
+  const explicitDescription = String(pkg?.description || "").trim();
+  if (explicitDescription) {
+    return explicitDescription;
+  }
+
+  const details = [];
+  const guestCount = Math.max(0, Number(pkg?.contextDefaults?.guestCount || 0));
+
+  if (guestCount > 0) {
+    details.push(`Fits up to ${guestCount} people`);
+  }
+
+  details.push(`${getPackageVenueLabel(pkg)} setup`);
+  details.push(getPackageCustomizationLabel(pkg));
+  details.push(getPackageModeLabel(pkg));
+
+  return details.join(". ");
 }
 
 export function createCartItemsFromBuilderPreview(preview) {

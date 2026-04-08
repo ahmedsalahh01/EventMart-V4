@@ -122,6 +122,32 @@ await runTest("should retry package route misses against an explicit fallback AP
   assert.equal(calls[1].url, "http://localhost:4000/api/packages");
 });
 
+await runTest("should forward AbortSignal to fetch requests", async () => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  let capturedOptions = null;
+
+  globalThis.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => "[]"
+    };
+  };
+
+  try {
+    await apiRequest("/api/packages", {
+      baseUrl: "https://api.example.com",
+      signal: controller.signal
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(capturedOptions?.signal, controller.signal);
+});
+
 await runTest("should not implicitly retry package route misses against localhost when VITE_API_URL is configured", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];

@@ -187,7 +187,7 @@ function listEventTypes() {
   return EVENT_TYPE_ORDER.map((slug) => EVENT_TYPE_CONFIG[slug]);
 }
 
-function buildEventTypeShopPath(value, { category = "", mode = "" } = {}) {
+function buildEventTypeShopPath(value, { category = "", mode = "", search = "" } = {}) {
   const slug = resolveEventType(value);
   const params = new URLSearchParams();
 
@@ -201,6 +201,10 @@ function buildEventTypeShopPath(value, { category = "", mode = "" } = {}) {
 
   if (mode) {
     params.set("mode", mode);
+  }
+
+  if (search) {
+    params.set("search", search);
   }
 
   const query = params.toString();

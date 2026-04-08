@@ -1,35 +1,16 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { loadPackages } from "../lib/packages";
+import {
+  buildPackageDescription,
+  getPackageAudienceLabel,
+  getPackageCustomizationLabel,
+  getPackageDisplayPrice,
+  getPackageModeLabel,
+  getPackageVenueLabel,
+  loadPackages
+} from "../lib/packages";
 import "../styles/packages.css";
-
-const PACKAGE_ITEM_DISCOUNT_RATE = 0.15;
-
-function getPackageListStartingPrice(pkg) {
-  const items = Array.isArray(pkg?.items) ? pkg.items : [];
-  let total = 0;
-  let currency = "EGP";
-
-  items.forEach((item) => {
-    const quantity = Math.max(0, Number(item?.defaultQuantity || item?.minimumQuantity || 0));
-    const product = item?.product || {};
-    const mode = item?.preferredMode === "rent" ? "rent" : "buy";
-    const unitPrice = mode === "rent"
-      ? Number(product?.rent_price_per_day ?? product?.buy_price ?? 0)
-      : Number(product?.buy_price ?? product?.rent_price_per_day ?? 0);
-
-    if (Number.isFinite(unitPrice) && unitPrice > 0 && quantity > 0) {
-      total += unitPrice * quantity * (1 - PACKAGE_ITEM_DISCOUNT_RATE);
-      currency = String(product?.currency || currency);
-    }
-  });
-
-  return {
-    amount: Number(total.toFixed(2)),
-    currency
-  };
-}
 
 function PackagesPage() {
   const [packages, setPackages] = useState([]);
@@ -64,8 +45,11 @@ function PackagesPage() {
     return packages.filter((pkg) =>
       [
         pkg?.name,
-        pkg?.description,
-        pkg?.eventType,
+        buildPackageDescription(pkg),
+        getPackageAudienceLabel(pkg),
+        getPackageVenueLabel(pkg),
+        getPackageCustomizationLabel(pkg),
+        getPackageModeLabel(pkg),
         ...(Array.isArray(pkg?.items) ? pkg.items.map((item) => item?.product?.name) : [])
       ]
         .join(" ")
@@ -116,7 +100,7 @@ function PackagesPage() {
             <p className="package-eyebrow">Browse Packages</p>
             <h1>Choose a ready-made package or customize one further.</h1>
             <p className="package-copy">
-              Compare included items, live package discounts, and recommended setups before moving straight into checkout or deeper customization.
+              Compare package fit, venue style, customization options, and overall pricing before selecting the one you want to inspect in detail.
             </p>
           </div>
 
@@ -138,58 +122,46 @@ function PackagesPage() {
 
         <section className="package-list-grid" aria-label="Default package list">
           {filteredPackages.length ? (
-            filteredPackages.map((pkg) => (
-              (() => {
-                const startingPrice = getPackageListStartingPrice(pkg);
+            filteredPackages.map((pkg) => {
+              const displayPrice = getPackageDisplayPrice(pkg);
 
-                return (
-                  <article className="package-shell-card package-list-card" key={pkg.id}>
-                    <div className="package-card-head">
-                      <div>
-                        <p className="package-card-kicker">{pkg.eventType || "General event"}</p>
-                        <h2>{pkg.name}</h2>
-                      </div>
-                      <span className={`package-requirement-pill is-${pkg.status}`}>{pkg.status}</span>
+              return (
+                <article className="package-shell-card package-list-card" key={pkg.id}>
+                  <div className="package-card-head">
+                    <div>
+                      <p className="package-card-kicker">{getPackageModeLabel(pkg)}</p>
+                      <h2>{pkg.name}</h2>
                     </div>
+                    <span className={`package-requirement-pill is-${pkg.status}`}>{pkg.status}</span>
+                  </div>
 
-                    <p className="package-copy">{pkg.description || "No description provided for this package yet."}</p>
+                  <p className="package-copy">{buildPackageDescription(pkg)}</p>
 
-                    <div className="package-card-items-preview">
-                      {pkg.items.slice(0, 4).map((item) => (
-                        <div className="package-card-mini-item" key={item.id}>
-                          <img alt={item.product?.name} src={item.product?.image_url || "/assets/equipment-collage.jpg"} />
-                          <div>
-                            <strong>{item.product?.name}</strong>
-                            <span>Qty {item.defaultQuantity}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="package-list-feature-grid">
+                    <span className="package-list-feature-pill">{getPackageAudienceLabel(pkg)}</span>
+                    <span className="package-list-feature-pill">{getPackageVenueLabel(pkg)}</span>
+                    <span className="package-list-feature-pill">{getPackageCustomizationLabel(pkg)}</span>
+                    <span className="package-list-feature-pill">{pkg.items.length} items included</span>
+                  </div>
 
-                    <div className="package-list-meta">
-                      <span>
-                        {pkg.items.length} included items
-                        {Number(pkg.contextDefaults?.minimumPackagePrice || 0) > 0
-                          ? ` | Min ${startingPrice.currency} ${Number(pkg.contextDefaults?.minimumPackagePrice || 0).toFixed(2)}`
-                          : ""}
-                      </span>
-                      <strong>
-                        {startingPrice.currency} {startingPrice.amount.toFixed(2)}
-                      </strong>
-                    </div>
+                  <div className="package-list-meta">
+                    <span>Overall package price</span>
+                    <strong>
+                      {displayPrice.currency} {displayPrice.amount.toFixed(2)}
+                    </strong>
+                  </div>
 
-                    <div className="package-list-card-actions">
-                      <Link className="package-primary-link" to={`/packages/${pkg.slug || pkg.id}`}>
-                        View Details
-                      </Link>
-                      <Link className="package-secondary-link" to={`/package-builder?package=${encodeURIComponent(pkg.slug || pkg.id)}`}>
-                        Customize
-                      </Link>
-                    </div>
-                  </article>
-                );
-              })()
-            ))
+                  <div className="package-list-card-actions">
+                    <Link className="package-primary-link" to={`/packages/${pkg.slug || pkg.id}`}>
+                      Select Package
+                    </Link>
+                    <Link className="package-secondary-link" to={`/package-builder?package=${encodeURIComponent(pkg.slug || pkg.id)}`}>
+                      Customize
+                    </Link>
+                  </div>
+                </article>
+              );
+            })
           ) : (
             <section className="package-shell-card package-state-card package-list-empty">
               <p className="package-eyebrow">Browse Packages</p>

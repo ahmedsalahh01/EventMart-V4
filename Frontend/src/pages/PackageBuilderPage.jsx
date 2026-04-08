@@ -46,6 +46,7 @@ function PackageBuilderPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [selections, setSelections] = useState({});
   const [context, setContext] = useState(() => ({
@@ -63,30 +64,44 @@ function PackageBuilderPage() {
   const selectionPayload = useMemo(() => buildSelectionPayload(selections), [selections]);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    const hasPreview = Boolean(preview);
+    const requestDelay = hasPreview ? 250 : 0;
 
-    setLoading(true);
-    setError("");
+    const timeoutId = window.setTimeout(() => {
+      if (hasPreview) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError("");
 
-    previewPackageBuilder({
-      context,
-      packageGroupId,
-      packageSlug: packageSlug || undefined,
-      selectedItems: selectionPayload
-    })
-      .then((payload) => {
-        if (cancelled) return;
-        setPreview(payload);
-        setLoading(false);
-      })
-      .catch((requestError) => {
-        if (cancelled) return;
-        setError(requestError?.message || "Unable to load the package builder right now.");
-        setLoading(false);
-      });
+      previewPackageBuilder(
+        {
+          context,
+          packageGroupId,
+          packageSlug: packageSlug || undefined,
+          selectedItems: selectionPayload
+        },
+        { signal: controller.signal }
+      )
+        .then((payload) => {
+          if (controller.signal.aborted) return;
+          setPreview(payload);
+          setLoading(false);
+          setIsRefreshing(false);
+        })
+        .catch((requestError) => {
+          if (controller.signal.aborted || requestError?.name === "AbortError") return;
+          setError(requestError?.message || "Unable to load the package builder right now.");
+          setLoading(false);
+          setIsRefreshing(false);
+        });
+    }, requestDelay);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [context, packageGroupId, packageSlug, selectionPayload]);
 
@@ -164,7 +179,7 @@ function PackageBuilderPage() {
     navigate("/cart");
   }
 
-  if (loading) {
+  if (loading && !preview) {
     return (
       <main className="packages-page" data-theme-scope="packages">
         <section className="package-shell-card package-state-card">
@@ -176,7 +191,7 @@ function PackageBuilderPage() {
     );
   }
 
-  if (error || !preview) {
+  if (!preview) {
     return (
       <main className="packages-page" data-theme-scope="packages">
         <section className="package-shell-card package-state-card">
@@ -209,6 +224,9 @@ function PackageBuilderPage() {
               <p className="package-copy">
                 Select your event details, choose the items that fit your venue and budget, and keep the bundle valid with live quantity, shipping, and discount guidance.
               </p>
+              {isRefreshing ? (
+                <p className="package-refresh-state">Refreshing package pricing and builder rules...</p>
+              ) : null}
             </div>
 
             <div className="package-builder-actions">
@@ -511,6 +529,7 @@ function PackageBuilderPage() {
               ) : null}
             </div>
 
+            {error ? <p className="package-inline-error">{error}</p> : null}
             {message ? <p className="package-inline-success">{message}</p> : null}
 
             <div className="package-validation-list">

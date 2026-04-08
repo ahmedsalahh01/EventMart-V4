@@ -155,6 +155,19 @@ html[data-interface-theme="dark"] [data-theme-scope="packages"] {
   color: color-mix(in srgb, var(--c-1) 78%, var(--c-10));
 }
 
+.package-shell-card .package-refresh-state {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c-2) 18%, transparent);
+  background: color-mix(in srgb, var(--c-2) 10%, transparent);
+  color: color-mix(in srgb, var(--c-1) 86%, var(--c-10));
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
 .package-list-hero h1,
 .package-builder-hero h1,
 .package-detail-hero h1,
@@ -336,6 +349,25 @@ html[data-interface-theme="dark"] [data-theme-scope="packages"] {
   align-content: start;
 }
 
+.package-list-feature-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.package-list-feature-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--package-border);
+  background: color-mix(in srgb, var(--package-muted-bg) 88%, transparent);
+  color: var(--package-copy-soft);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 .package-card-items-preview {
   display: grid;
   gap: 12px;
@@ -406,6 +438,39 @@ html[data-interface-theme="dark"] [data-theme-scope="packages"] {
 .package-detail-meta > div span {
   color: color-mix(in srgb, var(--c-1) 72%, var(--c-10));
   font-size: 0.92rem;
+}
+
+.package-detail-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.package-detail-item-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 24px;
+  border: 1px solid var(--package-border);
+  background: color-mix(in srgb, var(--package-muted-bg) 82%, transparent);
+}
+
+.package-detail-item-card .package-detail-item-image {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 18px;
+  background: var(--package-panel-strong);
+}
+
+.package-detail-item-copy {
+  display: grid;
+  gap: 12px;
+}
+
+.package-detail-item-copy h3 {
+  margin: 0;
+  font-size: 1.08rem;
 }
 
 .package-detail-copy {
@@ -775,16 +840,5 @@ html[data-interface-theme="dark"] .package-inline-success {
 
   .package-product-controls {
     grid-template-columns: 1fr;
-  }
-
-  .package-card-mini-item,
-  .package-detail-item {
-    grid-template-columns: 1fr;
-  }
-
-  .package-card-mini-item img,
-  .package-detail-item-image {
-    width: 100%;
-    height: 220px;
   }
 }

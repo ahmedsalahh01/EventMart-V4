@@ -38,12 +38,22 @@ html[data-interface-theme="dark"] [data-theme-scope="about"] {
   --c-38: var(--c-1);
 }
 .about-snap-page {
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-html.about-snap-page {
-  scroll-snap-type: y mandatory;
-  scroll-padding-top: var(--nav-height);
+html.about-snap-page,
+body.about-snap-page {
+  scroll-snap-type: none;
+  scroll-padding-top: 0;
+}
+
+html.about-snap-page::-webkit-scrollbar,
+body.about-snap-page::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .sr-only {
@@ -70,9 +80,6 @@ html.about-snap-page {
   position: relative;
   width: 100%;
   min-height: calc(var(--app-viewport-height) - var(--nav-height));
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-  scroll-margin-top: var(--nav-height);
   border-radius: 0;
   border: 1px solid var(--c-27);
   box-shadow: var(--c-29);
@@ -260,8 +267,6 @@ html.about-snap-page {
 
 .about-snap-page .footer {
   margin-top: 0;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
 }
 
 .about-snap-page .about-who {

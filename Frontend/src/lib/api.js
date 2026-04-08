@@ -129,7 +129,8 @@ async function requestJson(url, options = {}) {
     method,
     headers,
     cache: options.cache || "no-store",
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal
   });
 
   const text = await response.text();

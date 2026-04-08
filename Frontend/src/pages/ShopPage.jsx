@@ -19,6 +19,7 @@ const FEATURED_RAIL_CYCLE_MS = 2000;
 const FEATURED_RAIL_SCROLL_MS = 650;
 const FEATURED_RAIL_MAX_ITEMS = 8;
 const FEATURED_RAIL_AUTOPLAY_MIN_PRODUCTS = 5;
+const RELATED_RESULTS_LIMIT = 6;
 
 function getFeaturedRailVisibleCount(width) {
   const safeWidth = Number(width || 0);
@@ -30,17 +31,101 @@ function getFeaturedRailVisibleCount(width) {
   return 1;
 }
 
-function matchesProductSearch(product, query) {
-  const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery) return true;
+function normalizeSearchQuery(value) {
+  return String(value || "").trim().toLowerCase();
+}
 
-  return (
-    product.name.toLowerCase().includes(normalizedQuery) ||
-    String(product.product_id || "").toLowerCase().includes(normalizedQuery) ||
-    product.description.toLowerCase().includes(normalizedQuery) ||
-    product.category.toLowerCase().includes(normalizedQuery) ||
-    product.subcategory.toLowerCase().includes(normalizedQuery)
-  );
+function tokenizeSearchQuery(value) {
+  return normalizeSearchQuery(value)
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function extractSearchWords(value) {
+  return normalizeSearchQuery(value)
+    .split(/[^a-z0-9]+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
+function getProductSearchProfile(product) {
+  const name = normalizeSearchQuery(product?.name);
+  const productId = normalizeSearchQuery(product?.product_id);
+  const description = normalizeSearchQuery(product?.description);
+  const category = normalizeSearchQuery(product?.category);
+  const subcategory = normalizeSearchQuery(product?.subcategory);
+  const tags = normalizeSearchQuery(Array.isArray(product?.tags) ? product.tags.join(" ") : "");
+  const eventType = normalizeSearchQuery(product?.event_type);
+  const venueType = normalizeSearchQuery(product?.venue_type);
+  const deliveryClass = normalizeSearchQuery(product?.delivery_class);
+
+  return {
+    category,
+    categoryWords: extractSearchWords(category),
+    deliveryClass,
+    description,
+    eventType,
+    haystack: [name, productId, description, category, subcategory, tags, eventType, venueType, deliveryClass].filter(Boolean).join(" "),
+    name,
+    nameWords: extractSearchWords(name),
+    productId,
+    subcategory,
+    subcategoryWords: extractSearchWords(subcategory),
+    tags,
+    tagsWords: extractSearchWords(tags),
+    venueType
+  };
+}
+
+function matchesProductSearch(product, query) {
+  const tokens = tokenizeSearchQuery(query);
+  if (!tokens.length) return true;
+
+  const profile = getProductSearchProfile(product);
+  return tokens.every((token) => profile.haystack.includes(token));
+}
+
+function scoreRelatedProduct(product, query) {
+  const normalizedQuery = normalizeSearchQuery(query);
+  const tokens = tokenizeSearchQuery(query);
+
+  if (!normalizedQuery || !tokens.length) {
+    return 0;
+  }
+
+  const profile = getProductSearchProfile(product);
+  let score = 0;
+
+  if (profile.name === normalizedQuery) score += 220;
+  if (profile.name.includes(normalizedQuery)) score += 120;
+  if (profile.subcategory.includes(normalizedQuery)) score += 88;
+  if (profile.category.includes(normalizedQuery)) score += 82;
+  if (profile.tags.includes(normalizedQuery)) score += 76;
+  if (profile.description.includes(normalizedQuery)) score += 34;
+
+  tokens.forEach((token) => {
+    if (profile.productId.includes(token)) score += 48;
+    if (profile.nameWords.some((word) => word === token)) score += 44;
+    else if (profile.nameWords.some((word) => word.startsWith(token))) score += 34;
+    else if (profile.name.includes(token)) score += 24;
+
+    if (profile.subcategoryWords.some((word) => word === token)) score += 22;
+    else if (profile.subcategory.includes(token)) score += 16;
+
+    if (profile.categoryWords.some((word) => word === token)) score += 20;
+    else if (profile.category.includes(token)) score += 14;
+
+    if (profile.tagsWords.some((word) => word === token)) score += 20;
+    else if (profile.tags.includes(token)) score += 14;
+
+    if (profile.eventType.includes(token)) score += 10;
+    if (profile.venueType.includes(token)) score += 8;
+    if (profile.deliveryClass.includes(token)) score += 8;
+    if (profile.description.includes(token)) score += 6;
+  });
+
+  return score;
 }
 
 function buildCategoryChips(categories, eventType) {
@@ -77,6 +162,7 @@ function ShopPage() {
   const featuredRailSkipAnimationRef = useRef(false);
 
   const activeEventType = resolveEventType(searchParams.get("eventType"));
+  const requestedSearch = searchParams.get("search") || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -84,27 +170,33 @@ function ShopPage() {
     loadProducts().then((rows) => {
       if (cancelled) return;
       setProducts(rows);
-
-      const requestedCategory = searchParams.get("category");
-      const requestedMode = searchParams.get("mode");
-
-      if (requestedCategory && rows.some((product) => product.category === requestedCategory)) {
-        setSelectedCategory(requestedCategory);
-      } else if (!requestedCategory) {
-        setSelectedCategory("ALL");
-      }
-
-      if (requestedMode && ["BUY_ONLY", "RENT_ONLY", "BOTH"].includes(requestedMode)) {
-        setSelectedMode(requestedMode);
-      } else if (!requestedMode) {
-        setSelectedMode("ALL");
-      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+  }, []);
+
+  useEffect(() => {
+    const requestedCategory = searchParams.get("category");
+    const requestedMode = searchParams.get("mode");
+
+    if (requestedCategory && products.some((product) => product.category === requestedCategory)) {
+      setSelectedCategory(requestedCategory);
+    } else {
+      setSelectedCategory("ALL");
+    }
+
+    if (requestedMode && ["BUY_ONLY", "RENT_ONLY", "BOTH"].includes(requestedMode)) {
+      setSelectedMode(requestedMode);
+    } else {
+      setSelectedMode("ALL");
+    }
+  }, [products, searchParams]);
+
+  useEffect(() => {
+    setSearchQuery(requestedSearch);
+  }, [requestedSearch]);
 
   useEffect(() => {
     if (activeEventType) {
@@ -150,6 +242,11 @@ function ShopPage() {
     updateQueryParams({ mode: nextMode });
   }
 
+  function handleSearchChange(nextSearch) {
+    setSearchQuery(nextSearch);
+    updateQueryParams({ search: nextSearch });
+  }
+
   const visibleProducts = useMemo(
     () =>
       products.filter((product) => {
@@ -183,6 +280,34 @@ function ShopPage() {
 
     return next.sort((a, b) => Number(b.featured) - Number(a.featured) || metricScore(b.id) - metricScore(a.id));
   }, [activeEventType, selectedMode, sortMode, visibleProducts]);
+
+  const relatedProducts = useMemo(() => {
+    const normalizedQuery = normalizeSearchQuery(searchQuery);
+    if (!normalizedQuery || visibleProducts.length > 0) {
+      return [];
+    }
+
+    const rankedProducts = products
+      .filter((product) => product.active !== false)
+      .map((product) => ({
+        product,
+        score: scoreRelatedProduct(product, normalizedQuery)
+      }))
+      .sort((left, right) => (
+        right.score - left.score
+        || Number(right.product.featured) - Number(left.product.featured)
+        || metricScore(right.product.id) - metricScore(left.product.id)
+        || left.product.name.localeCompare(right.product.name)
+      ));
+
+    const scoredProducts = rankedProducts.filter((entry) => entry.score > 0);
+    const fallbackProducts = rankedProducts.filter((entry) => entry.score === 0);
+    const nextEntries = scoredProducts.length
+      ? scoredProducts.slice(0, RELATED_RESULTS_LIMIT)
+      : fallbackProducts.slice(0, RELATED_RESULTS_LIMIT);
+
+    return nextEntries.map((entry) => entry.product);
+  }, [products, searchQuery, visibleProducts.length]);
 
   const featuredRailProducts = useMemo(
     () =>
@@ -369,7 +494,7 @@ function ShopPage() {
               <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
               <path d="m16.5 16.5 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
-            <input id="searchInput" type="search" placeholder="Search products..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+            <input id="searchInput" type="search" placeholder="Search products..." value={searchQuery} onChange={(event) => handleSearchChange(event.target.value)} />
           </label>
 
           <div className="filter-selects">
@@ -466,7 +591,11 @@ function ShopPage() {
           </section>
         ) : null}
 
-        <p className="results-text">{filteredProducts.length} product{filteredProducts.length === 1 ? "" : "s"} found</p>
+        <p className="results-text">
+          {searchQuery.trim()
+            ? `${filteredProducts.length} result${filteredProducts.length === 1 ? "" : "s"} for "${searchQuery.trim()}"`
+            : `${filteredProducts.length} product${filteredProducts.length === 1 ? "" : "s"} found`}
+        </p>
         {hasVisibleProducts ? (
           <>
             {sellableProducts.length ? (
@@ -545,10 +674,35 @@ function ShopPage() {
             ) : null}
           </>
         ) : (
-          <article className="empty-card">
-            <h3>No products found</h3>
-            <p>Try changing filters, or add products from the Admin page.</p>
-          </article>
+          <>
+            <article className="empty-card">
+              <h3>{searchQuery.trim() ? `Item not found for "${searchQuery.trim()}"` : "No products found"}</h3>
+              <p>
+                {searchQuery.trim()
+                  ? "Try another keyword, or browse the related items below from the current catalog."
+                  : "Try changing filters, or add products from the Admin page."}
+              </p>
+            </article>
+
+            {searchQuery.trim() && relatedProducts.length ? (
+              <section className="shop-related-results" aria-labelledby="related-results-heading">
+                <div className="shop-related-results-head">
+                  <h2 id="related-results-heading">Related items</h2>
+                </div>
+
+                <div className="products-grid" aria-label="Related products list">
+                  {relatedProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onOpen={trackOpen}
+                      isFeatured={Boolean(product.featured)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
         )}
       </main>
     </motion.div>

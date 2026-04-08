@@ -71,6 +71,14 @@ html[data-interface-theme="dark"] [data-theme-scope="shop"] .shop-products-secti
   box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--c-14) 34%, transparent);
 }
 
+.shop-header .event-type-shop-heading {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .shop-header h1 {
   margin: 0;
   color: var(--c-1);
@@ -624,6 +632,28 @@ html[data-interface-theme="dark"] .shop-smart-rail .smart-recommendation-copy {
 .empty-card h3 {
   margin: 0 0 8px;
   color: var(--c-25);
+}
+
+.shop-related-results {
+  display: grid;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.shop-related-results-head {
+  display: grid;
+  gap: 8px;
+}
+
+.shop-related-results-head h2 {
+  margin: 0;
+  color: var(--c-25);
+  font-size: clamp(1.45rem, 2vw, 1.9rem);
+}
+
+.shop-related-results-head p {
+  margin: 0;
+  color: var(--c-26);
 }
 
 .modal-backdrop {

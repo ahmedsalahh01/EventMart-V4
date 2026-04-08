@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import SmartRecommendationBar from "../components/SmartRecommendationBar";
 import { buildEventTypeShopPath, listEventTypes } from "../lib/eventTypeConfig";
 import { HOME_HERO_SHOWCASE_IMAGES } from "../lib/homeHeroShowcaseImages";
@@ -46,7 +46,9 @@ const PACKAGE_BUILDER_FEATURES = [
 ];
 
 function HomePage() {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
+  const [heroSearchQuery, setHeroSearchQuery] = useState("");
   const [selectedEventType, setSelectedEventType] = useState(() => getSelectedEventType() || "birthday");
 
   useEffect(() => {
@@ -65,6 +67,11 @@ function HomePage() {
 
   function handleHeroSearchSubmit(event) {
     event.preventDefault();
+    navigate(
+      buildEventTypeShopPath(selectedEventType, {
+        search: heroSearchQuery.trim()
+      })
+    );
   }
 
   return (
@@ -84,6 +91,8 @@ function HomePage() {
                 className="hero-search-input"
                 aria-label="Search event products"
                 placeholder="Search speakers, lighting, staging, and more"
+                value={heroSearchQuery}
+                onChange={(event) => setHeroSearchQuery(event.target.value)}
               />
               <button type="submit" className="hero-search-btn">
                 Search

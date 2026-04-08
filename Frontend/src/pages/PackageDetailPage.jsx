@@ -4,8 +4,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import useRequireAuth from "../hooks/useRequireAuth";
 import {
+  buildPackageDescription,
   createCartItemsFromBuilderPreview,
   createPackageGroupId,
+  getPackageAudienceLabel,
+  getPackageCustomizationLabel,
+  getPackageDisplayPrice,
+  getPackageModeLabel,
+  getPackageVenueLabel,
   previewPackage
 } from "../lib/packages";
 import "../styles/packages.css";
@@ -65,6 +71,7 @@ function PackageDetailPage() {
   const preview = payload?.preview || null;
   const pkg = payload?.package || null;
   const summary = preview?.summary || null;
+  const displayPrice = pkg ? getPackageDisplayPrice(pkg) : { amount: 0, currency: "EGP" };
 
   const selectedItemMap = useMemo(
     () => new Map((Array.isArray(preview?.selectedItems) ? preview.selectedItems : []).map((item) => [Number(item.id), item])),
@@ -142,40 +149,40 @@ function PackageDetailPage() {
       <div className="packages-layout package-detail-layout">
         <section className="package-shell-card package-detail-hero">
           <div className="package-detail-copy">
-            <p className="package-eyebrow">Package Details</p>
+            <p className="package-eyebrow">Selected Package</p>
             <div className="package-card-head">
               <div>
                 <h1>{pkg.name}</h1>
                 <p className="package-copy">
-                  {pkg.description || "A ready-made package with bundled pricing and editable quantities for your event."}
+                  {buildPackageDescription(pkg)}
                 </p>
               </div>
               <div className="package-detail-pills">
                 <span className={`package-requirement-pill is-${pkg.status}`}>{pkg.status}</span>
-                <span className="package-detail-event">{pkg.eventType || "General event"}</span>
+                <span className="package-detail-event">{getPackageModeLabel(pkg)}</span>
               </div>
             </div>
 
             <div className="package-detail-meta">
               <div>
-                <strong>{preview.selectedItems.length}</strong>
+                <strong>{displayPrice.currency} {displayPrice.amount.toFixed(2)}</strong>
+                <span>Overall package price</span>
+              </div>
+              <div>
+                <strong>{pkg.items.length}</strong>
                 <span>Included items</span>
               </div>
               <div>
-                <strong>
-                  {Number(summary.minimumPackagePrice || 0) > 0
-                    ? `${summary.currency} ${Number(summary.minimumPackagePrice || 0).toFixed(2)}`
-                    : "No minimum"}
-                </strong>
-                <span>Minimum package price</span>
+                <strong>{getPackageAudienceLabel(pkg)}</strong>
+                <span>Fits for</span>
               </div>
               <div>
-                <strong>{summary.freeShipping ? "Unlocked" : "Eligible at 4+"}</strong>
-                <span>Shipping rule</span>
+                <strong>{getPackageVenueLabel(pkg)}</strong>
+                <span>Venue type</span>
               </div>
               <div>
-                <strong>{summary.deliveryEstimate?.label || "Based on delivery place"}</strong>
-                <span>Estimated delivery</span>
+                <strong>{getPackageCustomizationLabel(pkg)}</strong>
+                <span>Customization</span>
               </div>
             </div>
 
@@ -205,41 +212,33 @@ function PackageDetailPage() {
           </div>
 
           <aside className="package-shell-card package-detail-summary">
-            <p className="package-eyebrow">Pricing Snapshot</p>
-            <h2>Package pricing</h2>
+            <p className="package-eyebrow">Package Snapshot</p>
+            <h2>Quick overview</h2>
 
             <div className="package-summary-list">
               <div className="package-summary-row">
-                <span>Subtotal</span>
-                <strong>{summary.currency} {Number((summary.baseSubtotal ?? summary.subtotal) || 0).toFixed(2)}</strong>
+                <span>Package price</span>
+                <strong>{displayPrice.currency} {displayPrice.amount.toFixed(2)}</strong>
               </div>
               <div className="package-summary-row">
-                <span>Item discounts</span>
-                <strong>-{summary.currency} {Number(summary.itemDiscounts || 0).toFixed(2)}</strong>
+                <span>Package mode</span>
+                <strong>{getPackageModeLabel(pkg)}</strong>
               </div>
               <div className="package-summary-row">
-                <span>Customization fees</span>
-                <strong>{summary.currency} {Number(summary.customizationFees || 0).toFixed(2)}</strong>
+                <span>Venue setup</span>
+                <strong>{getPackageVenueLabel(pkg)}</strong>
               </div>
-              {Number(summary.minimumPackagePrice || 0) > 0 ? (
-                <div className="package-summary-row">
-                  <span>Minimum package price</span>
-                  <strong>{summary.currency} {Number(summary.minimumPackagePrice || 0).toFixed(2)}</strong>
-                </div>
-              ) : null}
-              {Number(summary.bundleDiscount || 0) > 0 ? (
-                <div className="package-summary-row">
-                  <span>Bundle discount</span>
-                  <strong>-{summary.currency} {Number(summary.bundleDiscount || 0).toFixed(2)}</strong>
-                </div>
-              ) : null}
               <div className="package-summary-row">
-                <span>Shipping</span>
-                <strong>{summary.currency} {Number(summary.shipping || 0).toFixed(2)}</strong>
+                <span>Guest fit</span>
+                <strong>{getPackageAudienceLabel(pkg)}</strong>
+              </div>
+              <div className="package-summary-row">
+                <span>Customization</span>
+                <strong>{getPackageCustomizationLabel(pkg)}</strong>
               </div>
               <div className="package-summary-row is-total">
-                <span>Final total</span>
-                <strong>{summary.currency} {Number(summary.finalTotal || 0).toFixed(2)}</strong>
+                <span>Ready items</span>
+                <strong>{preview.selectedItems.length}</strong>
               </div>
             </div>
 
@@ -260,16 +259,16 @@ function PackageDetailPage() {
           <div className="package-card-head">
             <div>
               <p className="package-eyebrow">Included Items</p>
-              <h2>What comes inside this package</h2>
+              <h2>Package items</h2>
             </div>
           </div>
 
-          <div className="package-detail-item-list">
+          <div className="package-detail-item-grid">
             {pkg.items.map((item) => {
               const selectedPreview = selectedItemMap.get(Number(item.productId));
 
               return (
-                <article className="package-detail-item" key={item.id || item.productId}>
+                <article className="package-detail-item-card" key={item.id || item.productId}>
                   <img
                     alt={item.product?.name || "Package item"}
                     className="package-detail-item-image"
@@ -277,24 +276,18 @@ function PackageDetailPage() {
                   />
 
                   <div className="package-detail-item-copy">
-                    <div className="package-card-head">
-                      <div>
-                        <p className="package-card-kicker">{item.product?.category || "Event equipment"}</p>
-                        <h3>{item.product?.name || "Package item"}</h3>
-                      </div>
-                      <span className={`package-requirement-pill is-${item.required ? "required" : "optional"}`}>
-                        {item.required ? "required" : "optional"}
-                      </span>
-                    </div>
+                    <p className="package-card-kicker">{item.product?.category || "Event equipment"}</p>
+                    <h3>{item.product?.name || "Package item"}</h3>
 
                     <p>
                       {item.product?.description || "Configured as part of the default package setup."}
                     </p>
 
                     <div className="package-detail-item-meta">
-                      <span>Minimum qty {item.minimumQuantity}</span>
-                      <span>Default qty {item.defaultQuantity}</span>
-                      <span>{item.preferredMode === "rent" ? "Rent preferred" : "Buy preferred"}</span>
+                      <span>Qty {item.defaultQuantity}</span>
+                      <span>{item.preferredMode === "rent" ? "Rent" : "Buy"}</span>
+                      <span>{item.required ? "Required" : "Optional"}</span>
+                      {item.product?.customizable ? <span>Customizable</span> : null}
                       {selectedPreview?.matchedTier ? (
                         <span>{Number(selectedPreview.matchedTier.discountPercent || 0).toFixed(2)}% tier active</span>
                       ) : null}
