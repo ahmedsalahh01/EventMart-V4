@@ -7,6 +7,7 @@ const {
   normalizeDiscountTiers,
   normalizePackageContext,
   normalizePackageMeta,
+  resolvePackageMode,
   resolvePackageStatus,
   resolvePackageVisibility
 } = require("../lib/packageBuilder");
@@ -34,6 +35,36 @@ function slugifyValue(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "package";
+}
+
+function formatVenueTypeLabel(value) {
+  const normalized = normalizeText(value, 40).toLowerCase();
+  if (normalized === "indoor") return "Indoor";
+  if (normalized === "outdoor") return "Outdoor";
+  if (normalized === "hybrid") return "Hybrid";
+  return "General";
+}
+
+function formatPackageModeLabel(value) {
+  const normalized = resolvePackageMode(value);
+  if (normalized === "buy") return "Buy only";
+  if (normalized === "rent") return "Rent only";
+  return "Hybrid";
+}
+
+function buildPackageDescriptionFromContext(contextDefaults) {
+  const details = [];
+  const guestCount = Math.max(0, Number(contextDefaults?.guestCount || 0));
+
+  if (guestCount > 0) {
+    details.push(`Fits up to ${guestCount} people`);
+  }
+
+  details.push(`${formatVenueTypeLabel(contextDefaults?.venueType)} setup`);
+  details.push(contextDefaults?.customizationAvailable ? "Customizable items available" : "Non-customizable package");
+  details.push(formatPackageModeLabel(contextDefaults?.packageMode));
+
+  return normalizeText(details.join(". "), 400);
 }
 
 function parseWholeNumber(value, fieldLabel) {
@@ -357,6 +388,8 @@ async function hydratePackagesWithPreview(pool, packages, { includePreview = tru
 
 function normalizePackagePayload(body) {
   const name = normalizeText(body?.name, 160);
+  const contextDefaults = normalizePackageContext(body?.contextDefaults || body?.context_defaults || {});
+  const description = normalizeText(body?.description, 400) || buildPackageDescriptionFromContext(contextDefaults);
   const rows = Array.isArray(body?.items) ? body.items : [];
 
   if (!name) {
@@ -407,8 +440,8 @@ function normalizePackagePayload(body) {
 
   return {
     active: body?.active !== false,
-    contextDefaults: normalizePackageContext(body?.contextDefaults || body?.context_defaults || {}),
-    description: normalizeText(body?.description, 400),
+    contextDefaults,
+    description,
     eventType: normalizeText(body?.eventType ?? body?.event_type, 120),
     items,
     name,

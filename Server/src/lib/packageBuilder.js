@@ -288,6 +288,11 @@ function resolvePackageStatus(value) {
   return PACKAGE_STATUS_VALUES.find((entry) => entry === normalized) || "draft";
 }
 
+function resolvePackageMode(value) {
+  const normalized = normalizeLookupToken(value);
+  return ["buy", "rent", "hybrid"].includes(normalized) ? normalized : "hybrid";
+}
+
 function normalizePackageContext(value = {}) {
   const eventType = resolveEventType(value?.eventType || value?.event_type);
   const venueType = ["indoor", "outdoor", "hybrid"].includes(normalizeLookupToken(value?.venueType || value?.venue_type))
@@ -296,10 +301,19 @@ function normalizePackageContext(value = {}) {
 
   return {
     budget: Math.max(0, toNumber(value?.budget, 0)),
+    customizationAvailable: parseBoolean(
+      value?.customizationAvailable ??
+      value?.customization_available ??
+      value?.itemsCanBeCustomized ??
+      value?.items_can_be_customized,
+      false
+    ),
     deliveryPlace: normalizeText(value?.deliveryPlace || value?.delivery_place, 80),
     eventType,
     guestCount: Math.max(0, toWholeNumber(value?.guestCount ?? value?.guest_count, 0)),
     minimumPackagePrice: Math.max(0, toNumber(value?.minimumPackagePrice ?? value?.minimum_package_price, 0)),
+    packageMode: resolvePackageMode(value?.packageMode ?? value?.package_mode),
+    packagePrice: Math.max(0, toNumber(value?.packagePrice ?? value?.package_price, 0)),
     venueSize: normalizeText(value?.venueSize || value?.venue_size, 80),
     venueType
   };
@@ -938,11 +952,16 @@ function buildBuilderPreview({
     context: normalizedContext,
     packageDefinition: packageDefinition
       ? {
+          customizationAvailable: Boolean(packageDefinition?.contextDefaults?.customizationAvailable),
+          guestCount: Math.max(0, Number(packageDefinition?.contextDefaults?.guestCount || 0)),
           id: packageDefinition.id || null,
           name: packageDefinition.name,
+          packageMode: resolvePackageMode(packageDefinition?.contextDefaults?.packageMode),
+          packagePrice: Math.max(0, Number(packageDefinition?.contextDefaults?.packagePrice || 0)),
           minimumPackagePrice: Math.max(0, Number(packageDefinition?.contextDefaults?.minimumPackagePrice || 0)),
           slug: packageDefinition.slug || "",
-          status: packageDefinition.status || "draft"
+          status: packageDefinition.status || "draft",
+          venueType: normalizeText(packageDefinition?.contextDefaults?.venueType, 40)
         }
       : null,
     packageGroupId,
@@ -1001,6 +1020,7 @@ module.exports = {
   normalizeDiscountTiers,
   normalizePackageContext,
   normalizePackageMeta,
+  resolvePackageMode,
   resolvePackageStatus,
   resolvePackageVisibility
 };
