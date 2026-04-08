@@ -14,7 +14,62 @@ const PACKAGE_SPECIALITY_OPTIONS = [
   { label: "Outdoor", value: "outdoor" },
   { label: "Hybrid", value: "hybrid" }
 ];
+const PACKAGE_CUSTOMIZATION_OPTIONS = [
+  { label: "No", value: "false" },
+  { label: "Yes", value: "true" }
+];
+const PACKAGE_MODE_OPTIONS = [
+  { label: "Buy Only", value: "buy" },
+  { label: "Rent Only", value: "rent" },
+  { label: "Hybrid (Part Buy / Part Rent)", value: "hybrid" }
+];
 const PACKAGE_ITEM_DISCOUNT_RATE = 0.15;
+
+function normalizePackageModeValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["buy", "rent", "hybrid"].includes(normalized) ? normalized : "hybrid";
+}
+
+function getPackageModeLabel(value) {
+  const normalized = normalizePackageModeValue(value);
+  if (normalized === "buy") return "Buy only";
+  if (normalized === "rent") return "Rent only";
+  return "Hybrid";
+}
+
+function getCustomizationLabel(value) {
+  return value ? "Customizable items" : "No customization";
+}
+
+function getVenueLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "indoor") return "Indoor";
+  if (normalized === "outdoor") return "Outdoor";
+  if (normalized === "hybrid") return "Hybrid";
+  return "General";
+}
+
+function getStoredPackagePrice(value) {
+  const candidates = [
+    value?.contextDefaults?.packagePrice,
+    value?.contextDefaults?.package_price,
+    value?.context_defaults?.packagePrice,
+    value?.context_defaults?.package_price,
+    value?.packagePrice,
+    value?.package_price,
+    value?.preview?.packageDefinition?.packagePrice,
+    value?.preview?.packageDefinition?.package_price
+  ];
+
+  for (const candidate of candidates) {
+    const amount = Number(candidate);
+    if (Number.isFinite(amount) && amount > 0) {
+      return amount;
+    }
+  }
+
+  return 0;
+}
 
 function createSimplePackageItem() {
   const item = createEmptyPackageItem();
@@ -40,7 +95,10 @@ function createSimplePackageForm() {
     active: true,
     contextDefaults: {
       ...form.contextDefaults,
-      minimumPackagePrice: "",
+      customizationAvailable: false,
+      minimumPackagePrice: "0",
+      packageMode: "hybrid",
+      packagePrice: "",
       venueType: "indoor"
     },
     items: [createSimplePackageItem()],
@@ -51,24 +109,28 @@ function createSimplePackageForm() {
 
 function simplifyLoadedPackage(pkg) {
   const form = buildFormFromPackage(pkg);
+  const nextItems = Array.isArray(form.items) && form.items.length
+    ? form.items.map((item) => ({
+        ...createSimplePackageItem(),
+        ...item,
+        defaultQuantity: String(item.minimumQuantity || item.defaultQuantity || 1),
+        minimumQuantity: String(item.minimumQuantity || 1),
+        preferredMode: item.preferredMode === "rent" ? "rent" : "buy"
+      }))
+    : [createSimplePackageItem()];
 
   return {
     ...form,
     active: true,
     contextDefaults: {
       ...form.contextDefaults,
-      minimumPackagePrice: form.contextDefaults?.minimumPackagePrice || "",
+      customizationAvailable: Boolean(form.contextDefaults?.customizationAvailable),
+      minimumPackagePrice: "0",
+      packageMode: normalizePackageModeValue(form.contextDefaults?.packageMode),
+      packagePrice: getStoredPackagePrice(pkg) > 0 ? String(getStoredPackagePrice(pkg)) : "",
       venueType: form.contextDefaults?.venueType || "indoor"
     },
-    items: Array.isArray(form.items) && form.items.length
-      ? form.items.map((item) => ({
-          ...createSimplePackageItem(),
-          ...item,
-          defaultQuantity: String(item.minimumQuantity || item.defaultQuantity || 1),
-          minimumQuantity: String(item.minimumQuantity || 1),
-          preferredMode: item.preferredMode === "rent" ? "rent" : "buy"
-        }))
-      : [createSimplePackageItem()],
+    items: nextItems,
     status: "active",
     visibility: "public"
   };
@@ -117,6 +179,21 @@ function getAvailableModes(product) {
   return options.length ? options : [{ label: "Buy", value: "buy" }];
 }
 
+function productSupportsMode(product, mode) {
+  if (!product) return true;
+  const normalizedMode = normalizePackageModeValue(mode);
+
+  if (normalizedMode === "rent") {
+    return Boolean(product.rent_enabled && Number.isFinite(Number(product.rent_price_per_day)));
+  }
+
+  if (normalizedMode === "buy") {
+    return Boolean(product.buy_enabled !== false && Number.isFinite(Number(product.buy_price)));
+  }
+
+  return true;
+}
+
 function buildPackageStartingSummary(form, productMap) {
   const rows = Array.isArray(form?.items) ? form.items : [];
   let subtotal = 0;
@@ -147,10 +224,49 @@ function buildPackageStartingSummary(form, productMap) {
   };
 }
 
-function buildSimplePackagePayload(form) {
+function buildPackageCalculatedTotal(form, productMap) {
+  const computed = buildPackageStartingSummary(form, productMap);
+
+  return {
+    amount: computed.startingPrice,
+    currency: computed.currency
+  };
+}
+
+function buildPackageManualPrice(form, productMap) {
+  const computed = buildPackageStartingSummary(form, productMap);
+  const configuredPrice = getStoredPackagePrice(form);
+
+  return {
+    amount: configuredPrice > 0 ? configuredPrice : 0,
+    currency: computed.currency
+  };
+}
+
+function buildSimplePackagePayload(form, productMap) {
+  const packageMode = normalizePackageModeValue(form?.contextDefaults?.packageMode);
+
+  if (packageMode !== "hybrid") {
+    const unsupportedProduct = (Array.isArray(form?.items) ? form.items : []).find((item) => {
+      const product = resolveItemProduct(item, productMap);
+      return product && !productSupportsMode(product, packageMode);
+    });
+
+    if (unsupportedProduct) {
+      const product = resolveItemProduct(unsupportedProduct, productMap);
+      throw new Error(`${product?.name || "This item"} does not support ${getPackageModeLabel(packageMode).toLowerCase()}.`);
+    }
+  }
+
   return buildPackagePayload({
     ...form,
+    description: "",
     active: true,
+    contextDefaults: {
+      ...form.contextDefaults,
+      minimumPackagePrice: "0",
+      packageMode
+    },
     items: (Array.isArray(form.items) ? form.items : []).map((item) => ({
       ...item,
       appliesToEventTypes: "",
@@ -158,6 +274,7 @@ function buildSimplePackagePayload(form) {
       defaultQuantity: String(Math.max(1, Number(item.minimumQuantity || 1))),
       discountTiers: [],
       notes: "",
+      preferredMode: packageMode === "hybrid" ? item.preferredMode : packageMode,
       required: true
     })),
     status: "active",
@@ -179,8 +296,8 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     [safeProducts]
   );
 
-  const startingSummary = useMemo(
-    () => buildPackageStartingSummary(form, productMap),
+  const packageCalculatedTotal = useMemo(
+    () => buildPackageCalculatedTotal(form, productMap),
     [form, productMap]
   );
 
@@ -209,6 +326,24 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
         ...current.contextDefaults,
         venueType: value
       }
+    }));
+    setNotice("");
+    setPageError("");
+  }
+
+  function updatePackageMode(value) {
+    const nextMode = normalizePackageModeValue(value);
+
+    setForm((current) => ({
+      ...current,
+      contextDefaults: {
+        ...current.contextDefaults,
+        packageMode: nextMode
+      },
+      items: current.items.map((item) => ({
+        ...item,
+        preferredMode: nextMode === "hybrid" ? item.preferredMode || "buy" : nextMode
+      }))
     }));
     setNotice("");
     setPageError("");
@@ -267,7 +402,7 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     setPageError("");
 
     try {
-      const payload = buildSimplePackagePayload(form);
+      const payload = buildSimplePackagePayload(form, productMap);
       await savePackage(payload, editingId);
       await onPackagesRefresh();
       resetForm({ clearNotice: false });
@@ -308,12 +443,14 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
     }
   }
 
+  const packageMode = normalizePackageModeValue(form.contextDefaults?.packageMode);
+
   return (
     <section className="admin-section">
       <div className="section-head">
         <div>
           <h2>Packages</h2>
-          <p className="muted">Simple package setup with name, speciality, minimum package price, starting price, and catalog items.</p>
+          <p className="muted">Create packages with audience fit, venue type, customization, package mode, overall price, and the included catalog items.</p>
         </div>
       </div>
 
@@ -351,7 +488,7 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
             <div className="package-editor-head">
               <div>
                 <h3>{editingId ? "Edit Package" : "Create Package"}</h3>
-                <p className="helper-text">Only the essentials: name, speciality, minimum package price, starting price, and items.</p>
+                <p className="helper-text">Set the package details first, then choose the catalog items included in it.</p>
               </div>
             </div>
 
@@ -367,7 +504,19 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
               </div>
 
               <div className="field">
-                <label htmlFor="package-speciality">Package Speciality</label>
+                <label htmlFor="package-guest-count">Fits For How Many People</label>
+                <input
+                  id="package-guest-count"
+                  min="1"
+                  onChange={(event) => updateContextField("guestCount", event.target.value)}
+                  placeholder="150"
+                  type="number"
+                  value={form.contextDefaults.guestCount}
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="package-speciality">Indoor / Outdoor / Hybrid</label>
                 <select
                   id="package-speciality"
                   onChange={(event) => updateSpeciality(event.target.value)}
@@ -382,25 +531,60 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
               </div>
 
               <div className="field">
-                <label htmlFor="package-minimum-price">Minimum Package Price</label>
-                <input
-                  id="package-minimum-price"
-                  min="0"
-                  onChange={(event) => updateContextField("minimumPackagePrice", event.target.value)}
-                  placeholder="5000"
-                  type="number"
-                  value={form.contextDefaults.minimumPackagePrice}
-                />
-                <small>The customer must reach this discounted item total before continuing.</small>
+                <label htmlFor="package-customization">Items Can Be Customized</label>
+                <select
+                  id="package-customization"
+                  onChange={(event) => updateContextField("customizationAvailable", event.target.value === "true")}
+                  value={String(Boolean(form.contextDefaults.customizationAvailable))}
+                >
+                  {PACKAGE_CUSTOMIZATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="field">
-                <label>Package Starting Price</label>
+                <label htmlFor="package-mode">Package Mode</label>
+                <select
+                  id="package-mode"
+                  onChange={(event) => updatePackageMode(event.target.value)}
+                  value={packageMode}
+                >
+                  {PACKAGE_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label htmlFor="package-price">Package Overall Price</label>
+                <input
+                  id="package-price"
+                  min="0"
+                  onChange={(event) => updateContextField("packagePrice", event.target.value)}
+                  placeholder="15499.75"
+                  step="0.01"
+                  type="number"
+                  value={form.contextDefaults.packagePrice}
+                />
+                <small>
+                  Required storefront package price for this package.
+                </small>
+              </div>
+
+              <div className="field">
+                <label>Calculated Item Total</label>
                 <div className="package-simple-price-card">
-                  <strong>{formatMoney(startingSummary.startingPrice, startingSummary.currency)}</strong>
+                  <strong>{formatMoney(packageCalculatedTotal.amount, packageCalculatedTotal.currency)}</strong>
                   <span>
-                    Subtotal {formatMoney(startingSummary.subtotal, startingSummary.currency)}
-                    {" "}with item discounts of {formatMoney(startingSummary.discount, startingSummary.currency)}
+                    Static Admin calculation from item quantity x unit price with package item discounts.
+                  </span>
+                  <span>
+                    Package mode: {getPackageModeLabel(packageMode)} | {getCustomizationLabel(Boolean(form.contextDefaults.customizationAvailable))}
                   </span>
                 </div>
               </div>
@@ -410,7 +594,9 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
               <div className="package-editor-panel-head">
                 <div>
                   <h4>Items From Shop Catalog</h4>
-                  <p className="helper-text">Each row includes item name, minimum quantity, and whether it is buy or rent.</p>
+                  <p className="helper-text">
+                    Choose the package items and quantities. Item mode is locked unless the package mode is set to Hybrid.
+                  </p>
                 </div>
                 <button className="btn ghost" onClick={addItem} type="button">
                   Add Item
@@ -421,7 +607,10 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
                 {form.items.map((item, itemIndex) => {
                   const product = resolveItemProduct(item, productMap);
                   const availableModes = getAvailableModes(product);
-                  const unitPrice = getUnitPrice(product, item.preferredMode);
+                  const effectiveMode = packageMode === "hybrid" ? item.preferredMode : packageMode;
+                  const modeLocked = packageMode !== "hybrid";
+                  const unsupportedForcedMode = modeLocked && product && !productSupportsMode(product, packageMode);
+                  const unitPrice = unsupportedForcedMode ? 0 : getUnitPrice(product, effectiveMode);
                   const itemTotal = unitPrice * Math.max(0, Number(item.minimumQuantity || 0));
                   const itemDiscount = itemTotal * PACKAGE_ITEM_DISCOUNT_RATE;
                   const discountedItemTotal = itemTotal - itemDiscount;
@@ -442,7 +631,7 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
                                 index === itemIndex
                                   ? {
                                       ...currentItem,
-                                      preferredMode: nextModes[0]?.value || "buy",
+                                      preferredMode: modeLocked ? packageMode : (nextModes[0]?.value || "buy"),
                                       productId: event.target.value
                                     }
                                   : currentItem
@@ -475,17 +664,21 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
 
                       <div className="field">
                         <label htmlFor={`package-item-mode-${item.id}`}>Buy / Rent</label>
-                        <select
-                          id={`package-item-mode-${item.id}`}
-                          onChange={(event) => updateItem(itemIndex, "preferredMode", event.target.value)}
-                          value={item.preferredMode}
-                        >
-                          {availableModes.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                        {modeLocked ? (
+                          <div className="package-mode-lock">{getPackageModeLabel(packageMode)}</div>
+                        ) : (
+                          <select
+                            id={`package-item-mode-${item.id}`}
+                            onChange={(event) => updateItem(itemIndex, "preferredMode", event.target.value)}
+                            value={item.preferredMode}
+                          >
+                            {availableModes.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
 
                       <button className="btn ghost" onClick={() => removeItem(itemIndex)} type="button">
@@ -504,6 +697,11 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
                             {" | "}
                             Line total {formatMoney(discountedItemTotal, product.currency || "EGP")}
                           </span>
+                          {unsupportedForcedMode ? (
+                            <p className="package-warning-note">
+                              This item does not support {getPackageModeLabel(packageMode).toLowerCase()}.
+                            </p>
+                          ) : null}
                         </div>
                       ) : (
                         <p className="package-empty-note">Choose a catalog item to include it in the package.</p>
@@ -528,7 +726,6 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
             <div className="package-editor-head">
               <div>
                 <h3>Saved Packages</h3>
-                <p className="helper-text">Simple overview of each saved package.</p>
               </div>
             </div>
 
@@ -543,7 +740,7 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
               {safePackages.length ? (
                 safePackages.map((pkg) => {
                   const simpleForm = simplifyLoadedPackage(pkg);
-                  const summary = buildPackageStartingSummary(simpleForm, productMap);
+                  const displayPrice = buildPackageManualPrice(simpleForm, productMap);
 
                   return (
                     <article className="package-card" key={pkg.id}>
@@ -551,15 +748,16 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
                         <div className="package-card-head">
                           <div>
                             <h4>{pkg.name}</h4>
-                            <p className="meta">Speciality: {simpleForm.contextDefaults.venueType || "indoor"}</p>
+                            <p className="meta">
+                              {getVenueLabel(simpleForm.contextDefaults.venueType)} | {getPackageModeLabel(simpleForm.contextDefaults.packageMode)}
+                            </p>
                           </div>
                         </div>
 
-                        <p className="price-line">Starting price {formatMoney(summary.startingPrice, summary.currency)}</p>
                         <p className="meta">
-                          Minimum package price{" "}
-                          {formatMoney(Number(simpleForm.contextDefaults.minimumPackagePrice || 0), summary.currency)}
+                          Fits {simpleForm.contextDefaults.guestCount || "flexible"} people | {getCustomizationLabel(Boolean(simpleForm.contextDefaults.customizationAvailable))}
                         </p>
+                        <p className="price-line">Overall price {formatMoney(displayPrice.amount, displayPrice.currency)}</p>
 
                         <div className="package-card-items">
                           {simpleForm.items.map((item) => {
@@ -567,12 +765,9 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
                             return (
                               <div className="package-card-item" key={item.id}>
                                 <div className="package-card-item-copy">
-                                  <strong>{product?.name || "Catalog item"}</strong>
-                                  <span>
-                                    Min qty {item.minimumQuantity}
-                                    {" | "}
-                                    {item.preferredMode === "rent" ? "Rent" : "Buy"}
-                                  </span>
+                                  <strong title={product?.name || "Catalog item"}>{product?.name || "Catalog item"}</strong>
+                                  <span>Qty {item.minimumQuantity}</span>
+                                  <span>{item.preferredMode === "rent" ? "Rent" : "Buy"}</span>
                                 </div>
                               </div>
                             );

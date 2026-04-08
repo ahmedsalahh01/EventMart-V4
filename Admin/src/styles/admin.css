@@ -612,6 +612,18 @@ button:disabled {
   align-self: end;
 }
 
+.package-mode-lock {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .package-item-preview {
   display: grid;
   gap: 8px;
@@ -873,12 +885,9 @@ button:disabled {
 }
 
 .package-card-item {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 12px;
-  align-items: start;
-  padding: 10px;
-  border-radius: 14px;
+  display: block;
+  padding: 8px 12px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -893,16 +902,23 @@ button:disabled {
 
 .package-card-item-copy {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
 }
 
 .package-card-item-copy strong {
   font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .package-card-item-copy span {
   color: var(--muted);
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .package-card-item-copy p {

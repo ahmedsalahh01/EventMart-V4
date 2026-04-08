@@ -73,15 +73,7 @@ function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
 
 function getPackageFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
   const configuredFallback = getFallbackApiBaseUrl(baseUrl, location);
-  if (configuredFallback) {
-    return configuredFallback;
-  }
-
-  if (isLocalHostname(location?.hostname) && normalizeBaseUrl(baseUrl) !== LOCAL_API_URL) {
-    return LOCAL_API_URL;
-  }
-
-  return "";
+  return configuredFallback || "";
 }
 
 function readLocalStorage() {
@@ -881,13 +873,66 @@ function normalizePackageDiscountTierRows(value) {
   return rows.length ? rows.map(normalizePackageDiscountTierRow) : [createEmptyPackageDiscountTier()];
 }
 
+function normalizePackageModeInput(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["buy", "rent", "hybrid"].includes(normalized) ? normalized : "hybrid";
+}
+
+function normalizeBooleanSelectInput(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["true", "1", "yes"].includes(normalized)) return true;
+  if (["false", "0", "no"].includes(normalized)) return false;
+  return fallback;
+}
+
+function formatVenueTypeLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "indoor") return "Indoor";
+  if (normalized === "outdoor") return "Outdoor";
+  if (normalized === "hybrid") return "Hybrid";
+  return "General";
+}
+
+function formatPackageModeLabel(value) {
+  const normalized = normalizePackageModeInput(value);
+  if (normalized === "buy") return "Buy only";
+  if (normalized === "rent") return "Rent only";
+  return "Hybrid";
+}
+
+function buildPackageDescriptionFromContext(contextDefaults) {
+  const details = [];
+  const guestCount = Math.max(0, Number(contextDefaults?.guestCount || 0));
+
+  if (guestCount > 0) {
+    details.push(`Fits up to ${guestCount} people`);
+  }
+
+  details.push(`${formatVenueTypeLabel(contextDefaults?.venueType)} setup`);
+  details.push(contextDefaults?.customizationAvailable ? "Customizable items available" : "Non-customizable package");
+  details.push(formatPackageModeLabel(contextDefaults?.packageMode));
+
+  return details.join(". ");
+}
+
 function normalizePackageContextDefaults(value) {
   return {
     budget: String(value?.budget ?? ""),
+    customizationAvailable: normalizeBooleanSelectInput(
+      value?.customizationAvailable ??
+      value?.customization_available ??
+      value?.itemsCanBeCustomized ??
+      value?.items_can_be_customized,
+      false
+    ),
     deliveryPlace: String(value?.deliveryPlace ?? value?.delivery_place ?? ""),
     eventType: String(value?.eventType ?? value?.event_type ?? ""),
     guestCount: String(value?.guestCount ?? value?.guest_count ?? ""),
     minimumPackagePrice: String(value?.minimumPackagePrice ?? value?.minimum_package_price ?? ""),
+    packageMode: normalizePackageModeInput(value?.packageMode ?? value?.package_mode),
+    packagePrice: String(value?.packagePrice ?? value?.package_price ?? ""),
     venueSize: String(value?.venueSize ?? value?.venue_size ?? ""),
     venueType: String(value?.venueType ?? value?.venue_type ?? "")
   };
@@ -1018,6 +1063,19 @@ function readStoredPackages() {
   }
 }
 
+function clearStoredPackages() {
+  const storage = readLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.removeItem(PACKAGE_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
 function writeStoredPackages(packages) {
   const storage = readLocalStorage();
   if (!storage) {
@@ -1105,6 +1163,23 @@ function removePackageFromStorage(id) {
   writeStoredPackages(nextPackages);
 }
 
+function createMissingPackageApiError(baseUrl, path = PACKAGES_PATH) {
+  return new Error(
+    `The configured API at ${normalizeBaseUrl(baseUrl) || resolveApiBaseUrl()} does not currently serve ${path}. ` +
+    "Deploy the Server app from the current repo or update VITE_API_URL to the backend that includes the packages routes."
+  );
+}
+
+function normalizePackageApiError(error, baseUrl, path = PACKAGES_PATH) {
+  if (Number(error?.status || 0) === 404) {
+    const routeError = createMissingPackageApiError(baseUrl, path);
+    routeError.status = 404;
+    return routeError;
+  }
+
+  return error;
+}
+
 function ensureUniqueProductIds(list) {
   const used = new Set();
 
@@ -1150,13 +1225,11 @@ export async function loadPackages() {
       fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
       retryStatusCodes: [404]
     });
+    clearStoredPackages();
     return Array.isArray(rows) ? rows.map(mapApiPackage) : [];
   } catch (error) {
-    if (shouldUsePackageStorageFallback(error)) {
-      return readStoredPackages();
-    }
-
-    throw error;
+    clearStoredPackages();
+    throw normalizePackageApiError(error, primaryBaseUrl, PACKAGES_PATH);
   }
 }
 
@@ -1164,16 +1237,20 @@ export async function previewPackageDraft(pkg, options = {}) {
   const runtimeLocation = readRuntimeLocation();
   const primaryBaseUrl = normalizeBaseUrl(resolveApiBaseUrl({ location: runtimeLocation }));
 
-  return apiRequestJson(`${PACKAGES_PATH}/preview`, {
-    body: {
-      context: options.context || pkg?.contextDefaults || {},
-      package: pkg,
-      packageGroupId: options.packageGroupId || `admin-preview-${Date.now()}`
-    },
-    fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
-    method: "POST",
-    retryStatusCodes: [404]
-  });
+  try {
+    return await apiRequestJson(`${PACKAGES_PATH}/preview`, {
+      body: {
+        context: options.context || pkg?.contextDefaults || {},
+        package: pkg,
+        packageGroupId: options.packageGroupId || `admin-preview-${Date.now()}`
+      },
+      fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
+      method: "POST",
+      retryStatusCodes: [404]
+    });
+  } catch (error) {
+    throw normalizePackageApiError(error, primaryBaseUrl, `${PACKAGES_PATH}/preview`);
+  }
 }
 
 export async function saveProduct(product, editingId) {
@@ -1216,11 +1293,7 @@ export async function savePackage(pkg, editingId) {
         method: "PUT"
       });
     } catch (error) {
-      if (shouldUsePackageStorageFallback(error)) {
-        return savePackageToStorage(pkg, routeId);
-      }
-
-      throw error;
+      throw normalizePackageApiError(error, primaryBaseUrl, `${PACKAGES_PATH}/${routeId}`);
     }
   }
 
@@ -1231,11 +1304,7 @@ export async function savePackage(pkg, editingId) {
       method: "POST"
     });
   } catch (error) {
-    if (shouldUsePackageStorageFallback(error)) {
-      return savePackageToStorage(pkg, null);
-    }
-
-    throw error;
+    throw normalizePackageApiError(error, primaryBaseUrl, PACKAGES_PATH);
   }
 }
 
@@ -1266,12 +1335,7 @@ export async function removePackage(id) {
       retryStatusCodes: [404]
     });
   } catch (error) {
-    if (shouldUsePackageStorageFallback(error)) {
-      removePackageFromStorage(routeId);
-      return null;
-    }
-
-    throw error;
+    throw normalizePackageApiError(error, primaryBaseUrl, `${PACKAGES_PATH}/${routeId}`);
   }
 }
 
@@ -1554,7 +1618,19 @@ export function buildProductPayload(form, { editingId, products }) {
 
 export function buildPackagePayload(form) {
   const name = String(form?.name || "").trim();
-  const description = String(form?.description || "").trim();
+  const contextDefaults = {
+    budget: toNum(form?.contextDefaults?.budget, 0) ?? 0,
+    customizationAvailable: Boolean(form?.contextDefaults?.customizationAvailable),
+    deliveryPlace: String(form?.contextDefaults?.deliveryPlace || "").trim(),
+    eventType: String(form?.contextDefaults?.eventType || form?.eventType || "").trim(),
+    guestCount: toNum(form?.contextDefaults?.guestCount, 0) ?? 0,
+    minimumPackagePrice: toNum(form?.contextDefaults?.minimumPackagePrice, 0) ?? 0,
+    packageMode: normalizePackageModeInput(form?.contextDefaults?.packageMode),
+    packagePrice: toNum(form?.contextDefaults?.packagePrice, 0) ?? 0,
+    venueSize: String(form?.contextDefaults?.venueSize || "").trim(),
+    venueType: String(form?.contextDefaults?.venueType || "").trim()
+  };
+  const description = String(form?.description || "").trim() || buildPackageDescriptionFromContext(contextDefaults);
   const eventType = String(form?.eventType || "").trim();
   const visibility = String(form?.visibility || "public").trim().toLowerCase() || "public";
   const status = String(form?.status || "draft").trim().toLowerCase() || "draft";
@@ -1569,12 +1645,20 @@ export function buildPackagePayload(form) {
     throw new Error("Add at least one package item.");
   }
 
+  if (Number(contextDefaults.packagePrice || 0) <= 0) {
+    throw new Error("Package overall price must be greater than 0.");
+  }
+
   const seenProductIds = new Set();
   const items = rows.map((row, index) => {
     const productId = Number(row?.productId || 0);
     const minimumQuantity = Number(row?.minimumQuantity || 0);
     const defaultQuantity = Number(row?.defaultQuantity || minimumQuantity || 0);
-    const preferredMode = String(row?.preferredMode || "").trim().toLowerCase();
+    const preferredMode = String(
+      contextDefaults.packageMode === "hybrid"
+        ? row?.preferredMode
+        : contextDefaults.packageMode
+    ).trim().toLowerCase();
     const discountTierRows = Array.isArray(row?.discountTiers) ? row.discountTiers : [];
 
     if (!Number.isInteger(productId) || productId <= 0) {
@@ -1652,13 +1736,8 @@ export function buildPackagePayload(form) {
   return {
     active,
     contextDefaults: {
-      budget: toNum(form?.contextDefaults?.budget, 0) ?? 0,
-      deliveryPlace: String(form?.contextDefaults?.deliveryPlace || "").trim(),
-      eventType: String(form?.contextDefaults?.eventType || eventType).trim(),
-      guestCount: toNum(form?.contextDefaults?.guestCount, 0) ?? 0,
-      minimumPackagePrice: toNum(form?.contextDefaults?.minimumPackagePrice, 0) ?? 0,
-      venueSize: String(form?.contextDefaults?.venueSize || "").trim(),
-      venueType: String(form?.contextDefaults?.venueType || "").trim()
+      ...contextDefaults,
+      eventType: String(contextDefaults.eventType || eventType).trim()
     },
     description,
     event_type: eventType,
