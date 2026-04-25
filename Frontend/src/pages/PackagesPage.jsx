@@ -1,14 +1,18 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useCart } from "../contexts/CartContext";
 import {
   buildPackageDescription,
+  createCartItemsFromBuilderPreview,
+  createPackageGroupId,
   getPackageAudienceLabel,
   getPackageCustomizationLabel,
   getPackageDisplayPrice,
-  getPackageModeLabel,
+  getPackageRecommendedForLabel,
   getPackageVenueLabel,
-  loadPackages
+  loadPackages,
+  previewPackage
 } from "../lib/packages";
 import "../styles/packages.css";
 
@@ -17,6 +21,10 @@ function PackagesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionTone, setActionTone] = useState("success");
+  const [activePackageId, setActivePackageId] = useState(null);
+  const { setItems } = useCart();
 
   useEffect(() => {
     let cancelled = false;
@@ -49,8 +57,13 @@ function PackagesPage() {
         getPackageAudienceLabel(pkg),
         getPackageVenueLabel(pkg),
         getPackageCustomizationLabel(pkg),
-        getPackageModeLabel(pkg),
-        ...(Array.isArray(pkg?.items) ? pkg.items.map((item) => item?.product?.name) : [])
+        getPackageRecommendedForLabel(pkg),
+        ...(Array.isArray(pkg?.items)
+          ? pkg.items.flatMap((item) => [
+              item?.description,
+              item?.product?.name
+            ])
+          : [])
       ]
         .join(" ")
         .toLowerCase()
@@ -58,13 +71,37 @@ function PackagesPage() {
     );
   }, [packages, search]);
 
+  async function handleAddToCart(pkg) {
+    setActivePackageId(pkg.id);
+    setActionMessage("");
+
+    try {
+      const packageGroupId = createPackageGroupId("package-list");
+      const payload = await previewPackage({
+        packageGroupId,
+        packageSlug: pkg.slug || undefined,
+        packageId: pkg.id
+      });
+      const cartItems = createCartItemsFromBuilderPreview(payload?.preview, {});
+
+      setItems((current) => [...current, ...cartItems]);
+      setActionTone("success");
+      setActionMessage(`${pkg.name} was added to your cart.`);
+    } catch (requestError) {
+      setActionTone("error");
+      setActionMessage(requestError?.message || "We couldn't add this package to your cart right now.");
+    } finally {
+      setActivePackageId(null);
+    }
+  }
+
   if (loading) {
     return (
       <main className="packages-page" data-theme-scope="packages">
         <section className="package-shell-card package-state-card">
           <p className="package-eyebrow">Browse Packages</p>
-          <h1>Loading default packages...</h1>
-          <p>We&apos;re preparing the latest package bundles and pricing previews.</p>
+          <h1>Loading package browse...</h1>
+          <p>We&apos;re preparing the latest package list, pricing, and included items.</p>
         </section>
       </main>
     );
@@ -77,8 +114,8 @@ function PackagesPage() {
           <p className="package-eyebrow">Browse Packages</p>
           <h1>Packages are unavailable right now.</h1>
           <p>{error}</p>
-          <Link className="package-primary-link" to="/package-builder">
-            Start Building
+          <Link className="package-primary-link" to="/shop">
+            Browse Products
           </Link>
         </section>
       </main>
@@ -98,15 +135,20 @@ function PackagesPage() {
         <section className="package-shell-card package-list-hero">
           <div>
             <p className="package-eyebrow">Browse Packages</p>
-            <h1>Choose a ready-made package or customize one further.</h1>
+            <h1>Choose a ready-made package for your event setup.</h1>
             <p className="package-copy">
-              Compare package fit, venue style, customization options, and overall pricing before selecting the one you want to inspect in detail.
+              Compare package descriptions, venue fit, recommended uses, customization flexibility, and exact package pricing before adding one to cart.
             </p>
+            {actionMessage ? (
+              <p className={actionTone === "error" ? "package-inline-error" : "package-inline-success"}>
+                {actionMessage}
+              </p>
+            ) : null}
           </div>
 
           <div className="package-list-actions">
-            <Link className="package-primary-link" to="/package-builder">
-              Start Building
+            <Link className="package-secondary-link" to="/shop">
+              Browse Products
             </Link>
             <label className="package-search">
               <span className="sr-only">Search packages</span>
@@ -120,7 +162,7 @@ function PackagesPage() {
           </div>
         </section>
 
-        <section className="package-list-grid" aria-label="Default package list">
+        <section className="package-list-grid" aria-label="Package list">
           {filteredPackages.length ? (
             filteredPackages.map((pkg) => {
               const displayPrice = getPackageDisplayPrice(pkg);
@@ -129,7 +171,7 @@ function PackagesPage() {
                 <article className="package-shell-card package-list-card" key={pkg.id}>
                   <div className="package-card-head">
                     <div>
-                      <p className="package-card-kicker">{getPackageModeLabel(pkg)}</p>
+                      <p className="package-card-kicker">{getPackageCustomizationLabel(pkg)}</p>
                       <h2>{pkg.name}</h2>
                     </div>
                     <span className={`package-requirement-pill is-${pkg.status}`}>{pkg.status}</span>
@@ -138,25 +180,30 @@ function PackagesPage() {
                   <p className="package-copy">{buildPackageDescription(pkg)}</p>
 
                   <div className="package-list-feature-grid">
+                    <span className="package-list-feature-pill">{getPackageRecommendedForLabel(pkg)}</span>
                     <span className="package-list-feature-pill">{getPackageAudienceLabel(pkg)}</span>
                     <span className="package-list-feature-pill">{getPackageVenueLabel(pkg)}</span>
-                    <span className="package-list-feature-pill">{getPackageCustomizationLabel(pkg)}</span>
                     <span className="package-list-feature-pill">{pkg.items.length} items included</span>
                   </div>
 
                   <div className="package-list-meta">
-                    <span>Overall package price</span>
+                    <span>Package price</span>
                     <strong>
                       {displayPrice.currency} {displayPrice.amount.toFixed(2)}
                     </strong>
                   </div>
 
                   <div className="package-list-card-actions">
-                    <Link className="package-primary-link" to={`/packages/${pkg.slug || pkg.id}`}>
-                      Select Package
-                    </Link>
-                    <Link className="package-secondary-link" to={`/package-builder?package=${encodeURIComponent(pkg.slug || pkg.id)}`}>
-                      Customize
+                    <button
+                      className="package-primary-button"
+                      disabled={activePackageId === pkg.id}
+                      onClick={() => { void handleAddToCart(pkg); }}
+                      type="button"
+                    >
+                      {activePackageId === pkg.id ? "Adding..." : "Add to cart"}
+                    </button>
+                    <Link className="package-secondary-link" to={`/packages/${pkg.slug || pkg.id}`}>
+                      View Package
                     </Link>
                   </div>
                 </article>
@@ -166,9 +213,9 @@ function PackagesPage() {
             <section className="package-shell-card package-state-card package-list-empty">
               <p className="package-eyebrow">Browse Packages</p>
               <h2>No packages match this search.</h2>
-              <p>Try another keyword or start from scratch in the package builder.</p>
-              <Link className="package-primary-link" to="/package-builder">
-                Start Building
+              <p>Try another keyword or explore individual products instead.</p>
+              <Link className="package-primary-link" to="/shop">
+                Browse Products
               </Link>
             </section>
           )}

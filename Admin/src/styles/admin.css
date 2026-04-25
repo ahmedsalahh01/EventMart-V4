@@ -600,9 +600,9 @@ button:disabled {
 .package-simple-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(120px, 0.6fr) minmax(140px, 0.7fr) auto;
-  gap: 12px;
-  align-items: start;
-  padding: 14px;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.04);
@@ -610,6 +610,64 @@ button:disabled {
 
 .package-simple-item-row > .btn {
   align-self: end;
+}
+
+.package-simple-item-row-wide {
+  grid-template-columns: minmax(220px, 1.45fr) minmax(240px, 1.2fr) minmax(120px, 0.42fr) auto auto;
+}
+
+.package-item-field {
+  min-width: 0;
+  gap: 6px;
+}
+
+.package-item-field label {
+  font-size: 12px;
+}
+
+.package-simple-item-row .field input,
+.package-simple-item-row .field select,
+.package-simple-item-row .field textarea {
+  min-height: 46px;
+  padding: 10px 12px;
+}
+
+.package-item-description-input {
+  min-height: 46px;
+  height: 46px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.package-form-span-full {
+  grid-column: 1 / -1;
+}
+
+.package-checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--muted);
+  align-self: end;
+}
+
+.package-item-toggle,
+.package-item-remove-button {
+  white-space: nowrap;
+}
+
+.package-item-remove-button {
+  min-height: 46px;
+  padding-inline: 16px;
+}
+
+.package-checkbox-inline input {
+  accent-color: #68eabc;
 }
 
 .package-mode-lock {
@@ -626,11 +684,18 @@ button:disabled {
 
 .package-item-preview {
   display: grid;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: 6px;
+  padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.16);
+}
+
+.package-empty-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .package-item-preview strong {

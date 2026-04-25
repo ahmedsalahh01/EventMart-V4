@@ -468,6 +468,10 @@ html[data-interface-theme="dark"] [data-theme-scope="packages"] {
   gap: 12px;
 }
 
+.package-detail-items-wide {
+  grid-column: 1 / -1;
+}
+
 .package-detail-item-copy h3 {
   margin: 0;
   font-size: 1.08rem;
@@ -747,6 +751,52 @@ html[data-interface-theme="dark"] .package-inline-success {
 
 .package-checkbox input {
   accent-color: var(--package-accent);
+}
+
+.package-detail-upload-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.package-detail-upload-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--package-border);
+  background: var(--package-muted-bg);
+}
+
+.package-detail-upload-title {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--package-heading);
+}
+
+.package-detail-upload-copy {
+  color: var(--package-copy-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.package-detail-upload-card input {
+  width: 100%;
+  font: inherit;
+  color: var(--package-heading);
+}
+
+.package-detail-upload-card strong {
+  color: var(--package-heading);
+  font-size: 0.94rem;
+}
+
+.package-detail-upload-card small {
+  color: var(--package-copy-soft);
+  line-height: 1.55;
+}
+
+.package-detail-upload-error {
+  color: #b91c1c !important;
 }
 
 .package-tier-list {

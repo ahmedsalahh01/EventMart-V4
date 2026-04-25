@@ -293,27 +293,42 @@ function resolvePackageMode(value) {
   return ["buy", "rent", "hybrid"].includes(normalized) ? normalized : "hybrid";
 }
 
+function resolvePackageCustomizationType(value) {
+  const normalized = normalizeText(value, 40).toLowerCase();
+  return ["customizable", "not customizable", "hybrid"].includes(normalized)
+    ? normalized
+    : "not customizable";
+}
+
 function normalizePackageContext(value = {}) {
   const eventType = resolveEventType(value?.eventType || value?.event_type);
   const venueType = ["indoor", "outdoor", "hybrid"].includes(normalizeLookupToken(value?.venueType || value?.venue_type))
     ? normalizeLookupToken(value?.venueType || value?.venue_type)
     : "";
+  const customizationAvailable = parseBoolean(
+    value?.customizationAvailable ??
+    value?.customization_available ??
+    value?.itemsCanBeCustomized ??
+    value?.items_can_be_customized,
+    false
+  );
+  const customizationType = resolvePackageCustomizationType(
+    value?.customizationType ??
+    value?.customization_type ??
+    (customizationAvailable ? "customizable" : "not customizable")
+  );
 
   return {
     budget: Math.max(0, toNumber(value?.budget, 0)),
-    customizationAvailable: parseBoolean(
-      value?.customizationAvailable ??
-      value?.customization_available ??
-      value?.itemsCanBeCustomized ??
-      value?.items_can_be_customized,
-      false
-    ),
+    customizationAvailable,
+    customizationType,
     deliveryPlace: normalizeText(value?.deliveryPlace || value?.delivery_place, 80),
     eventType,
     guestCount: Math.max(0, toWholeNumber(value?.guestCount ?? value?.guest_count, 0)),
     minimumPackagePrice: Math.max(0, toNumber(value?.minimumPackagePrice ?? value?.minimum_package_price, 0)),
     packageMode: resolvePackageMode(value?.packageMode ?? value?.package_mode),
     packagePrice: Math.max(0, toNumber(value?.packagePrice ?? value?.package_price, 0)),
+    recommendedFor: normalizeTextList(value?.recommendedFor ?? value?.recommended_for, 80),
     venueSize: normalizeText(value?.venueSize || value?.venue_size, 80),
     venueType
   };
@@ -544,7 +559,21 @@ function normalizePackageMeta(rawMeta = {}, fallback = {}) {
     packageItemId: rawMeta?.packageItemId === null || rawMeta?.packageItemId === undefined || rawMeta?.packageItemId === ""
       ? null
       : Number(rawMeta.packageItemId),
+    packageItemCustomizable: parseBoolean(
+      rawMeta?.packageItemCustomizable ?? rawMeta?.package_item_customizable,
+      parseBoolean(fallback.packageItemCustomizable, false)
+    ),
     packageName: normalizeText(rawMeta?.packageName || fallback.packageName, 160),
+    packagePrice: Math.max(
+      0,
+      toNumber(
+        rawMeta?.packagePrice ??
+        rawMeta?.package_price ??
+        fallback.packagePrice ??
+        context?.packagePrice,
+        0
+      )
+    ),
     quantityDiscountTiers: normalizeDiscountTiers(rawMeta?.quantityDiscountTiers || fallback.quantityDiscountTiers || []),
     required: parseBoolean(rawMeta?.required, parseBoolean(fallback.required, false)),
     source: normalizeText(rawMeta?.source || fallback.source, 40) || "package-builder"
@@ -582,7 +611,7 @@ function applyPricingToResolvedLines(lines = []) {
   });
 
   Object.values(groupedPackageLines).forEach((groupLines) => {
-    const enrichedLines = groupLines.map((line) => {
+    let enrichedLines = groupLines.map((line) => {
       const tiers = line.packageMeta.quantityDiscountTiers.length
         ? line.packageMeta.quantityDiscountTiers
         : getBuiltInDiscountTiers(line);
@@ -597,7 +626,9 @@ function applyPricingToResolvedLines(lines = []) {
       const discountedItemsSubtotal = roundCurrency(effectiveUnitPrice * Number(line.quantity || 0) * multiplier);
       const itemDiscount = roundCurrency((baseUnitPrice - effectiveUnitPrice) * Number(line.quantity || 0) * multiplier);
       const customizationFee =
-        line.packageMeta.customizationRequested || line.customizationRequested
+        line.packageMeta.packagePrice > 0
+          ? 0
+          : line.packageMeta.customizationRequested || line.customizationRequested
           ? roundCurrency(Number(line.productCustomizationFee || 0) * Number(line.quantity || 0))
           : 0;
       const chargedLineTotal = roundCurrency(
@@ -607,6 +638,7 @@ function applyPricingToResolvedLines(lines = []) {
       return {
         ...line,
         chargedLineTotal,
+        chargedUnitPrice: effectiveUnitPrice,
         customizationFee,
         discountedItemsSubtotal,
         effectiveUnitPrice,
@@ -615,6 +647,52 @@ function applyPricingToResolvedLines(lines = []) {
         matchedTier
       };
     });
+
+    const fixedPackagePrice = Math.max(0, Number(enrichedLines[0]?.packageMeta?.packagePrice || 0));
+    const usesFixedPackagePrice = fixedPackagePrice > 0;
+    if (usesFixedPackagePrice) {
+      const allocationBasisTotal = roundCurrency(
+        enrichedLines.reduce(
+          (sum, line) => sum + Number(line.discountedItemsSubtotal || line.lineBaseSubtotal || 0),
+          0
+        )
+      );
+      let remainingFixedPrice = roundCurrency(fixedPackagePrice);
+
+      enrichedLines = enrichedLines.map((line, index) => {
+        const multiplier = line.mode === "rent" ? Math.max(1, Number(line.rentalDays || 1)) : 1;
+        const quantity = Math.max(1, Number(line.quantity || 1));
+        const units = Math.max(1, quantity * multiplier);
+        const basis = Number(line.discountedItemsSubtotal || line.lineBaseSubtotal || 0);
+        const allocatedLineTotal = index === enrichedLines.length - 1
+          ? remainingFixedPrice
+          : roundCurrency(
+              fixedPackagePrice * (
+                allocationBasisTotal > 0
+                  ? basis / allocationBasisTotal
+                  : 1 / Math.max(1, enrichedLines.length)
+              )
+            );
+        const safeAllocatedLineTotal = Math.max(0, allocatedLineTotal);
+        const chargedUnitPrice = roundCurrency(safeAllocatedLineTotal / units);
+        const normalizedChargedLineTotal = index === enrichedLines.length - 1
+          ? Math.max(0, remainingFixedPrice)
+          : safeAllocatedLineTotal;
+
+        remainingFixedPrice = roundCurrency(remainingFixedPrice - normalizedChargedLineTotal);
+
+        return {
+          ...line,
+          chargedLineTotal: normalizedChargedLineTotal,
+          chargedUnitPrice,
+          customizationFee: 0,
+          discountedItemsSubtotal: normalizedChargedLineTotal,
+          effectiveUnitPrice: chargedUnitPrice,
+          itemDiscount: roundCurrency(Math.max(0, Number(line.lineBaseSubtotal || 0) - normalizedChargedLineTotal)),
+          matchedTier: null
+        };
+      });
+    }
 
     const currency = Array.from(new Set(enrichedLines.map((line) => String(line.currency || "EGP"))))[0] || "EGP";
     const subtotal = roundCurrency(enrichedLines.reduce((sum, line) => sum + Number(line.chargedLineTotal || 0), 0));
@@ -645,6 +723,7 @@ function applyPricingToResolvedLines(lines = []) {
       lines: enrichedLines,
       meetsMinimumPackagePrice: remainingToMinimumPrice <= 0,
       minimumPackagePrice,
+      packagePrice: usesFixedPackagePrice ? fixedPackagePrice : null,
       packageGroupId: enrichedLines[0]?.packageMeta?.packageGroupId || "package-preview",
       packageId: enrichedLines[0]?.packageMeta?.packageId || null,
       packageName: enrichedLines[0]?.packageMeta?.packageName || "Package",
@@ -684,7 +763,13 @@ function buildCartItemMeta({ context, packageDefinition, packageGroupId, package
       packageGroupId,
       packageId: packageDefinition?.id || null,
       packageItemId: packageItemConfig?.id || null,
+      packageItemCustomizable: Boolean(packageItemConfig?.customizable),
       packageName: packageDefinition?.name || "Custom Package",
+      packagePrice:
+        packageDefinition?.price ??
+        packageDefinition?.contextDefaults?.packagePrice ??
+        context?.packagePrice ??
+        0,
       quantityDiscountTiers: packageItemConfig?.discountTiers || [],
       required: packageItemConfig?.required,
       source: packageDefinition?.id ? "package" : "package-builder"
@@ -753,9 +838,13 @@ function buildBuilderPreview({
       buyPrice: product?.buy_price === null || product?.buy_price === undefined ? null : Number(product.buy_price),
       category: normalizeCatalogText(product?.category, 120),
       currency: normalizeText(product?.currency || "EGP", 6) || "EGP",
-      customizable: Boolean(product?.customizable),
+      customizable: packageItemConfig
+        ? Boolean(packageItemConfig?.customizable)
+        : Boolean(product?.customizable),
       customizationFee: roundCurrency(Number(product?.customization_fee || 0)),
-      customizationRequested: Boolean(selection?.customizationRequested),
+      customizationRequested: packageItemConfig?.customizable
+        ? Boolean(selection?.customizationRequested)
+        : Boolean(selection?.customizationRequested) && Boolean(product?.customizable),
       defaultMode,
       deliveryClass: normalizeText(product?.delivery_class, 60),
       description: normalizeText(product?.description, 260),
@@ -832,13 +921,13 @@ function buildBuilderPreview({
       packageItemConfig: row.packageItemConfig,
       product: row
     });
-    packageMeta.customizationRequested = row.customizationRequested;
+    packageMeta.customizationRequested = row.customizable ? row.customizationRequested : false;
 
     selectedLines.push({
       builderCategory: row.builderCategory,
       category: row.category,
       currency: row.currency,
-      customizationRequested: row.customizationRequested,
+      customizationRequested: row.customizable ? row.customizationRequested : false,
       deliveryClass: row.deliveryClass,
       description: row.description,
       lineTotal: roundCurrency(unitPrice * row.quantity),
@@ -953,11 +1042,29 @@ function buildBuilderPreview({
     packageDefinition: packageDefinition
       ? {
           customizationAvailable: Boolean(packageDefinition?.contextDefaults?.customizationAvailable),
+          customizationType:
+            resolvePackageCustomizationType(
+              packageDefinition?.customizationType ||
+              packageDefinition?.contextDefaults?.customizationType ||
+              (packageDefinition?.contextDefaults?.customizationAvailable ? "customizable" : "not customizable")
+            ),
           guestCount: Math.max(0, Number(packageDefinition?.contextDefaults?.guestCount || 0)),
           id: packageDefinition.id || null,
           name: packageDefinition.name,
           packageMode: resolvePackageMode(packageDefinition?.contextDefaults?.packageMode),
-          packagePrice: Math.max(0, Number(packageDefinition?.contextDefaults?.packagePrice || 0)),
+          packagePrice: Math.max(
+            0,
+            Number((packageDefinition?.price ?? packageDefinition?.contextDefaults?.packagePrice) || 0)
+          ),
+          price: Math.max(
+            0,
+            Number((packageDefinition?.price ?? packageDefinition?.contextDefaults?.packagePrice) || 0)
+          ),
+          recommendedFor: normalizeTextList(
+            packageDefinition?.recommendedFor ||
+            packageDefinition?.contextDefaults?.recommendedFor ||
+            []
+          ),
           minimumPackagePrice: Math.max(0, Number(packageDefinition?.contextDefaults?.minimumPackagePrice || 0)),
           slug: packageDefinition.slug || "",
           status: packageDefinition.status || "draft",
@@ -1020,6 +1127,7 @@ module.exports = {
   normalizeDiscountTiers,
   normalizePackageContext,
   normalizePackageMeta,
+  resolvePackageCustomizationType,
   resolvePackageMode,
   resolvePackageStatus,
   resolvePackageVisibility

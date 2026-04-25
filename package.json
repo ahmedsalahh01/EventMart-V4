@@ -1,0 +1,14 @@
+{
+  "name": "eventmart-v4",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"server,front,admin\" --prefix-colors \"cyan,green,magenta\" \"npm run dev --prefix Server\" \"npm run dev --prefix Frontend\" \"npm run dev --prefix Admin\"",
+    "dev:server": "npm run dev --prefix Server",
+    "dev:frontend": "npm run dev --prefix Frontend",
+    "dev:admin": "npm run dev --prefix Admin",
+    "install:all": "npm install --prefix Server && npm install --prefix Frontend && npm install --prefix Admin"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

@@ -401,12 +401,17 @@ export function validateCustomizationFile(file, options = {}) {
   const extension = fileName.toLowerCase().split(".").pop();
   const isAllowedType =
     fileType === "image/png" ||
+    fileType === "image/jpeg" ||
+    fileType === "image/webp" ||
     fileType === "application/pdf" ||
     extension === "png" ||
+    extension === "jpg" ||
+    extension === "jpeg" ||
+    extension === "webp" ||
     extension === "pdf";
 
   if (!isAllowedType) {
-    return "Only PNG and PDF files are supported.";
+    return "Only PNG, JPG, WEBP, and PDF files are supported.";
   }
 
   if (Number(file.size || 0) <= 0) {

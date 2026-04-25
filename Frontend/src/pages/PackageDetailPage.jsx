@@ -1,8 +1,11 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import useRequireAuth from "../hooks/useRequireAuth";
+import { validateCustomizationFile } from "../lib/productDetail";
+import { deleteCustomizationUploads, uploadCustomizationFile } from "../lib/products";
 import {
   buildPackageDescription,
   createCartItemsFromBuilderPreview,
@@ -10,26 +13,11 @@ import {
   getPackageAudienceLabel,
   getPackageCustomizationLabel,
   getPackageDisplayPrice,
-  getPackageModeLabel,
+  getPackageRecommendedForLabel,
   getPackageVenueLabel,
   previewPackage
 } from "../lib/packages";
 import "../styles/packages.css";
-
-function formatQuantityTierLabel(tier) {
-  const minQuantity = Number(tier?.minQuantity || 0);
-  const maxQuantity = tier?.maxQuantity;
-
-  if (!minQuantity) {
-    return "";
-  }
-
-  if (maxQuantity === null || maxQuantity === undefined || maxQuantity === "") {
-    return `${minQuantity}+`;
-  }
-
-  return `${minQuantity}-${Number(maxQuantity)}`;
-}
 
 function PackageDetailPage() {
   const navigate = useNavigate();
@@ -37,8 +25,13 @@ function PackageDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState("success");
+  const [isSaving, setIsSaving] = useState(false);
   const [payload, setPayload] = useState(null);
   const [packageGroupId] = useState(() => createPackageGroupId("package-detail"));
+  const [uploadsByItemId, setUploadsByItemId] = useState({});
+  const [uploadErrorsByItemId, setUploadErrorsByItemId] = useState({});
+  const { token } = useAuth();
   const { requireAuth } = useRequireAuth();
   const { setItems } = useCart();
 
@@ -70,16 +63,39 @@ function PackageDetailPage() {
 
   const preview = payload?.preview || null;
   const pkg = payload?.package || null;
-  const summary = preview?.summary || null;
   const displayPrice = pkg ? getPackageDisplayPrice(pkg) : { amount: 0, currency: "EGP" };
-
   const selectedItemMap = useMemo(
-    () => new Map((Array.isArray(preview?.selectedItems) ? preview.selectedItems : []).map((item) => [Number(item.id), item])),
+    () =>
+      new Map(
+        (Array.isArray(preview?.selectedItems) ? preview.selectedItems : []).map((item) => [
+          Number(item?.packageMeta?.packageItemId || item?.id),
+          item
+        ])
+      ),
     [preview?.selectedItems]
   );
 
-  function replacePackageCartItems(nextPreview) {
-    const cartItems = createCartItemsFromBuilderPreview(nextPreview);
+  function handleUploadChange(packageItemId, fileList) {
+    const files = Array.from(fileList || []);
+    const validationMessage = files
+      .map((file) => validateCustomizationFile(file))
+      .find(Boolean) || "";
+
+    setUploadErrorsByItemId((current) => ({
+      ...current,
+      [packageItemId]: validationMessage
+    }));
+    setUploadsByItemId((current) => ({
+      ...current,
+      [packageItemId]: validationMessage ? [] : files
+    }));
+    setMessage("");
+  }
+
+  function replacePackageCartItems(nextPreview, customizationUploadsByPackageItemId) {
+    const cartItems = createCartItemsFromBuilderPreview(nextPreview, {
+      customizationUploadsByPackageItemId
+    });
 
     setItems((current) => [
       ...current.filter((item) => item?.package_meta?.packageGroupId !== packageGroupId),
@@ -87,22 +103,83 @@ function PackageDetailPage() {
     ]);
   }
 
-  function handlePackageSelection({ checkout = false } = {}) {
-    if (!preview?.canCheckout) return;
+  async function handlePackageSelection({ checkout = false } = {}) {
+    if (!preview) return;
 
-    replacePackageCartItems(preview);
-    setMessage(checkout ? "Package saved to cart. Redirecting to checkout..." : "Package saved to your cart.");
+    const selectedUploads = Object.entries(uploadsByItemId).filter(([, files]) => Array.isArray(files) && files.length);
+    const hasUploadErrors = Object.values(uploadErrorsByItemId).some(Boolean);
 
-    if (checkout) {
-      if (!requireAuth({ returnTo: "/checkout" })) {
-        return;
-      }
-
-      navigate("/checkout");
+    if (hasUploadErrors) {
+      setMessageTone("error");
+      setMessage("Please fix the package customization file errors before continuing.");
       return;
     }
 
-    navigate("/cart");
+    if (selectedUploads.length && !token) {
+      if (!requireAuth({ returnTo: `/packages/${identifier}` })) {
+        return;
+      }
+      return;
+    }
+
+    if (checkout && !token) {
+      if (!requireAuth({ returnTo: "/checkout" })) {
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    setMessage("");
+    const customizationUploadsByPackageItemId = new Map();
+    const uploadedTokens = [];
+
+    try {
+      for (const item of Array.isArray(pkg?.items) ? pkg.items : []) {
+        const packageItemId = Number(item?.id || 0);
+        const files = Array.isArray(uploadsByItemId[packageItemId]) ? uploadsByItemId[packageItemId] : [];
+
+        if (!item?.customizable || !files.length) {
+          continue;
+        }
+
+        const uploadedAssets = [];
+        for (const file of files) {
+          const uploaded = await uploadCustomizationFile({
+            file,
+            packageId: pkg.id,
+            packageItemId,
+            productId: item.productId,
+            token,
+            uploadKind: "design"
+          });
+
+          uploadedAssets.push(uploaded);
+          uploadedTokens.push(uploaded.uploadToken);
+        }
+
+        customizationUploadsByPackageItemId.set(packageItemId, uploadedAssets);
+      }
+
+      replacePackageCartItems(preview, customizationUploadsByPackageItemId);
+      setMessageTone("success");
+      setMessage(checkout ? "Package saved to cart. Redirecting to checkout..." : "Package saved to your cart.");
+
+      if (checkout) {
+        navigate("/checkout");
+        return;
+      }
+
+      navigate("/cart");
+    } catch (submitError) {
+      if (uploadedTokens.length && token) {
+        await deleteCustomizationUploads(uploadedTokens, token).catch(() => {});
+      }
+
+      setMessageTone("error");
+      setMessage(submitError?.message || "We couldn't save this package to your cart right now.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   if (loading) {
@@ -111,13 +188,13 @@ function PackageDetailPage() {
         <section className="package-shell-card package-state-card">
           <p className="package-eyebrow">Package Details</p>
           <h1>Loading package details...</h1>
-          <p>We&apos;re preparing the included items, discounts, and delivery guidance.</p>
+          <p>We&apos;re preparing the included items, package info, and customization options.</p>
         </section>
       </main>
     );
   }
 
-  if (error || !preview || !pkg || !summary) {
+  if (error || !preview || !pkg) {
     return (
       <main className="packages-page" data-theme-scope="packages">
         <section className="package-shell-card package-state-card">
@@ -128,8 +205,8 @@ function PackageDetailPage() {
             <Link className="package-primary-link" to="/packages">
               Browse Packages
             </Link>
-            <Link className="package-secondary-link" to="/package-builder">
-              Start Building
+            <Link className="package-secondary-link" to="/shop">
+              Browse Products
             </Link>
           </div>
         </section>
@@ -149,71 +226,73 @@ function PackageDetailPage() {
       <div className="packages-layout package-detail-layout">
         <section className="package-shell-card package-detail-hero">
           <div className="package-detail-copy">
-            <p className="package-eyebrow">Selected Package</p>
+            <p className="package-eyebrow">View Package</p>
             <div className="package-card-head">
               <div>
                 <h1>{pkg.name}</h1>
-                <p className="package-copy">
-                  {buildPackageDescription(pkg)}
-                </p>
+                <p className="package-copy">{buildPackageDescription(pkg)}</p>
               </div>
               <div className="package-detail-pills">
                 <span className={`package-requirement-pill is-${pkg.status}`}>{pkg.status}</span>
-                <span className="package-detail-event">{getPackageModeLabel(pkg)}</span>
+                <span className="package-detail-event">{getPackageCustomizationLabel(pkg)}</span>
               </div>
             </div>
 
             <div className="package-detail-meta">
               <div>
                 <strong>{displayPrice.currency} {displayPrice.amount.toFixed(2)}</strong>
-                <span>Overall package price</span>
-              </div>
-              <div>
-                <strong>{pkg.items.length}</strong>
-                <span>Included items</span>
-              </div>
-              <div>
-                <strong>{getPackageAudienceLabel(pkg)}</strong>
-                <span>Fits for</span>
+                <span>Package price</span>
               </div>
               <div>
                 <strong>{getPackageVenueLabel(pkg)}</strong>
                 <span>Venue type</span>
               </div>
               <div>
-                <strong>{getPackageCustomizationLabel(pkg)}</strong>
-                <span>Customization</span>
+                <strong>{getPackageAudienceLabel(pkg)}</strong>
+                <span>Fits for</span>
+              </div>
+              <div>
+                <strong>{getPackageRecommendedForLabel(pkg)}</strong>
+                <span>Recommended use</span>
+              </div>
+              <div>
+                <strong>{pkg.items.length}</strong>
+                <span>Included items</span>
               </div>
             </div>
 
             <div className="package-list-card-actions">
               <button
                 className="package-primary-button"
-                disabled={!preview.canCheckout}
-                onClick={() => handlePackageSelection({ checkout: true })}
+                disabled={isSaving}
+                onClick={() => { void handlePackageSelection(); }}
                 type="button"
               >
-                Continue to Checkout
+                {isSaving ? "Saving..." : "Add to cart"}
               </button>
               <button
                 className="package-secondary-button"
-                disabled={!preview.canCheckout}
-                onClick={() => handlePackageSelection()}
+                disabled={isSaving}
+                onClick={() => { void handlePackageSelection({ checkout: true }); }}
                 type="button"
               >
-                Add Package to Cart
+                Continue to checkout
               </button>
-              <Link className="package-secondary-link" to={`/package-builder?package=${encodeURIComponent(pkg.slug || pkg.id)}`}>
-                Customize Package
+              <Link className="package-secondary-link" to="/packages">
+                Back to packages
               </Link>
             </div>
 
-            {message ? <p className="package-inline-success">{message}</p> : null}
+            {message ? (
+              <p className={messageTone === "error" ? "package-inline-error" : "package-inline-success"}>
+                {message}
+              </p>
+            ) : null}
           </div>
 
           <aside className="package-shell-card package-detail-summary">
             <p className="package-eyebrow">Package Snapshot</p>
-            <h2>Quick overview</h2>
+            <h2>What this package includes</h2>
 
             <div className="package-summary-list">
               <div className="package-summary-row">
@@ -221,41 +300,30 @@ function PackageDetailPage() {
                 <strong>{displayPrice.currency} {displayPrice.amount.toFixed(2)}</strong>
               </div>
               <div className="package-summary-row">
-                <span>Package mode</span>
-                <strong>{getPackageModeLabel(pkg)}</strong>
+                <span>Customization type</span>
+                <strong>{getPackageCustomizationLabel(pkg)}</strong>
               </div>
               <div className="package-summary-row">
-                <span>Venue setup</span>
+                <span>Venue type</span>
                 <strong>{getPackageVenueLabel(pkg)}</strong>
               </div>
               <div className="package-summary-row">
-                <span>Guest fit</span>
-                <strong>{getPackageAudienceLabel(pkg)}</strong>
+                <span>Recommended for</span>
+                <strong>{getPackageRecommendedForLabel(pkg)}</strong>
               </div>
               <div className="package-summary-row">
-                <span>Customization</span>
-                <strong>{getPackageCustomizationLabel(pkg)}</strong>
+                <span>Fits for</span>
+                <strong>{getPackageAudienceLabel(pkg)}</strong>
               </div>
               <div className="package-summary-row is-total">
-                <span>Ready items</span>
-                <strong>{preview.selectedItems.length}</strong>
+                <span>Items included</span>
+                <strong>{pkg.items.length}</strong>
               </div>
-            </div>
-
-            <div className="package-validation-list">
-              {(Array.isArray(preview.validations) && preview.validations.length
-                ? preview.validations
-                : [{ code: "package-ready", level: "success", message: "This package is ready to continue or customize." }])
-                .map((issue) => (
-                  <p className={`package-validation is-${issue.level}`} key={`${issue.code}-${issue.message}`}>
-                    {issue.message}
-                  </p>
-                ))}
             </div>
           </aside>
         </section>
 
-        <section className="package-shell-card package-detail-items">
+        <section className="package-shell-card package-detail-items package-detail-items-wide">
           <div className="package-card-head">
             <div>
               <p className="package-eyebrow">Included Items</p>
@@ -265,7 +333,8 @@ function PackageDetailPage() {
 
           <div className="package-detail-item-grid">
             {pkg.items.map((item) => {
-              const selectedPreview = selectedItemMap.get(Number(item.productId));
+              const selectedPreview = selectedItemMap.get(Number(item.id || item.productId));
+              const selectedFiles = Array.isArray(uploadsByItemId[item.id]) ? uploadsByItemId[item.id] : [];
 
               return (
                 <article className="package-detail-item-card" key={item.id || item.productId}>
@@ -276,35 +345,39 @@ function PackageDetailPage() {
                   />
 
                   <div className="package-detail-item-copy">
-                    <p className="package-card-kicker">{item.product?.category || "Event equipment"}</p>
+                    <p className="package-card-kicker">{item.product?.category || "Event item"}</p>
                     <h3>{item.product?.name || "Package item"}</h3>
 
-                    <p>
-                      {item.product?.description || "Configured as part of the default package setup."}
-                    </p>
+                    <p>{item.description || item.product?.description || "No description provided for this package item."}</p>
 
                     <div className="package-detail-item-meta">
-                      <span>Qty {item.defaultQuantity}</span>
-                      <span>{item.preferredMode === "rent" ? "Rent" : "Buy"}</span>
-                      <span>{item.required ? "Required" : "Optional"}</span>
-                      {item.product?.customizable ? <span>Customizable</span> : null}
-                      {selectedPreview?.matchedTier ? (
-                        <span>{Number(selectedPreview.matchedTier.discountPercent || 0).toFixed(2)}% tier active</span>
-                      ) : null}
+                      <span>Qty {item.quantityPerItem || item.defaultQuantity || 1}</span>
                     </div>
 
-                    {Array.isArray(item.discountTiers) && item.discountTiers.length ? (
-                      <div className="package-tier-list" aria-label={`${item.product?.name || "Package item"} discount tiers`}>
-                        {item.discountTiers.map((tier, tierIndex) => (
-                          <div className="package-tier-chip" key={`${item.id || item.productId}-tier-${tierIndex}`}>
-                            <strong>{formatQuantityTierLabel(tier)}</strong>
-                            <span>{Number(tier.discountPercent || 0).toFixed(2)}% off</span>
-                          </div>
-                        ))}
+                    {item.customizable ? (
+                      <div className="package-detail-upload-stack">
+                        <label className="package-detail-upload-card">
+                          <span className="package-detail-upload-title">Customization Photos</span>
+                          <span className="package-detail-upload-copy">
+                            Attach one or more PNG, JPG, WEBP, or PDF files for this package item. Files will be stored under the package customization upload folder after you add the package to cart.
+                          </span>
+                          <input
+                            accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                            multiple
+                            onChange={(event) => handleUploadChange(item.id, event.target.files)}
+                            type="file"
+                          />
+                          <strong>{selectedFiles.length ? `${selectedFiles.length} file(s) selected` : "Choose files"}</strong>
+                          {uploadErrorsByItemId[item.id] ? (
+                            <small className="package-detail-upload-error">{uploadErrorsByItemId[item.id]}</small>
+                          ) : selectedFiles.length ? (
+                            <small>{selectedFiles.map((file) => file.name).join(", ")}</small>
+                          ) : (
+                            <small>Multiple files supported</small>
+                          )}
+                        </label>
                       </div>
                     ) : null}
-
-                    {item.notes ? <p className="package-inline-note">{item.notes}</p> : null}
                   </div>
                 </article>
               );

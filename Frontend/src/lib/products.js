@@ -213,6 +213,7 @@ export function normalizeProduct(row) {
     customization_fee: toNum(row.customization_fee, 0),
     venue_type: String(row.venue_type || ""),
     delivery_class: String(row.delivery_class || ""),
+    availability_note: String(row.availability_note || "").trim(),
     featured: Boolean(row.featured),
     active: row.active !== false,
     quantity_available: quantityAvailable,
@@ -321,12 +322,28 @@ export async function loadProductBySlug(slug) {
   }
 }
 
-export async function uploadCustomizationFile({ file, productId, token, uploadKind, variationId }) {
+export async function uploadCustomizationFile({
+  file,
+  packageId,
+  packageItemId,
+  productId,
+  token,
+  uploadKind,
+  variationId
+}) {
   const params = new URLSearchParams({
     filename: String(file?.name || `${uploadKind || "design"}.file`),
     product_id: String(productId || ""),
     upload_kind: String(uploadKind || "")
   });
+
+  if (packageId) {
+    params.set("package_id", String(packageId));
+  }
+
+  if (packageItemId) {
+    params.set("package_item_id", String(packageItemId));
+  }
 
   if (variationId) {
     params.set("variation_id", String(variationId));

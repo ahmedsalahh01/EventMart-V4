@@ -1,13 +1,11 @@
 export const METRICS_KEY = "eventmart_product_metrics_v1";
 
-const LOCAL_API_URL = "http://localhost:4000";
 const PRODUCTION_API_URL = "https://eventmart-v4-production.up.railway.app";
 const PRODUCTS_PATH = "/api/products";
 const PACKAGES_PATH = "/api/packages";
 const PRODUCT_IMAGE_UPLOAD_PATHS = ["/api/product-images/upload", "/product-images/upload"];
 const PRODUCT_IMAGE_DELETE_PATHS = ["/api/product-images", "/product-images"];
 const USERS_PATH = "/api/users";
-const PACKAGE_STORAGE_KEY = "eventmart_admin_packages_v1";
 
 const ISO_CURRENCY_ALPHA_REGEX = /^[A-Z]{3}$/;
 const PRODUCT_ID_REGEX = /^(?!00000)\d{5}$/;
@@ -74,42 +72,6 @@ function getFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
 function getPackageFallbackApiBaseUrl(baseUrl, location = readRuntimeLocation()) {
   const configuredFallback = getFallbackApiBaseUrl(baseUrl, location);
   return configuredFallback || "";
-}
-
-function readLocalStorage() {
-  if (typeof window !== "undefined" && window.localStorage) {
-    return window.localStorage;
-  }
-
-  if (globalThis?.localStorage) {
-    return globalThis.localStorage;
-  }
-
-  return null;
-}
-
-function slugifyValue(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function shouldUsePackageStorageFallback(error) {
-  const status = Number(error?.status || 0);
-  if (status === 404) {
-    return true;
-  }
-
-  const message = String(error?.message || "").toLowerCase();
-  return (
-    message.includes("could not reach the api server") ||
-    message.includes("cannot get /api/packages") ||
-    message.includes("cannot post /api/packages") ||
-    message.includes("cannot put /api/packages") ||
-    message.includes("cannot delete /api/packages")
-  );
 }
 
 function randomId() {
@@ -905,16 +867,38 @@ function formatPackageModeLabel(value) {
 function buildPackageDescriptionFromContext(contextDefaults) {
   const details = [];
   const guestCount = Math.max(0, Number(contextDefaults?.guestCount || 0));
+  const recommendedFor = normalizeTextList(contextDefaults?.recommendedFor, 80);
+  const customizationType = normalizePackageCustomizationTypeInput(
+    contextDefaults?.customizationType ||
+    (contextDefaults?.customizationAvailable ? "customizable" : "not customizable")
+  );
 
   if (guestCount > 0) {
     details.push(`Fits up to ${guestCount} people`);
   }
 
+  if (recommendedFor.length) {
+    details.push(`Recommended for ${recommendedFor.join(", ")}`);
+  }
+
   details.push(`${formatVenueTypeLabel(contextDefaults?.venueType)} setup`);
-  details.push(contextDefaults?.customizationAvailable ? "Customizable items available" : "Non-customizable package");
+  if (customizationType === "hybrid") {
+    details.push("Includes both customizable and fixed items");
+  } else if (customizationType === "customizable") {
+    details.push("Customizable items available");
+  } else {
+    details.push("Non-customizable package");
+  }
   details.push(formatPackageModeLabel(contextDefaults?.packageMode));
 
   return details.join(". ");
+}
+
+function normalizePackageCustomizationTypeInput(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["customizable", "not customizable", "hybrid"].includes(normalized)
+    ? normalized
+    : "not customizable";
 }
 
 function normalizePackageContextDefaults(value) {
@@ -927,12 +911,18 @@ function normalizePackageContextDefaults(value) {
       value?.items_can_be_customized,
       false
     ),
+    customizationType: normalizePackageCustomizationTypeInput(
+      value?.customizationType ??
+      value?.customization_type ??
+      (value?.customizationAvailable ?? value?.customization_available ? "customizable" : "not customizable")
+    ),
     deliveryPlace: String(value?.deliveryPlace ?? value?.delivery_place ?? ""),
     eventType: String(value?.eventType ?? value?.event_type ?? ""),
     guestCount: String(value?.guestCount ?? value?.guest_count ?? ""),
     minimumPackagePrice: String(value?.minimumPackagePrice ?? value?.minimum_package_price ?? ""),
     packageMode: normalizePackageModeInput(value?.packageMode ?? value?.package_mode),
     packagePrice: String(value?.packagePrice ?? value?.package_price ?? ""),
+    recommendedFor: normalizeTextList(value?.recommendedFor ?? value?.recommended_for, 80).join("\n"),
     venueSize: String(value?.venueSize ?? value?.venue_size ?? ""),
     venueType: String(value?.venueType ?? value?.venue_type ?? "")
   };
@@ -955,7 +945,9 @@ function normalizePackageItemFormRow(item, index) {
       item?.appliesToVenueTypes ?? item?.applies_to_venue_types,
       80
     ).join("\n"),
+    customizable: Boolean(item?.customizable),
     defaultQuantity: String(defaultQuantity),
+    description: String(item?.description ?? item?.notes ?? ""),
     discountTiers: normalizePackageDiscountTierRows(item?.discountTiers ?? item?.discount_tiers),
     id: item?.id || randomId(),
     minimumQuantity: String(minimumQuantity),
@@ -966,6 +958,7 @@ function normalizePackageItemFormRow(item, index) {
     preferredMode: String(item?.preferredMode ?? item?.preferred_mode ?? "buy"),
     product,
     productId: String(item?.productId || item?.product_id || product?.id || ""),
+    quantityPerItem: String(item?.quantityPerItem ?? defaultQuantity),
     required: Boolean(item?.required ?? item?.is_required),
     sortOrder: Number(item?.sortOrder ?? item?.sort_order ?? index)
   };
@@ -976,10 +969,12 @@ function mapApiPackage(row) {
 
   return {
     active: row?.active !== false,
+    customizationType: String(row?.customizationType ?? row?.customization_type ?? ""),
     contextDefaults: normalizePackageContextDefaults(row?.contextDefaults || row?.context_defaults || {}),
     created_at: String(row?.created_at ?? ""),
     description: String(row?.description || ""),
     eventType: String(row?.eventType ?? row?.event_type ?? ""),
+    fitsForPeople: Number(row?.fitsForPeople ?? row?.fits_for_people ?? row?.contextDefaults?.guestCount ?? 0),
     id: Number(row?.id || 0),
     items: items.map((item, index) => {
       const rowItem = normalizePackageItemFormRow(item, index);
@@ -1006,161 +1001,15 @@ function mapApiPackage(row) {
       };
     }),
     name: String(row?.name || ""),
+    price: Number(row?.price ?? row?.contextDefaults?.packagePrice ?? 0),
     preview: row?.preview && typeof row.preview === "object" ? row.preview : null,
+    recommendedFor: normalizeTextList(row?.recommendedFor ?? row?.recommended_for, 80),
     slug: String(row?.slug || ""),
     status: String(row?.status || "draft"),
     updated_at: String(row?.updated_at ?? ""),
+    venueType: String(row?.venueType ?? row?.venue_type ?? ""),
     visibility: String(row?.visibility || "public")
   };
-}
-
-function nextStoredPackageId(packages) {
-  return packages.reduce((max, pkg) => {
-    const currentId = Number(pkg?.id || 0);
-    return currentId > max ? currentId : max;
-  }, 0) + 1;
-}
-
-function normalizeStoredPackageItem(item, index) {
-  return normalizePackageItemFormRow(item, index);
-}
-
-function normalizeStoredPackage(pkg, index) {
-  const items = Array.isArray(pkg?.items) ? pkg.items : [];
-  const id = Number(pkg?.id || index + 1);
-  const name = String(pkg?.name || "").trim();
-  const baseSlug = slugifyValue(pkg?.slug || name) || `package-${id}`;
-
-  return {
-    active: pkg?.active !== false,
-    contextDefaults: normalizePackageContextDefaults(pkg?.contextDefaults || pkg?.context_defaults || {}),
-    created_at: String(pkg?.created_at || ""),
-    description: String(pkg?.description || ""),
-    eventType: String(pkg?.eventType ?? pkg?.event_type ?? ""),
-    id,
-    items: items.map((item, itemIndex) => normalizeStoredPackageItem(item, itemIndex)),
-    name,
-    preview: pkg?.preview && typeof pkg.preview === "object" ? pkg.preview : null,
-    slug: baseSlug,
-    status: String(pkg?.status || "draft"),
-    updated_at: String(pkg?.updated_at || ""),
-    visibility: String(pkg?.visibility || "public")
-  };
-}
-
-function readStoredPackages() {
-  const storage = readLocalStorage();
-  if (!storage) {
-    return [];
-  }
-
-  try {
-    const raw = storage.getItem(PACKAGE_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.map(normalizeStoredPackage) : [];
-  } catch {
-    return [];
-  }
-}
-
-function clearStoredPackages() {
-  const storage = readLocalStorage();
-  if (!storage) {
-    return;
-  }
-
-  try {
-    storage.removeItem(PACKAGE_STORAGE_KEY);
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-}
-
-function writeStoredPackages(packages) {
-  const storage = readLocalStorage();
-  if (!storage) {
-    return packages;
-  }
-
-  storage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(packages));
-  return packages;
-}
-
-function createStoredPackageSlug(name, packages, editingId = null) {
-  const baseSlug = slugifyValue(name) || "package";
-  let candidate = baseSlug;
-  let suffix = 2;
-
-  while (
-    packages.some(
-      (pkg) =>
-        Number(pkg?.id || 0) !== Number(editingId || 0) &&
-        String(pkg?.slug || "").trim().toLowerCase() === candidate
-    )
-  ) {
-    candidate = `${baseSlug}-${suffix}`;
-    suffix += 1;
-  }
-
-  return candidate;
-}
-
-function savePackageToStorage(pkg, editingId) {
-  const packages = readStoredPackages();
-  const now = new Date().toISOString();
-  const packageId =
-    Number(editingId) > 0
-      ? Number(editingId)
-      : nextStoredPackageId(packages);
-  const existingPackage = packages.find((entry) => Number(entry?.id || 0) === packageId) || null;
-
-  const nextPackage = normalizeStoredPackage({
-    active: pkg?.active !== false,
-    contextDefaults: pkg?.contextDefaults || pkg?.context_defaults || {},
-    created_at: existingPackage?.created_at || now,
-    description: String(pkg?.description || "").trim(),
-    eventType: String(pkg?.eventType ?? pkg?.event_type ?? "").trim(),
-    id: packageId,
-    items: (Array.isArray(pkg?.items) ? pkg.items : []).map((item, index) => ({
-      appliesToEventTypes: item?.applies_to_event_types || item?.appliesToEventTypes || [],
-      appliesToVenueTypes: item?.applies_to_venue_types || item?.appliesToVenueTypes || [],
-      defaultQuantity: String(
-        Math.max(
-          Number(item?.minimum_quantity ?? item?.minimumQuantity ?? 1),
-          Number(item?.default_quantity ?? item?.defaultQuantity ?? item?.minimum_quantity ?? item?.minimumQuantity ?? 1)
-        )
-      ),
-      discountTiers: item?.discount_tiers || item?.discountTiers || [],
-      id: existingPackage?.items?.[index]?.id || index + 1,
-      minimumQuantity: String(Math.max(1, Number(item?.minimum_quantity ?? item?.minimumQuantity ?? 1))),
-      minimumQuantityNotice: buildPackageMinimumQuantityNotice("", item?.minimum_quantity ?? item?.minimumQuantity ?? 1),
-      notes: String(item?.notes || ""),
-      preferredMode: String(item?.preferred_mode || item?.preferredMode || "buy"),
-      product: {},
-      productId: String(item?.product_id || item?.productId || ""),
-      required: Boolean(item?.is_required ?? item?.required),
-      sortOrder: index
-    })),
-    name: String(pkg?.name || "").trim(),
-    status: String(pkg?.status || "draft").trim() || "draft",
-    slug: createStoredPackageSlug(pkg?.name, packages, packageId),
-    updated_at: now,
-    visibility: String(pkg?.visibility || "public").trim() || "public"
-  });
-
-  const nextPackages = existingPackage
-    ? packages.map((entry) => (Number(entry?.id || 0) === packageId ? nextPackage : entry))
-    : [...packages, nextPackage];
-
-  writeStoredPackages(nextPackages);
-  return nextPackage;
-}
-
-function removePackageFromStorage(id) {
-  const packageId = Number(id || 0);
-  const packages = readStoredPackages();
-  const nextPackages = packages.filter((entry) => Number(entry?.id || 0) !== packageId);
-  writeStoredPackages(nextPackages);
 }
 
 function createMissingPackageApiError(baseUrl, path = PACKAGES_PATH) {
@@ -1225,10 +1074,8 @@ export async function loadPackages() {
       fallbackBaseUrl: getPackageFallbackApiBaseUrl(primaryBaseUrl, runtimeLocation),
       retryStatusCodes: [404]
     });
-    clearStoredPackages();
     return Array.isArray(rows) ? rows.map(mapApiPackage) : [];
   } catch (error) {
-    clearStoredPackages();
     throw normalizePackageApiError(error, primaryBaseUrl, PACKAGES_PATH);
   }
 }
@@ -1372,13 +1219,16 @@ export function createEmptyPackageItem() {
   return {
     appliesToEventTypes: "",
     appliesToVenueTypes: "",
+    customizable: false,
     defaultQuantity: "1",
+    description: "",
     discountTiers: [createEmptyPackageDiscountTier()],
     id: randomId(),
     minimumQuantity: "1",
     notes: "",
     preferredMode: "buy",
     productId: "",
+    quantityPerItem: "1",
     required: true
   };
 }
@@ -1618,20 +1468,24 @@ export function buildProductPayload(form, { editingId, products }) {
 
 export function buildPackagePayload(form) {
   const name = String(form?.name || "").trim();
+  const customizationType = normalizePackageCustomizationTypeInput(form?.contextDefaults?.customizationType);
+  const recommendedFor = normalizeTextList(form?.contextDefaults?.recommendedFor, 80);
   const contextDefaults = {
     budget: toNum(form?.contextDefaults?.budget, 0) ?? 0,
-    customizationAvailable: Boolean(form?.contextDefaults?.customizationAvailable),
+    customizationAvailable: customizationType !== "not customizable",
+    customizationType,
     deliveryPlace: String(form?.contextDefaults?.deliveryPlace || "").trim(),
-    eventType: String(form?.contextDefaults?.eventType || form?.eventType || "").trim(),
+    eventType: String(form?.contextDefaults?.eventType || form?.eventType || recommendedFor[0] || "").trim(),
     guestCount: toNum(form?.contextDefaults?.guestCount, 0) ?? 0,
     minimumPackagePrice: toNum(form?.contextDefaults?.minimumPackagePrice, 0) ?? 0,
     packageMode: normalizePackageModeInput(form?.contextDefaults?.packageMode),
     packagePrice: toNum(form?.contextDefaults?.packagePrice, 0) ?? 0,
+    recommendedFor,
     venueSize: String(form?.contextDefaults?.venueSize || "").trim(),
     venueType: String(form?.contextDefaults?.venueType || "").trim()
   };
   const description = String(form?.description || "").trim() || buildPackageDescriptionFromContext(contextDefaults);
-  const eventType = String(form?.eventType || "").trim();
+  const eventType = String(form?.eventType || recommendedFor[0] || "").trim();
   const visibility = String(form?.visibility || "public").trim().toLowerCase() || "public";
   const status = String(form?.status || "draft").trim().toLowerCase() || "draft";
   const active = Boolean(form?.active);
@@ -1649,11 +1503,23 @@ export function buildPackagePayload(form) {
     throw new Error("Package overall price must be greater than 0.");
   }
 
+  if (Number(contextDefaults.guestCount || 0) <= 0) {
+    throw new Error("Fits for people must be greater than 0.");
+  }
+
+  if (!description) {
+    throw new Error("Package description is required.");
+  }
+
   const seenProductIds = new Set();
   const items = rows.map((row, index) => {
     const productId = Number(row?.productId || 0);
-    const minimumQuantity = Number(row?.minimumQuantity || 0);
-    const defaultQuantity = Number(row?.defaultQuantity || minimumQuantity || 0);
+    const quantityPerItem = Number(
+      row?.quantityPerItem ||
+      row?.defaultQuantity ||
+      row?.minimumQuantity ||
+      0
+    );
     const preferredMode = String(
       contextDefaults.packageMode === "hybrid"
         ? row?.preferredMode
@@ -1665,12 +1531,8 @@ export function buildPackagePayload(form) {
       throw new Error(`Package item ${index + 1} must select a product.`);
     }
 
-    if (!Number.isInteger(minimumQuantity) || minimumQuantity < 1) {
-      throw new Error(`Package item ${index + 1} minimum quantity must be at least 1.`);
-    }
-
-    if (!Number.isInteger(defaultQuantity) || defaultQuantity < minimumQuantity) {
-      throw new Error(`Package item ${index + 1} default quantity must be at least the minimum quantity.`);
+    if (!Number.isInteger(quantityPerItem) || quantityPerItem < 1) {
+      throw new Error(`Package item ${index + 1} quantity must be at least 1.`);
     }
 
     if (seenProductIds.has(productId)) {
@@ -1723,11 +1585,13 @@ export function buildPackagePayload(form) {
     return {
       applies_to_event_types: normalizeTextList(row?.appliesToEventTypes, 80),
       applies_to_venue_types: normalizeTextList(row?.appliesToVenueTypes, 80),
-      default_quantity: defaultQuantity,
+      customizable: Boolean(row?.customizable),
+      default_quantity: quantityPerItem,
+      description: String(row?.description || row?.notes || "").trim(),
       discount_tiers: discountTiers,
       is_required: Boolean(row?.required),
-      minimum_quantity: minimumQuantity,
-      notes: String(row?.notes || "").trim(),
+      minimum_quantity: quantityPerItem,
+      notes: String(row?.description || row?.notes || "").trim(),
       preferred_mode: preferredMode === "rent" ? "rent" : "buy",
       product_id: productId
     };
@@ -1735,15 +1599,20 @@ export function buildPackagePayload(form) {
 
   return {
     active,
+    customizationType,
     contextDefaults: {
       ...contextDefaults,
       eventType: String(contextDefaults.eventType || eventType).trim()
     },
     description,
     event_type: eventType,
+    fitsForPeople: Number(contextDefaults.guestCount || 0),
     items,
     name,
+    price: Number(contextDefaults.packagePrice || 0),
+    recommendedFor,
     status,
+    venueType: String(contextDefaults.venueType || "").trim(),
     visibility
   };
 }
@@ -1835,10 +1704,14 @@ export function packageMatchesSearch(pkg, query) {
     pkg?.name,
     pkg?.description,
     pkg?.eventType,
+    ...(Array.isArray(pkg?.recommendedFor)
+      ? pkg.recommendedFor
+      : normalizeTextList(pkg?.contextDefaults?.recommendedFor, 80)),
     pkg?.status,
     pkg?.visibility,
     ...(Array.isArray(pkg?.items)
       ? pkg.items.flatMap((item) => [
+          item?.description,
           item?.notes,
           item?.product?.name,
           item?.product?.category,

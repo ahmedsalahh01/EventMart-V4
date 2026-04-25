@@ -53,6 +53,7 @@ const UPLOADS_DIR = path.resolve(__dirname, "../uploads");
 const PRODUCT_UPLOADS_DIR = path.join(UPLOADS_DIR, "products");
 const PRIVATE_UPLOADS_DIR = path.resolve(__dirname, "../private-uploads");
 const CUSTOMIZATION_UPLOADS_DIR = path.join(PRIVATE_UPLOADS_DIR, "customizations");
+const PACKAGE_CUSTOMIZATION_UPLOADS_DIR = path.join(PRIVATE_UPLOADS_DIR, "package_customization");
 const MAX_PRODUCT_IMAGES = 10;
 const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CUSTOMIZATION_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -63,9 +64,12 @@ const CUSTOMIZATION_UPLOAD_PARSER = express.raw({ limit: "12mb", type: () => tru
 const CUSTOMIZATION_UPLOAD_KIND_SET = new Set(["mockup", "design"]);
 const CUSTOMIZATION_UPLOAD_EXTENSIONS = Object.freeze({
   "application/pdf": "pdf",
-  "image/png": "png"
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp"
 });
-const CUSTOMIZATION_UPLOAD_ALLOWED_EXTENSIONS = new Set(["pdf", "png"]);
+const CUSTOMIZATION_UPLOAD_ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "pdf", "png", "webp"]);
 const productCatalogCache = {
   expiresAt: 0,
   rows: null
@@ -145,7 +149,7 @@ app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "120mb" }));
 app.use("/api/recommendations", recommendationRouter);
 app.use("/api/admin/products", createAdminProductsRouter({ pool }));
-app.use("/api", createPackagesRouter({ pool }));
+app.use("/api", createPackagesRouter({ pool, removeManagedCustomizationFile }));
 app.use("/uploads", express.static(UPLOADS_DIR));
 app.use((error, _req, res, next) => {
   if (error?.type === "entity.too.large") {
@@ -627,18 +631,31 @@ function getCustomizationUploadExtension({ fileName, mimeType }) {
   return "";
 }
 
+function sanitizeCustomizationPathSegment(value, fallback = "file") {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  return normalized || fallback;
+}
+
 async function saveCustomizationUploadBuffer({
   buffer,
   fileName,
   mimeType,
   productCode,
   uploadToken,
-  userId
+  userId,
+  storageRootDir = CUSTOMIZATION_UPLOADS_DIR,
+  pathSegments = []
 }) {
   const extension = getCustomizationUploadExtension({ fileName, mimeType });
 
   if (!extension) {
-    throw createHttpError(400, "Only PNG and PDF files are supported.");
+    throw createHttpError(400, "Only PNG, JPG, WEBP, and PDF files are supported.");
   }
 
   if (!buffer.length) {
@@ -649,7 +666,11 @@ async function saveCustomizationUploadBuffer({
     throw createHttpError(400, "Each customization file must be 10 MB or smaller.");
   }
 
-  const targetDir = path.join(CUSTOMIZATION_UPLOADS_DIR, String(productCode || "product"), String(userId || "guest"));
+  const normalizedPathSegments = (Array.isArray(pathSegments) && pathSegments.length
+    ? pathSegments
+    : [productCode || "product", userId || "guest"]
+  ).map((segment, index) => sanitizeCustomizationPathSegment(segment, index === 0 ? "customization" : "guest"));
+  const targetDir = path.join(storageRootDir, ...normalizedPathSegments);
   await fsp.mkdir(targetDir, { recursive: true });
 
   const storedPath = path.join(targetDir, `${uploadToken}.${extension}`);
@@ -664,12 +685,48 @@ async function removeManagedCustomizationFile(filePath) {
 
   try {
     await fsp.unlink(absolutePath);
-    await pruneEmptyDirectories(absolutePath, CUSTOMIZATION_UPLOADS_DIR);
+    await pruneEmptyDirectories(absolutePath, PRIVATE_UPLOADS_DIR);
   } catch (error) {
     if (error?.code !== "ENOENT") {
       console.warn("CUSTOMIZATION CLEANUP WARNING:", error.message);
     }
   }
+}
+
+async function loadPackageItemCustomizationConfig(client, { packageId, packageItemId, productId }) {
+  const numericPackageId = Number(packageId || 0);
+  const numericPackageItemId = Number(packageItemId || 0);
+  const numericProductId = Number(productId || 0);
+
+  if (
+    !Number.isInteger(numericPackageId) ||
+    numericPackageId <= 0 ||
+    !Number.isInteger(numericPackageItemId) ||
+    numericPackageItemId <= 0 ||
+    !Number.isInteger(numericProductId) ||
+    numericProductId <= 0
+  ) {
+    return null;
+  }
+
+  const result = await client.query(
+    `
+    SELECT
+      pi.id,
+      pi.package_id,
+      pi.product_id,
+      COALESCE(pi.customizable, FALSE) AS customizable
+    FROM package_items pi
+    JOIN packages pkg ON pkg.id = pi.package_id
+    WHERE pi.id = $1
+      AND pi.package_id = $2
+      AND pi.product_id = $3
+    LIMIT 1
+    `,
+    [numericPackageItemId, numericPackageId, numericProductId]
+  );
+
+  return result.rows[0] || null;
 }
 
 const PRODUCT_SELECT_SQL = `
@@ -699,6 +756,7 @@ const PRODUCT_SELECT_SQL = `
     COALESCE(p.customization_fee, 0) AS customization_fee,
     COALESCE(p.venue_type, '') AS venue_type,
     COALESCE(p.delivery_class, '') AS delivery_class,
+    COALESCE(p.availability_note, '') AS availability_note,
     p.featured,
     p.active,
     p.created_at,
@@ -1643,6 +1701,7 @@ function resolveCheckoutVariation(product, item) {
 async function validateCustomizationUploadsForItem(client, {
   customizationUploadTokens,
   itemIndex,
+  packageMeta,
   product,
   userId,
   variation
@@ -1651,20 +1710,41 @@ async function validateCustomizationUploadsForItem(client, {
     return;
   }
 
-  if (!product.customizable) {
+  const packageId = Number(packageMeta?.packageId || 0);
+  const packageItemId = Number(packageMeta?.packageItemId || 0);
+  const packageItemConfig = packageItemId > 0
+    ? await loadPackageItemCustomizationConfig(client, {
+        packageId,
+        packageItemId,
+        productId: product.id
+      })
+    : null;
+  const allowsCustomization = packageItemConfig
+    ? Boolean(packageItemConfig.customizable)
+    : Boolean(product.customizable);
+
+  if (!allowsCustomization) {
     throw createHttpError(400, `${product.name} does not support customization uploads.`);
   }
 
   const result = await client.query(
     `
-    SELECT upload_token, variation_id
+    SELECT upload_token, variation_id, package_id, package_item_id
     FROM customization_uploads
     WHERE user_id = $1
       AND product_id = $2
       AND upload_token = ANY($3::TEXT[])
+      AND ($4::BIGINT IS NULL OR package_id = $4)
+      AND ($5::BIGINT IS NULL OR package_item_id = $5)
       AND order_item_id IS NULL
     `,
-    [userId, product.id, customizationUploadTokens]
+    [
+      userId,
+      product.id,
+      customizationUploadTokens,
+      packageItemConfig ? packageId : null,
+      packageItemConfig ? packageItemId : null
+    ]
   );
 
   if (result.rows.length !== customizationUploadTokens.length) {
@@ -1690,11 +1770,14 @@ async function validateCustomizationUploadsForItem(client, {
 async function attachCustomizationUploadsToOrderItem(client, {
   customizationUploadTokens,
   orderItemId,
+  packageMeta,
   productId,
   userId,
   variationId
 }) {
   if (!customizationUploadTokens.length) return;
+  const packageId = Number(packageMeta?.packageId || 0);
+  const packageItemId = Number(packageMeta?.packageItemId || 0);
 
   const result = await client.query(
     `
@@ -1704,10 +1787,20 @@ async function attachCustomizationUploadsToOrderItem(client, {
     WHERE user_id = $3
       AND product_id = $4
       AND upload_token = ANY($5::TEXT[])
+      AND ($6::BIGINT IS NULL OR package_id = $6)
+      AND ($7::BIGINT IS NULL OR package_item_id = $7)
       AND order_item_id IS NULL
     RETURNING upload_token
     `,
-    [orderItemId, variationId, userId, productId, customizationUploadTokens]
+    [
+      orderItemId,
+      variationId,
+      userId,
+      productId,
+      customizationUploadTokens,
+      packageItemId > 0 ? packageId : null,
+      packageItemId > 0 ? packageItemId : null
+    ]
   );
 
   if (result.rows.length !== customizationUploadTokens.length) {
@@ -1851,6 +1944,7 @@ async function buildCheckoutLineItems(rawItems, { client = pool, userId } = {}) 
       await validateCustomizationUploadsForItem(client, {
         customizationUploadTokens: item.customizationUploadTokens || [],
         itemIndex: index,
+        packageMeta: item.packageMeta,
         product,
         userId,
         variation
@@ -1935,6 +2029,7 @@ function buildCheckoutTotalsFromLineItems(lineItems) {
   const fallbackDeliveryEstimate = calculateDeliveryEstimate(lineItems);
   const pricedLineItems = pricing.lines.map((line) => ({
     ...line,
+    unitPrice: Number((line.chargedUnitPrice ?? line.effectiveUnitPrice ?? line.unitPrice) || 0),
     lineTotal: Number(line.chargedLineTotal || line.lineTotal || 0)
   }));
 
@@ -2171,6 +2266,8 @@ app.post(["/customization-uploads", "/api/customization-uploads"], requireAuth, 
   try {
     const productId = parseProductRouteId(req.query.product_id);
     const variationId = parseOptionalPositiveInteger(req.query.variation_id, "variation_id");
+    const packageId = parseOptionalPositiveInteger(req.query.package_id, "package_id");
+    const packageItemId = parseOptionalPositiveInteger(req.query.package_item_id, "package_item_id");
     const uploadKind = parseCustomizationUploadKind(req.query.upload_kind);
     const mimeType = String(req.headers["content-type"] || "")
       .split(";")[0]
@@ -2189,7 +2286,9 @@ app.post(["/customization-uploads", "/api/customization-uploads"], requireAuth, 
     }
 
     if (!product.customizable) {
-      throw createHttpError(400, "This product does not support customization uploads.");
+      if (!packageId || !packageItemId) {
+        throw createHttpError(400, "This product does not support customization uploads.");
+      }
     }
 
     if (variationId) {
@@ -2203,12 +2302,32 @@ app.post(["/customization-uploads", "/api/customization-uploads"], requireAuth, 
       }
     }
 
+    const packageItemConfig = packageItemId
+      ? await loadPackageItemCustomizationConfig(pool, {
+          packageId,
+          packageItemId,
+          productId
+        })
+      : null;
+
+    if (packageItemId && !packageItemConfig) {
+      throw createHttpError(400, "Selected package item is invalid for this product.");
+    }
+
+    if (packageItemConfig && !packageItemConfig.customizable) {
+      throw createHttpError(400, "This package item does not accept customization uploads.");
+    }
+
     const uploadToken = crypto.randomUUID();
     const storedPath = await saveCustomizationUploadBuffer({
       buffer,
       fileName,
       mimeType,
       productCode: product.product_id,
+      pathSegments: packageItemConfig
+        ? [String(packageId), String(packageItemId), String(req.auth.userId || "guest")]
+        : [String(product.product_id || "product"), String(req.auth.userId || "guest")],
+      storageRootDir: packageItemConfig ? PACKAGE_CUSTOMIZATION_UPLOADS_DIR : CUSTOMIZATION_UPLOADS_DIR,
       uploadToken,
       userId: req.auth.userId
     });
@@ -2219,6 +2338,8 @@ app.post(["/customization-uploads", "/api/customization-uploads"], requireAuth, 
         upload_token,
         product_id,
         variation_id,
+        package_id,
+        package_item_id,
         user_id,
         upload_kind,
         original_file_name,
@@ -2226,12 +2347,14 @@ app.post(["/customization-uploads", "/api/customization-uploads"], requireAuth, 
         mime_type,
         size_bytes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       `,
       [
         uploadToken,
         productId,
         variationId,
+        packageId,
+        packageItemId,
         req.auth.userId,
         uploadKind,
         fileName,
@@ -2890,6 +3013,7 @@ app.post("/api/checkout/orders", requireAuth, async (req, res) => {
         await attachCustomizationUploadsToOrderItem(client, {
           customizationUploadTokens: item.customizationUploadTokens,
           orderItemId: orderItemInsert.rows[0].id,
+          packageMeta: item.packageMeta,
           productId: item.productId,
           userId: req.auth.userId,
           variationId: item.variationId

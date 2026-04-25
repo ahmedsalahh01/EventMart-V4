@@ -1,4 +1,4 @@
-import { apiRequest } from "./api";
+import { apiRequest } from "./api.js";
 
 function createRandomSuffix() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -48,6 +48,25 @@ export function normalizePackageMode(value) {
   return ["buy", "rent", "hybrid"].includes(normalized) ? normalized : "hybrid";
 }
 
+export function getPackageRecommendedForList(pkg) {
+  const list = Array.isArray(pkg?.recommendedFor)
+    ? pkg.recommendedFor
+    : Array.isArray(pkg?.contextDefaults?.recommendedFor)
+      ? pkg.contextDefaults.recommendedFor
+      : typeof pkg?.contextDefaults?.recommendedFor === "string"
+        ? pkg.contextDefaults.recommendedFor.split(/\r?\n|,/)
+        : [];
+
+  return list
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+}
+
+export function getPackageRecommendedForLabel(pkg) {
+  const entries = getPackageRecommendedForList(pkg);
+  return entries.length ? entries.join(", ") : "General events";
+}
+
 export function getPackageCurrency(pkg) {
   const items = Array.isArray(pkg?.items) ? pkg.items : [];
   const firstItemCurrency = items.find((item) => item?.product?.currency)?.product?.currency;
@@ -55,7 +74,7 @@ export function getPackageCurrency(pkg) {
 }
 
 export function getPackageDisplayPrice(pkg) {
-  const configuredPrice = Number(pkg?.contextDefaults?.packagePrice || 0);
+  const configuredPrice = Number((pkg?.price ?? pkg?.contextDefaults?.packagePrice) || 0);
   const currency = getPackageCurrency(pkg);
 
   return {
@@ -66,7 +85,7 @@ export function getPackageDisplayPrice(pkg) {
 }
 
 export function getPackageVenueLabel(pkg) {
-  const venueType = String(pkg?.contextDefaults?.venueType || "").trim().toLowerCase();
+  const venueType = String(pkg?.venueType || pkg?.contextDefaults?.venueType || "").trim().toLowerCase();
   if (venueType === "indoor") return "Indoor";
   if (venueType === "outdoor") return "Outdoor";
   if (venueType === "hybrid") return "Hybrid";
@@ -74,18 +93,18 @@ export function getPackageVenueLabel(pkg) {
 }
 
 export function getPackageAudienceLabel(pkg) {
-  const guestCount = Math.max(0, Number(pkg?.contextDefaults?.guestCount || 0));
+  const guestCount = Math.max(0, Number((pkg?.fitsForPeople ?? pkg?.contextDefaults?.guestCount) || 0));
   return guestCount > 0 ? `${guestCount} people` : "Flexible guest count";
 }
 
 export function getPackageCustomizationLabel(pkg) {
-  const explicitValue = pkg?.contextDefaults?.customizationAvailable;
-  const hasCustomizableItem = Array.isArray(pkg?.items) && pkg.items.some((item) => Boolean(item?.product?.customizable));
-  const isCustomizable = explicitValue === undefined || explicitValue === null
-    ? hasCustomizableItem
-    : Boolean(explicitValue);
+  const explicitType = String(pkg?.customizationType || pkg?.contextDefaults?.customizationType || "").trim().toLowerCase();
+  if (explicitType === "customizable") return "Customizable";
+  if (explicitType === "hybrid") return "Hybrid";
+  if (explicitType === "not customizable") return "Not customizable";
 
-  return isCustomizable ? "Customizable items" : "No customization";
+  const hasCustomizableItem = Array.isArray(pkg?.items) && pkg.items.some((item) => Boolean(item?.customizable));
+  return hasCustomizableItem ? "Customizable" : "Not customizable";
 }
 
 export function getPackageModeLabel(pkg) {
@@ -102,10 +121,15 @@ export function buildPackageDescription(pkg) {
   }
 
   const details = [];
-  const guestCount = Math.max(0, Number(pkg?.contextDefaults?.guestCount || 0));
+  const guestCount = Math.max(0, Number((pkg?.fitsForPeople ?? pkg?.contextDefaults?.guestCount) || 0));
 
   if (guestCount > 0) {
     details.push(`Fits up to ${guestCount} people`);
+  }
+
+  const recommendedFor = getPackageRecommendedForList(pkg);
+  if (recommendedFor.length) {
+    details.push(`Recommended for ${recommendedFor.join(", ")}`);
   }
 
   details.push(`${getPackageVenueLabel(pkg)} setup`);
@@ -115,30 +139,52 @@ export function buildPackageDescription(pkg) {
   return details.join(". ");
 }
 
-export function createCartItemsFromBuilderPreview(preview) {
+export function createCartItemsFromBuilderPreview(preview, options = {}) {
   const products = Array.isArray(preview?.products) ? preview.products : [];
   const selectedItems = Array.isArray(preview?.selectedItems) ? preview.selectedItems : [];
   const productMap = new Map(products.map((product) => [Number(product.id), product]));
+  const customizationUploadsByPackageItemId = options?.customizationUploadsByPackageItemId instanceof Map
+    ? options.customizationUploadsByPackageItemId
+    : new Map();
+  const packagePrice = Number(
+    preview?.packageDefinition?.price ??
+    preview?.packageDefinition?.packagePrice ??
+    0
+  );
 
   return selectedItems
     .map((entry) => {
       const product = productMap.get(Number(entry?.id));
       if (!product) return null;
+      const packageMeta = entry?.packageMeta && typeof entry.packageMeta === "object"
+        ? {
+            ...entry.packageMeta,
+            packagePrice: Number(entry.packageMeta.packagePrice || packagePrice || 0)
+          }
+        : null;
+      const packageItemId = Number(packageMeta?.packageItemId || 0);
+      const customizationUploads = packageItemId > 0
+        ? customizationUploadsByPackageItemId.get(packageItemId) || []
+        : [];
+      const customizationRequested =
+        customizationUploads.length > 0 ||
+        Boolean(packageMeta?.customizationRequested);
 
       return {
         buy_enabled: Boolean(product.buyEnabled),
         buy_price: product.buyPrice,
         category: product.category,
         currency: product.currency,
-        customizable: Boolean(product.customizable),
-        customization_requested: Boolean(entry?.packageMeta?.customizationRequested),
+        customizable: Boolean(packageMeta?.packageItemCustomizable || product.customizable),
+        customization_requested: customizationRequested,
+        customization_uploads: customizationUploads,
         description: product.description,
         id: String(product.id),
         image_url: product.imageUrl || "",
         images: product.imageUrl ? [product.imageUrl] : [],
         mode: entry.mode === "rent" ? "rent" : "buy",
         name: product.name,
-        package_meta: entry.packageMeta || null,
+        package_meta: packageMeta,
         product_id: String(product.productId || ""),
         quantity: Number(entry.quantity || 1),
         rent_enabled: Boolean(product.rentEnabled),

@@ -7,6 +7,7 @@ const {
   normalizeDiscountTiers,
   normalizePackageContext,
   normalizePackageMeta,
+  resolvePackageCustomizationType,
   resolvePackageMode,
   resolvePackageStatus,
   resolvePackageVisibility
@@ -55,13 +56,28 @@ function formatPackageModeLabel(value) {
 function buildPackageDescriptionFromContext(contextDefaults) {
   const details = [];
   const guestCount = Math.max(0, Number(contextDefaults?.guestCount || 0));
+  const recommendedFor = normalizeTextList(contextDefaults?.recommendedFor || contextDefaults?.eventType, 80);
+  const customizationType = resolvePackageCustomizationType(
+    contextDefaults?.customizationType ||
+    (contextDefaults?.customizationAvailable ? "customizable" : "not customizable")
+  );
 
   if (guestCount > 0) {
     details.push(`Fits up to ${guestCount} people`);
   }
 
+  if (recommendedFor.length) {
+    details.push(`Recommended for ${recommendedFor.join(", ")}`);
+  }
+
   details.push(`${formatVenueTypeLabel(contextDefaults?.venueType)} setup`);
-  details.push(contextDefaults?.customizationAvailable ? "Customizable items available" : "Non-customizable package");
+  if (customizationType === "hybrid") {
+    details.push("Includes both customizable and fixed items");
+  } else if (customizationType === "customizable") {
+    details.push("Customizable items available");
+  } else {
+    details.push("Non-customizable package");
+  }
   details.push(formatPackageModeLabel(contextDefaults?.packageMode));
 
   return normalizeText(details.join(". "), 400);
@@ -73,6 +89,30 @@ function parseWholeNumber(value, fieldLabel) {
     throw createHttpError(400, `${fieldLabel} must be a non-negative whole number.`);
   }
   return parsed;
+}
+
+function parsePositiveWholeNumber(value, fieldLabel) {
+  const parsed = parseWholeNumber(value, fieldLabel);
+  if (parsed < 1) {
+    throw createHttpError(400, `${fieldLabel} must be greater than 0.`);
+  }
+  return parsed;
+}
+
+function parseRequiredCurrencyAmount(value, fieldLabel) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw createHttpError(400, `${fieldLabel} must be a valid number greater than 0.`);
+  }
+  return Number(parsed.toFixed(2));
+}
+
+function resolveVenueType(value) {
+  const normalized = normalizeText(value, 40).toLowerCase();
+  if (["indoor", "outdoor", "hybrid"].includes(normalized)) {
+    return normalized;
+  }
+  return "hybrid";
 }
 
 function normalizeTextList(value, maxLength = 120) {
@@ -174,6 +214,11 @@ const PACKAGE_SELECT_SQL = `
     pkg.name,
     pkg.slug,
     pkg.description,
+    pkg.customization_type,
+    pkg.venue_type,
+    COALESCE(pkg.recommended_for, '[]'::jsonb) AS recommended_for,
+    pkg.fits_for_people,
+    pkg.price,
     pkg.event_type,
     pkg.visibility,
     pkg.status,
@@ -192,6 +237,7 @@ const PACKAGE_SELECT_SQL = `
             'product_id', pi.product_id,
             'minimum_quantity', pi.minimum_quantity,
             'default_quantity', pi.default_quantity,
+            'customizable', COALESCE(pi.customizable, FALSE),
             'is_required', pi.is_required,
             'preferred_mode', pi.preferred_mode,
             'applies_to_event_types', pi.applies_to_event_types,
@@ -272,32 +318,61 @@ function materializeCatalogProduct(row) {
 
 function materializePackageRow(row) {
   const items = Array.isArray(row?.items) ? row.items : [];
+  const customizationType = resolvePackageCustomizationType(row?.customization_type);
+  const venueType = resolveVenueType(row?.venue_type || row?.context_defaults?.venueType);
+  const recommendedFor = normalizeTextList(
+    row?.recommended_for?.length ? row.recommended_for : row?.event_type,
+    80
+  );
+  const fitsForPeople = Math.max(
+    1,
+    Number(row?.fits_for_people || row?.context_defaults?.guestCount || 1)
+  );
+  const price = Number(row?.price ?? row?.context_defaults?.packagePrice ?? 0);
+  const contextDefaults = normalizePackageContext({
+    ...(row?.context_defaults || {}),
+    customizationAvailable: customizationType !== "not customizable",
+    customizationType,
+    eventType: recommendedFor[0] || row?.event_type || "",
+    guestCount: fitsForPeople,
+    packagePrice: price,
+    recommendedFor,
+    venueType
+  });
 
   return {
     active: row?.active !== false,
-    contextDefaults: normalizePackageContext(row?.context_defaults || {}),
+    contextDefaults,
+    customizationType,
     created_at: row?.created_at || null,
     description: normalizeText(row?.description, 400),
     eventType: normalizeText(row?.event_type, 120),
+    fitsForPeople,
     id: Number(row?.id || 0),
     items: items.map((item, index) => ({
-      defaultQuantity: Math.max(1, Number(item?.default_quantity || 1)),
+      customizable: Boolean(item?.customizable),
+      defaultQuantity: Math.max(1, Number(item?.default_quantity || item?.minimum_quantity || 1)),
+      description: normalizeText(item?.notes || item?.product?.description, 240),
       discountTiers: normalizeDiscountTiers(item?.discount_tiers),
       id: Number(item?.id || 0),
-      minimumQuantity: Math.max(1, Number(item?.minimum_quantity || 1)),
+      minimumQuantity: Math.max(1, Number(item?.default_quantity || item?.minimum_quantity || 1)),
       notes: normalizeText(item?.notes, 240),
       preferredMode: normalizeText(item?.preferred_mode, 20),
       product: materializeCatalogProduct(item?.product || {}),
       productId: Number(item?.product_id || item?.product?.id || 0),
+      quantityPerItem: Math.max(1, Number(item?.default_quantity || item?.minimum_quantity || 1)),
       required: Boolean(item?.is_required),
       sortOrder: Number(item?.sort_order ?? index),
       appliesToEventTypes: normalizeTextList(item?.applies_to_event_types, 120),
       appliesToVenueTypes: normalizeTextList(item?.applies_to_venue_types, 120)
     })),
     name: normalizeText(row?.name, 160),
+    price: Number.isFinite(price) ? Number(price.toFixed(2)) : 0,
+    recommendedFor,
     slug: normalizeText(row?.slug, 180),
     status: resolvePackageStatus(row?.status),
     updated_at: row?.updated_at || null,
+    venueType,
     visibility: resolvePackageVisibility(row?.visibility)
   };
 }
@@ -387,13 +462,68 @@ async function hydratePackagesWithPreview(pool, packages, { includePreview = tru
 }
 
 function normalizePackagePayload(body) {
-  const name = normalizeText(body?.name, 160);
-  const contextDefaults = normalizePackageContext(body?.contextDefaults || body?.context_defaults || {});
+  const name = normalizeText(body?.packageName ?? body?.name, 160);
+  const rawRecommendedFor =
+    body?.recommendedFor ??
+    body?.recommended_for ??
+    body?.contextDefaults?.recommendedFor ??
+    body?.context_defaults?.recommended_for ??
+    body?.eventType ??
+    body?.event_type;
+  const recommendedFor = normalizeTextList(rawRecommendedFor, 80);
+  const customizationType = resolvePackageCustomizationType(
+    body?.customizationType ??
+    body?.customization_type ??
+    body?.contextDefaults?.customizationType ??
+    body?.context_defaults?.customization_type ??
+    (
+      body?.contextDefaults?.customizationAvailable ??
+      body?.context_defaults?.customization_available
+    )
+  );
+  const venueType = resolveVenueType(
+    body?.venueType ??
+    body?.venue_type ??
+    body?.contextDefaults?.venueType ??
+    body?.context_defaults?.venue_type
+  );
+  const fitsForPeople = parsePositiveWholeNumber(
+    body?.fitsForPeople ??
+    body?.fits_for_people ??
+    body?.contextDefaults?.guestCount ??
+    body?.context_defaults?.guest_count ??
+    0,
+    "Fits for people"
+  );
+  const price = parseRequiredCurrencyAmount(
+    body?.price ??
+    body?.contextDefaults?.packagePrice ??
+    body?.context_defaults?.package_price ??
+    0,
+    "Package price"
+  );
+  const contextDefaults = normalizePackageContext({
+    ...(body?.contextDefaults || body?.context_defaults || {}),
+    customizationAvailable: customizationType !== "not customizable",
+    customizationType,
+    eventType:
+      normalizeText(body?.eventType ?? body?.event_type, 120) ||
+      recommendedFor[0] ||
+      "",
+    guestCount: fitsForPeople,
+    packagePrice: price,
+    recommendedFor,
+    venueType
+  });
   const description = normalizeText(body?.description, 400) || buildPackageDescriptionFromContext(contextDefaults);
   const rows = Array.isArray(body?.items) ? body.items : [];
 
   if (!name) {
     throw createHttpError(400, "Package name is required.");
+  }
+
+  if (!description) {
+    throw createHttpError(400, "Package description is required.");
   }
 
   if (!rows.length) {
@@ -403,19 +533,19 @@ function normalizePackagePayload(body) {
   const seenProductIds = new Set();
   const items = rows.map((row, index) => {
     const productId = Number(row?.productId ?? row?.product_id);
-    const minimumQuantity = parseWholeNumber(row?.minimumQuantity ?? row?.minimum_quantity ?? 1, `Package item ${index + 1} minimum quantity`);
-    const defaultQuantity = parseWholeNumber(row?.defaultQuantity ?? row?.default_quantity ?? minimumQuantity, `Package item ${index + 1} default quantity`);
+    const quantityPerItem = parsePositiveWholeNumber(
+      row?.quantityPerItem ??
+      row?.quantity_per_item ??
+      row?.defaultQuantity ??
+      row?.default_quantity ??
+      row?.minimumQuantity ??
+      row?.minimum_quantity ??
+      1,
+      `Package item ${index + 1} quantity`
+    );
 
     if (!Number.isInteger(productId) || productId <= 0) {
       throw createHttpError(400, `Package item ${index + 1} must select a product.`);
-    }
-
-    if (minimumQuantity < 1) {
-      throw createHttpError(400, `Package item ${index + 1} minimum quantity must be at least 1.`);
-    }
-
-    if (defaultQuantity < 1) {
-      throw createHttpError(400, `Package item ${index + 1} default quantity must be at least 1.`);
     }
 
     if (seenProductIds.has(productId)) {
@@ -427,13 +557,14 @@ function normalizePackagePayload(body) {
     return {
       appliesToEventTypes: normalizeTextList(row?.appliesToEventTypes ?? row?.applies_to_event_types, 120),
       appliesToVenueTypes: normalizeTextList(row?.appliesToVenueTypes ?? row?.applies_to_venue_types, 120),
-      defaultQuantity,
+      customizable: Boolean(row?.customizable),
+      description: normalizeText(row?.description ?? row?.notes, 240),
       discountTiers: normalizeDiscountTiers(row?.discountTiers ?? row?.discount_tiers),
-      minimumQuantity,
-      notes: normalizeText(row?.notes, 240),
+      quantityPerItem,
+      notes: normalizeText(row?.description ?? row?.notes, 240),
       preferredMode: normalizeText(row?.preferredMode ?? row?.preferred_mode, 20),
       productId,
-      required: Boolean(row?.required ?? row?.is_required),
+      required: Boolean(row?.required ?? row?.is_required ?? true),
       sortOrder: Number(row?.sortOrder ?? row?.sort_order ?? index)
     };
   });
@@ -441,11 +572,16 @@ function normalizePackagePayload(body) {
   return {
     active: body?.active !== false,
     contextDefaults,
+    customizationType,
     description,
-    eventType: normalizeText(body?.eventType ?? body?.event_type, 120),
+    eventType: normalizeText(body?.eventType ?? body?.event_type, 120) || recommendedFor[0] || "",
+    fitsForPeople,
     items,
     name,
+    price,
+    recommendedFor,
     status: resolvePackageStatus(body?.status),
+    venueType,
     visibility: resolvePackageVisibility(body?.visibility)
   };
 }
@@ -496,11 +632,16 @@ async function savePackageRecord(client, payload, editingId = null) {
       SET name = $2,
           slug = $3,
           description = $4,
-          event_type = $5,
-          visibility = $6,
-          status = $7,
-          active = $8,
-          context_defaults = $9::jsonb,
+          customization_type = $5,
+          venue_type = $6,
+          recommended_for = $7::jsonb,
+          fits_for_people = $8,
+          price = $9,
+          event_type = $10,
+          visibility = $11,
+          status = $12,
+          active = $13,
+          context_defaults = $14::jsonb,
           updated_at = NOW()
       WHERE id = $1
       `,
@@ -509,6 +650,11 @@ async function savePackageRecord(client, payload, editingId = null) {
         payload.name,
         slug,
         payload.description,
+        payload.customizationType,
+        payload.venueType,
+        JSON.stringify(payload.recommendedFor),
+        payload.fitsForPeople,
+        payload.price,
         payload.eventType,
         payload.visibility,
         payload.status,
@@ -525,6 +671,11 @@ async function savePackageRecord(client, payload, editingId = null) {
         name,
         slug,
         description,
+        customization_type,
+        venue_type,
+        recommended_for,
+        fits_for_people,
+        price,
         event_type,
         visibility,
         status,
@@ -532,13 +683,18 @@ async function savePackageRecord(client, payload, editingId = null) {
         context_defaults,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13::jsonb, NOW())
       RETURNING id
       `,
       [
         payload.name,
         slug,
         payload.description,
+        payload.customizationType,
+        payload.venueType,
+        JSON.stringify(payload.recommendedFor),
+        payload.fitsForPeople,
+        payload.price,
         payload.eventType,
         payload.visibility,
         payload.status,
@@ -557,6 +713,7 @@ async function savePackageRecord(client, payload, editingId = null) {
         product_id,
         minimum_quantity,
         default_quantity,
+        customizable,
         is_required,
         preferred_mode,
         applies_to_event_types,
@@ -566,13 +723,14 @@ async function savePackageRecord(client, payload, editingId = null) {
         sort_order,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, NOW())
       `,
       [
         packageId,
         item.productId,
-        item.minimumQuantity,
-        item.defaultQuantity,
+        item.quantityPerItem,
+        item.quantityPerItem,
+        item.customizable,
         item.required,
         item.preferredMode,
         JSON.stringify(item.appliesToEventTypes),
@@ -587,7 +745,7 @@ async function savePackageRecord(client, payload, editingId = null) {
   return packageId;
 }
 
-function createPackagesRouter({ pool }) {
+function createPackagesRouter({ pool, removeManagedCustomizationFile = null }) {
   const router = express.Router();
 
   router.get("/packages", async (req, res) => {
@@ -665,6 +823,30 @@ function createPackagesRouter({ pool }) {
       const current = await getPackageByIdentifier(pool, req.params.identifier, { includeAll: true });
       if (!current) {
         throw createHttpError(404, "Package not found.");
+      }
+
+      if (typeof removeManagedCustomizationFile === "function") {
+        const pendingCustomizationResult = await pool.query(
+          `
+          SELECT id, stored_path
+          FROM customization_uploads
+          WHERE package_id = $1
+            AND order_item_id IS NULL
+          `,
+          [current.id]
+        );
+
+        await Promise.all(
+          pendingCustomizationResult.rows.map((row) => removeManagedCustomizationFile(row.stored_path))
+        );
+        await pool.query(
+          `
+          DELETE FROM customization_uploads
+          WHERE package_id = $1
+            AND order_item_id IS NULL
+          `,
+          [current.id]
+        );
       }
 
       await pool.query("DELETE FROM packages WHERE id = $1", [current.id]);

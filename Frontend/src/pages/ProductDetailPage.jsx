@@ -1,11 +1,9 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import ProductCard from "../components/shop/ProductCard";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useTheme } from "../contexts/ThemeContext";
-import useSmartRecommendations from "../hooks/useSmartRecommendations";
 import useRequireAuth from "../hooks/useRequireAuth";
 import { resolveEventType } from "../lib/eventTypeConfig";
 import {
@@ -18,75 +16,77 @@ import {
   bumpMetric,
   deleteCustomizationUploads,
   formatMoney,
-  getModeLabel,
   getProductImages,
-  loadProducts,
   loadProductBySlug,
   uploadCustomizationFile
 } from "../lib/products";
 import { finishProductDwell, startProductDwell, trackEventTypeSelection, trackProductView } from "../lib/userBehavior";
 import "../styles/shop.css";
 
-const INTEREST_CAROUSEL_GAP = 18;
-const INTEREST_CAROUSEL_MOVE_MS = 2000;
-const INTEREST_CAROUSEL_CYCLE_MS = 5000;
+function deriveType(product) {
+  if (!product) return "buy";
+  if (product.buy_enabled && product.rent_enabled) return "both";
+  if (product.rent_enabled) return "rent";
+  return "buy";
+}
 
-function getInterestVisibleCount(width) {
-  const safeWidth = Number(width || 0);
+const TYPE_BADGE = {
+  rent: { label: "Rental only", className: "ptype-badge ptype-badge-rent" },
+  buy: { label: "Buy only", className: "ptype-badge ptype-badge-buy" },
+  both: { label: "Rent or buy", className: "ptype-badge ptype-badge-both" }
+};
 
-  if (safeWidth >= 1380) return 4;
-  if (safeWidth >= 1040) return 3;
-  if (safeWidth >= 720) return 2;
-  return 1;
+function todayIso() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function tomorrowIso() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function diffDaysInclusive(startIso, endIso) {
+  if (!startIso || !endIso) return 0;
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  const ms = end.getTime() - start.getTime();
+  if (Number.isNaN(ms) || ms < 0) return 0;
+  return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
 }
 
 function ProductDetailPage() {
   const { slug } = useParams();
   const location = useLocation();
   const { theme } = useTheme();
-  const { addItem, items } = useCart();
+  const { addItem } = useCart();
   const { token } = useAuth();
   const { requireAuth } = useRequireAuth();
+
   const [product, setProduct] = useState(null);
-  const [catalog, setCatalog] = useState([]);
   const [status, setStatus] = useState("Loading product...");
   const [error, setError] = useState("");
-  const [selectedMode, setSelectedMode] = useState("buy");
+  const [activeMode, setActiveMode] = useState("buy");
+  const [activeTab, setActiveTab] = useState("overview");
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [rentStart, setRentStart] = useState(todayIso());
+  const [rentEnd, setRentEnd] = useState(tomorrowIso());
   const [isAdding, setIsAdding] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [actionTone, setActionTone] = useState("info");
   const [uploads, setUploads] = useState({ design: null, mockup: null });
   const [uploadErrors, setUploadErrors] = useState({ design: "", mockup: "" });
-  const [interestCarouselIndex, setInterestCarouselIndex] = useState(0);
-  const [interestVisibleCount, setInterestVisibleCount] = useState(1);
-  const [interestViewportWidth, setInterestViewportWidth] = useState(0);
-  const interestViewportRef = useRef(null);
+  const [zoom, setZoom] = useState({ active: false, x: 50, y: 50 });
+
+  const mediaRef = useRef(null);
   const activeEventType = resolveEventType(new URLSearchParams(location.search).get("eventType"));
   const shopBackLink = location.search ? `/shop${location.search}` : "/shop";
-
-  useEffect(() => {
-    let cancelled = false;
-
-    loadProducts()
-      .then((rows) => {
-        if (!cancelled) {
-          setCatalog(Array.isArray(rows) ? rows : []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCatalog([]);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,35 +97,30 @@ function ProductDetailPage() {
       setError("");
 
       try {
-        const nextProduct = await loadProductBySlug(slug);
+        const next = await loadProductBySlug(slug);
         if (cancelled) return;
 
-        const initialState = buildProductOptionState(nextProduct, {});
-        setProduct(nextProduct);
-        setSelectedColor(initialState.selectedColor);
-        setSelectedSize(initialState.selectedSize || (initialState.size_mode === "one-size" ? ONE_SIZE_LABEL : ""));
-        setSelectedMode(
-          nextProduct.buy_enabled && nextProduct.buy_price !== null
-            ? "buy"
-            : "rent"
-        );
+        const initial = buildProductOptionState(next, {});
+        const type = deriveType(next);
+
+        setProduct(next);
+        setActiveMode(type === "rent" ? "rent" : "buy");
+        setSelectedColor(initial.selectedColor);
+        setSelectedSize(initial.selectedSize || (initial.size_mode === "one-size" ? ONE_SIZE_LABEL : ""));
         setActiveImageIndex(0);
         setQuantity(1);
         setUploads({ design: null, mockup: null });
         setUploadErrors({ design: "", mockup: "" });
         setActionMessage("");
         setActionTone("info");
+        setActiveTab("overview");
         setStatus("");
-        bumpMetric(nextProduct.id, "product_view", 1);
-        loadedProductId = String(nextProduct.id || "");
-        trackProductView(nextProduct, {
-          category: nextProduct.category,
-          eventType: activeEventType
-        });
-        if (activeEventType) {
-          trackEventTypeSelection(activeEventType, { source: "product-detail" });
-        }
-        startProductDwell(nextProduct.id);
+
+        bumpMetric(next.id, "product_view", 1);
+        loadedProductId = String(next.id || "");
+        trackProductView(next, { category: next.category, eventType: activeEventType });
+        if (activeEventType) trackEventTypeSelection(activeEventType, { source: "product-detail" });
+        startProductDwell(next.id);
       } catch (loadError) {
         if (cancelled) return;
         setProduct(null);
@@ -138,89 +133,26 @@ function ProductDetailPage() {
 
     return () => {
       cancelled = true;
-      if (loadedProductId) {
-        finishProductDwell(loadedProductId);
-      }
+      if (loadedProductId) finishProductDwell(loadedProductId);
     };
   }, [activeEventType, slug]);
 
+  const type = deriveType(product);
   const optionState = product
     ? buildProductOptionState(product, { color: selectedColor, size: selectedSize })
     : null;
   const gallery = product ? getProductImages(product, theme) : [];
   const activeVariation = optionState?.activeVariation || null;
-  const canBuy = Boolean(product?.buy_enabled && product?.buy_price !== null);
-  const canRent = Boolean(product?.rent_enabled && product?.rent_price_per_day !== null);
   const stockLimit = Math.max(0, Number(activeVariation?.quantity || 0));
-  const selectedModePrice = selectedMode === "rent"
-    ? formatMoney(product?.rent_price_per_day, product?.currency)
-    : formatMoney(product?.buy_price, product?.currency);
-  const qualityPoints = Array.isArray(product?.quality_points) && product.quality_points.length
-    ? product.quality_points
-    : [];
-  const { recommendations: interestRecommendations } = useSmartRecommendations({
-    cartItems: items,
-    currentCategory: product?.category || "",
-    currentEventType: activeEventType,
-    currentMode: selectedMode,
-    currentProduct: product,
-    limit: 4,
-    products: catalog
-  });
-  const interestMaxIndex = Math.max(0, interestRecommendations.length - interestVisibleCount);
-  const hasInterestControls = interestRecommendations.length > interestVisibleCount;
-  const interestSlideWidth = interestViewportWidth
-    ? Math.max(0, (interestViewportWidth - (INTEREST_CAROUSEL_GAP * (interestVisibleCount - 1))) / interestVisibleCount)
-    : 0;
-  const interestTrackOffset = interestCarouselIndex * (interestSlideWidth + INTEREST_CAROUSEL_GAP);
+  const rentDays = useMemo(() => diffDaysInclusive(rentStart, rentEnd), [rentStart, rentEnd]);
+  const datesInvalid = activeMode === "rent" && (!rentStart || !rentEnd || rentDays < 1);
 
-  useEffect(() => {
-    function updateInterestLayout() {
-      const viewportWidth = interestViewportRef.current?.clientWidth || 0;
-      const widthBasis = viewportWidth || (typeof window !== "undefined" ? window.innerWidth : 0);
-      setInterestViewportWidth(viewportWidth);
-      setInterestVisibleCount(getInterestVisibleCount(widthBasis));
-    }
+  const customizationFee = Number(product?.customization_fee || 0);
+  const isCustomizable = Boolean(product?.customizable);
 
-    updateInterestLayout();
-
-    let resizeObserver = null;
-
-    if (typeof ResizeObserver === "function" && interestViewportRef.current) {
-      resizeObserver = new ResizeObserver(() => updateInterestLayout());
-      resizeObserver.observe(interestViewportRef.current);
-    }
-
-    window.addEventListener("resize", updateInterestLayout);
-
-    return () => {
-      window.removeEventListener("resize", updateInterestLayout);
-      resizeObserver?.disconnect();
-    };
-  }, [interestRecommendations.length]);
-
-  useEffect(() => {
-    setInterestCarouselIndex(0);
-  }, [product?.id]);
-
-  useEffect(() => {
-    setInterestCarouselIndex((current) => Math.min(current, interestMaxIndex));
-  }, [interestMaxIndex]);
-
-  useEffect(() => {
-    if (interestMaxIndex <= 0) return undefined;
-
-    const intervalId = window.setInterval(() => {
-      setInterestCarouselIndex((current) => (current >= interestMaxIndex ? 0 : current + 1));
-    }, INTEREST_CAROUSEL_CYCLE_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [interestMaxIndex]);
-
-  function applySelection(nextSelection) {
+  function applySelection(next) {
     if (!product) return;
-
-    const nextState = buildProductOptionState(product, nextSelection);
+    const nextState = buildProductOptionState(product, next);
     setSelectedColor(nextState.selectedColor);
     setSelectedSize(nextState.selectedSize || (nextState.size_mode === "one-size" ? ONE_SIZE_LABEL : ""));
     setQuantity((current) => {
@@ -228,7 +160,6 @@ function ProductDetailPage() {
       return Math.min(current, nextStock);
     });
     setActionMessage("");
-    setActionTone("info");
   }
 
   function handleQuantityChange(nextQuantity) {
@@ -239,17 +170,18 @@ function ProductDetailPage() {
   function handleUploadChange(uploadKind, fileList) {
     const file = Array.from(fileList || [])[0] || null;
     const validationMessage = validateCustomizationFile(file);
-
-    setUploadErrors((current) => ({
-      ...current,
-      [uploadKind]: validationMessage
-    }));
-    setUploads((current) => ({
-      ...current,
-      [uploadKind]: validationMessage ? null : file
-    }));
+    setUploadErrors((current) => ({ ...current, [uploadKind]: validationMessage }));
+    setUploads((current) => ({ ...current, [uploadKind]: validationMessage ? null : file }));
     setActionMessage("");
-    setActionTone("info");
+  }
+
+  function handleZoomMove(event) {
+    const node = mediaRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    setZoom({ active: true, x, y });
   }
 
   async function handleAddToCart() {
@@ -258,168 +190,163 @@ function ProductDetailPage() {
       setActionTone("error");
       return;
     }
-
     if (optionState?.size_mode === "varied" && !selectedSize) {
       setActionMessage("Choose a size from the selected color.");
       setActionTone("error");
       return;
     }
-
     if (!product || !optionState || !activeVariation) {
       setActionMessage("This product variation could not be loaded. Please refresh and try again.");
       setActionTone("error");
       return;
     }
-
     if (stockLimit <= 0) {
-      setActionMessage("This variation is currently out of stock.");
+      setActionMessage("This selection is currently unavailable.");
       setActionTone("error");
       return;
     }
-
-    if (!requireAuth({ returnTo: `/shop/${product.slug}${location.search || ""}` })) {
+    if (activeMode === "rent" && datesInvalid) {
+      setActionMessage("Pick a start and end date for your rental.");
+      setActionTone("error");
       return;
     }
-
+    if (!requireAuth({ returnTo: `/shop/${product.slug}${location.search || ""}` })) return;
     if (uploadErrors.design || uploadErrors.mockup) {
-      setActionMessage("Please fix the customization file errors before adding to cart.");
+      setActionMessage("Please fix the customization file errors before continuing.");
       setActionTone("error");
       return;
     }
 
     setIsAdding(true);
     setActionMessage("");
-    setActionTone("info");
     const uploadedAssets = [];
 
     try {
       for (const uploadKind of ["mockup", "design"]) {
         const file = uploads[uploadKind];
         if (!file) continue;
-
         const uploaded = await uploadCustomizationFile({
-          file,
-          productId: product.id,
-          token,
-          uploadKind,
-          variationId: activeVariation.id
+          file, productId: product.id, token, uploadKind, variationId: activeVariation.id
         });
-
         uploadedAssets.push(uploaded);
       }
 
-      addItem(
-        product,
-        quantity,
-        selectedMode,
-        {
-          customization_requested: uploadedAssets.length > 0,
-          customization_uploads: uploadedAssets,
-          selected_color: activeVariation.color,
-          selected_size: activeVariation.size,
-          sku: activeVariation.sku,
-          stock: activeVariation.quantity,
-          variation_id: activeVariation.id,
-          event_type: activeEventType
-        }
-      );
-      bumpMetric(product.id, "add_to_cart", quantity);
-      setActionMessage("Added to cart. Your selected color, size, and any uploaded files were saved.");
+      addItem(product, quantity, activeMode, {
+        customization_requested: uploadedAssets.length > 0,
+        customization_uploads: uploadedAssets,
+        selected_color: activeVariation.color,
+        selected_size: activeVariation.size,
+        sku: activeVariation.sku,
+        stock: activeVariation.quantity,
+        variation_id: activeVariation.id,
+        event_type: activeEventType,
+        rent_start_date: activeMode === "rent" ? rentStart : null,
+        rent_end_date: activeMode === "rent" ? rentEnd : null,
+        rent_days: activeMode === "rent" ? rentDays : null
+      });
+
+      bumpMetric(product.id, activeMode === "rent" ? "add_to_booking" : "add_to_cart", quantity);
+      setActionMessage(activeMode === "rent" ? "Booking added. Dates and selections were saved." : "Added to cart.");
       setActionTone("success");
       setUploads({ design: null, mockup: null });
       setUploadErrors({ design: "", mockup: "" });
     } catch (submitError) {
       if (uploadedAssets.length) {
-        await deleteCustomizationUploads(
-          uploadedAssets.map((asset) => asset.uploadToken),
-          token
-        ).catch(() => {});
+        await deleteCustomizationUploads(uploadedAssets.map((a) => a.uploadToken), token).catch(() => {});
       }
-
-      setActionMessage(submitError?.message || "We couldn't add this item to your cart right now.");
+      setActionMessage(submitError?.message || "We couldn't complete this action right now.");
       setActionTone("error");
     } finally {
       setIsAdding(false);
     }
   }
 
-  function handleInterestPrev() {
-    if (interestMaxIndex <= 0) return;
-    setInterestCarouselIndex((current) => (current <= 0 ? interestMaxIndex : current - 1));
-  }
-
-  function handleInterestNext() {
-    if (interestMaxIndex <= 0) return;
-    setInterestCarouselIndex((current) => (current >= interestMaxIndex ? 0 : current + 1));
-  }
-
   if (status) {
     return (
-      <main className="product-detail-shell" data-theme-scope="shop">
-        <section className="product-detail-status-card">
-          <p>{status}</p>
-        </section>
+      <main className="pdp-shell" data-theme-scope="shop">
+        <section className="pdp-status-card"><p>{status}</p></section>
       </main>
     );
   }
 
   if (error || !product) {
     return (
-      <main className="product-detail-shell" data-theme-scope="shop">
-        <section className="product-detail-status-card product-detail-status-card-error">
-          <p className="product-detail-kicker">Product unavailable</p>
+      <main className="pdp-shell" data-theme-scope="shop">
+        <section className="pdp-status-card pdp-status-card-error">
+          <p className="pdp-kicker">Product unavailable</p>
           <h1>This product page is not available.</h1>
           <p>{error || "We couldn't find that product."}</p>
-          <Link className="product-detail-back-link" to={shopBackLink}>
-            Back to shop
-          </Link>
+          <Link className="pdp-back" to={shopBackLink}>Back to shop</Link>
         </section>
       </main>
     );
   }
 
-  const stockMessage = optionState.size_mode === "varied" && !optionState.selectedColor
-    ? "Choose a color to see the sizes available for that option."
-    : optionState.size_mode === "varied" && !optionState.selectedSize
-      ? "Choose a size from the selected color to continue."
-      : stockLimit > 0
-        ? `Items available for ${activeVariation?.color} / ${activeVariation?.size}.`
-        : "This selection is currently unavailable.";
-  const selectedColorLabel = optionState.selectedColor || "Select color";
-  const selectedSizeLabel = optionState.size_mode === "one-size"
-    ? ONE_SIZE_LABEL
-    : optionState.selectedSize || "Select size";
-  const itemSummaryLabel = `${selectedColorLabel} selected - ${selectedSizeLabel}`;
+  const badge = TYPE_BADGE[type];
+  const description = (product.description || "").trim();
+  const qualityPoints = Array.isArray(product.quality_points) ? product.quality_points : [];
+  const showOverview = description.length > 0 || qualityPoints.length > 0;
+
+  function renderPriceBlock() {
+    if (activeMode === "rent") {
+      return (
+        <div className="pdp-price-block">
+          <strong>{formatMoney(product.rent_price_per_day, product.currency)}</strong>
+          <span>/ day</span>
+        </div>
+      );
+    }
+    return (
+      <div className="pdp-price-block">
+        <strong>{formatMoney(product.buy_price, product.currency)}</strong>
+      </div>
+    );
+  }
 
   return (
     <motion.main
-      className="product-detail-shell"
+      className="pdp-shell"
       data-theme-scope="shop"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      transition={{ duration: 0.35 }}
+      transition={{ duration: 0.3 }}
     >
-      <div className="product-detail-page">
-        <nav className="product-detail-breadcrumbs" aria-label="Breadcrumb">
+      <div className="pdp-page">
+        <nav className="pdp-breadcrumbs" aria-label="Breadcrumb">
           <Link to={shopBackLink}>Shop</Link>
+          <span>/</span>
+          <span>{product.category}</span>
           <span>/</span>
           <span>{product.name}</span>
         </nav>
 
-        <section className="product-detail-hero">
-          <div className="product-detail-gallery">
-            <div className="product-detail-main-image">
-              <img src={gallery[activeImageIndex] || gallery[0]} alt={product.name} />
+        <section className="pdp-hero">
+          <div className="pdp-gallery">
+            <div
+              className={`pdp-media${zoom.active ? " is-zooming" : ""}`}
+              ref={mediaRef}
+              onMouseEnter={() => setZoom((z) => ({ ...z, active: true }))}
+              onMouseMove={handleZoomMove}
+              onMouseLeave={() => setZoom({ active: false, x: 50, y: 50 })}
+            >
+              <img
+                src={gallery[activeImageIndex] || gallery[0]}
+                alt={product.name}
+                style={zoom.active ? {
+                  transformOrigin: `${zoom.x}% ${zoom.y}%`,
+                  transform: "scale(1.8)"
+                } : undefined}
+              />
             </div>
             {gallery.length > 1 ? (
-              <div className="product-detail-thumbs" aria-label="Product gallery thumbnails">
+              <div className="pdp-thumbs" aria-label="Gallery thumbnails">
                 {gallery.map((image, index) => (
                   <button
-                    className={`product-detail-thumb${index === activeImageIndex ? " is-active" : ""}`}
                     key={`${product.id}-${image}-${index}`}
-                    onClick={() => setActiveImageIndex(index)}
                     type="button"
+                    className={`pdp-thumb${index === activeImageIndex ? " is-active" : ""}`}
+                    onClick={() => setActiveImageIndex(index)}
                   >
                     <img src={image} alt={`${product.name} view ${index + 1}`} />
                   </button>
@@ -428,285 +355,275 @@ function ProductDetailPage() {
             ) : null}
           </div>
 
-          <div className="product-detail-info">
-            <div className="product-detail-heading">
-              <div>
-                <p className="product-detail-kicker">{product.category} / {product.subcategory}</p>
-                <h1>{product.name}</h1>
-              </div>
-              <span className="product-detail-mode-pill">{getModeLabel(canBuy && canRent ? "BOTH" : canBuy ? "BUY_ONLY" : "RENT_ONLY")}</span>
-            </div>
-
-            <p className="product-detail-description">{product.description || "No description provided."}</p>
-
-            <div className="product-detail-prices">
-              {canBuy ? (
-                <button
-                  className={`product-detail-price-card${selectedMode === "buy" ? " is-active" : ""}`}
-                  onClick={() => setSelectedMode("buy")}
-                  type="button"
-                >
-                  <span>Buy</span>
-                  <strong>{formatMoney(product.buy_price, product.currency)}</strong>
-                </button>
-              ) : null}
-              {canRent ? (
-                <button
-                  className={`product-detail-price-card${selectedMode === "rent" ? " is-active" : ""}`}
-                  onClick={() => setSelectedMode("rent")}
-                  type="button"
-                >
-                  <span>Rent / Day</span>
-                  <strong>{formatMoney(product.rent_price_per_day, product.currency)}</strong>
-                </button>
+          <aside className="pdp-info">
+            <div className="pdp-info-head">
+              <span className={badge.className}>{badge.label}</span>
+              <p className="pdp-category">{product.category} / {product.subcategory}</p>
+              <h1>{product.name}</h1>
+              {product.availability_note ? (
+                <p className="pdp-availability">{product.availability_note}</p>
               ) : null}
             </div>
 
-            <section className="product-detail-section">
-              <div className="product-detail-section-head">
-                <h2>Quality</h2>
-                <span>{product.quality || "Specified by EventMart"}</span>
+            {type === "both" ? (
+              <div className="pdp-mode-tabs" role="tablist" aria-label="Choose buy or rent">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMode === "rent"}
+                  className={`pdp-mode-tab${activeMode === "rent" ? " is-active" : ""}`}
+                  onClick={() => setActiveMode("rent")}
+                >
+                  Rent
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMode === "buy"}
+                  className={`pdp-mode-tab${activeMode === "buy" ? " is-active" : ""}`}
+                  onClick={() => setActiveMode("buy")}
+                >
+                  Buy
+                </button>
               </div>
-              <p className="product-detail-quality-copy">
-                {product.quality || "A clear quality description will help shoppers understand exactly what they are buying."}
-              </p>
-              {qualityPoints.length ? (
-                <ul className="product-detail-quality-list">
-                  {qualityPoints.map((point) => (
-                    <li key={point}>{point}</li>
-                  ))}
-                </ul>
-              ) : null}
-            </section>
+            ) : null}
 
-            <section className="product-detail-section">
-              <div className="product-detail-section-head">
-                <h2>Color</h2>
-                <span>{selectedColorLabel}</span>
-              </div>
-              <div className="product-detail-chip-grid">
-                {optionState.colors.map((colorOption) => (
-                  <button
-                    className={`product-detail-color-chip${colorOption.isSelected ? " is-active" : ""}`}
-                    disabled={colorOption.isDisabled}
-                    key={colorOption.color}
-                    onClick={() => applySelection({ color: colorOption.color, size: "" })}
-                    type="button"
-                  >
-                    <span
-                      className="product-detail-color-swatch"
-                      style={{ background: getColorSwatchValue(colorOption.color) }}
+            <div className="pdp-pricing-card">
+              {renderPriceBlock()}
+
+              {activeMode === "rent" ? (
+                <div className="pdp-date-grid">
+                  <label>
+                    <span>Start date</span>
+                    <input
+                      type="date"
+                      min={todayIso()}
+                      value={rentStart}
+                      onChange={(event) => setRentStart(event.target.value)}
                     />
-                    <span>{colorOption.color}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {optionState.size_mode === "varied" ? (
-              <section className="product-detail-section">
-                <div className="product-detail-section-head">
-                  <h2>Size</h2>
-                  <span>{optionState.selectedColor ? selectedSizeLabel : "Choose color first"}</span>
+                  </label>
+                  <label>
+                    <span>End date</span>
+                    <input
+                      type="date"
+                      min={rentStart || todayIso()}
+                      value={rentEnd}
+                      onChange={(event) => setRentEnd(event.target.value)}
+                    />
+                  </label>
+                  <p className="pdp-duration">
+                    {rentDays > 0
+                      ? `${rentDays} day${rentDays === 1 ? "" : "s"} - ${formatMoney(Number(product.rent_price_per_day || 0) * rentDays * quantity, product.currency)} total`
+                      : "Pick valid dates"}
+                  </p>
                 </div>
-                {!optionState.selectedColor ? (
-                  <p className="product-detail-one-size-copy">Select a color first to view the sizes available for that color.</p>
-                ) : optionState.sizes.length ? (
-                  <div className="product-detail-chip-grid product-detail-size-grid">
-                    {optionState.sizes.map((sizeOption) => (
+              ) : (
+                <div className="pdp-stock-row">
+                  <span>{stockLimit > 0 ? `${stockLimit} in stock` : "Out of stock"}</span>
+                </div>
+              )}
+
+              {optionState.colors.length > 0 ? (
+                <div className="pdp-option-row">
+                  <span className="pdp-option-label">Color: <strong>{selectedColor || "Select"}</strong></span>
+                  <div className="pdp-swatches">
+                    {optionState.colors.map((opt) => (
                       <button
-                        className={`product-detail-size-chip${sizeOption.isSelected ? " is-active" : ""}`}
-                        disabled={sizeOption.isDisabled}
-                        key={sizeOption.size}
-                        onClick={() => applySelection({ color: selectedColor, size: sizeOption.size })}
+                        key={opt.color}
                         type="button"
+                        disabled={opt.isDisabled}
+                        className={`pdp-swatch${opt.isSelected ? " is-active" : ""}`}
+                        onClick={() => applySelection({ color: opt.color, size: "" })}
+                        title={opt.color}
+                        aria-label={opt.color}
                       >
-                        {sizeOption.size}
+                        <span style={{ background: getColorSwatchValue(opt.color) }} />
                       </button>
                     ))}
                   </div>
-                ) : (
-                  <p className="product-detail-one-size-copy">No sizes are currently available for {optionState.selectedColor}.</p>
-                )}
-              </section>
-            ) : (
-              <section className="product-detail-section">
-                <div className="product-detail-section-head">
-                  <h2>Size</h2>
-                  <span>{ONE_SIZE_LABEL}</span>
                 </div>
-                <p className="product-detail-one-size-copy">This product is offered in one size only.</p>
-              </section>
-            )}
+              ) : null}
 
-            <section className="product-detail-section">
-              <div className="product-detail-section-head">
-                <h2>Customize</h2>
-                <span>{product.customizable ? "Optional" : "Not available"}</span>
-              </div>
-
-              {product.customizable ? (
-                <div className="product-detail-upload-grid">
-                  {[
-                    {
-                      description: "Attach a PNG or PDF mockup to show placement or rough layout.",
-                      key: "mockup",
-                      label: "Mockup design"
-                    },
-                    {
-                      description: "Attach the final PNG or PDF design file your production request should use.",
-                      key: "design",
-                      label: "Final design file"
-                    }
-                  ].map((field) => (
-                    <label className="product-detail-upload-card" key={field.key}>
-                      <span className="product-detail-upload-title">{field.label}</span>
-                      <span className="product-detail-upload-copy">{field.description}</span>
-                      <input
-                        accept=".png,.pdf,image/png,application/pdf"
-                        onChange={(event) => handleUploadChange(field.key, event.target.files)}
-                        type="file"
-                      />
-                      <strong>{uploads[field.key]?.name || "Choose PNG or PDF"}</strong>
-                      {uploadErrors[field.key] ? (
-                        <small className="product-detail-upload-error">{uploadErrors[field.key]}</small>
-                      ) : uploads[field.key] ? (
-                        <small>{uploads[field.key].name}</small>
-                      ) : (
-                        <small>Supported formats: PNG, PDF</small>
-                      )}
-                    </label>
-                  ))}
+              {optionState.size_mode === "varied" && optionState.selectedColor ? (
+                <div className="pdp-option-row">
+                  <span className="pdp-option-label">Size: <strong>{selectedSize || "Select"}</strong></span>
+                  <div className="pdp-size-row">
+                    {optionState.sizes.map((opt) => (
+                      <button
+                        key={opt.size}
+                        type="button"
+                        disabled={opt.isDisabled}
+                        className={`pdp-sizebtn${opt.isSelected ? " is-active" : ""}`}
+                        onClick={() => applySelection({ color: selectedColor, size: opt.size })}
+                      >
+                        {opt.size}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <p className="product-detail-one-size-copy">This item is not currently accepting custom artwork uploads.</p>
-              )}
-            </section>
+              ) : null}
 
-            <section className="product-detail-purchase-card">
-              <div className="product-detail-purchase-meta">
-                <div>
-                  <span>Item Summary</span>
-                  <strong>{itemSummaryLabel}</strong>
-                </div>
-                <div>
-                  <span>Price</span>
-                  <strong>{selectedModePrice}{selectedMode === "rent" ? "/day" : ""}</strong>
+              <div className="pdp-qty-row">
+                <span>Quantity</span>
+                <div className="pdp-qty-stepper">
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(quantity - 1)}
+                    disabled={quantity <= 1 || isAdding}
+                    aria-label="Decrease quantity"
+                  >-</button>
+                  <span>{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(quantity + 1)}
+                    disabled={quantity >= Math.max(1, stockLimit) || isAdding || stockLimit <= 0}
+                    aria-label="Increase quantity"
+                  >+</button>
                 </div>
               </div>
 
-              <div className="product-detail-stock-summary">
-                <p className={`product-detail-stock-note${stockLimit > 0 ? "" : " is-out"}`}>{stockMessage}</p>
-                {activeVariation?.sku ? (
-                  <p className="product-detail-sku">SKU: {activeVariation.sku}</p>
+              <button
+                type="button"
+                className="pdp-cta"
+                onClick={handleAddToCart}
+                disabled={isAdding || stockLimit <= 0 || datesInvalid}
+              >
+                {isAdding
+                  ? (activeMode === "rent" ? "Booking..." : "Adding...")
+                  : (activeMode === "rent" ? "Add to booking" : "Add to cart")}
+              </button>
+
+              {actionMessage ? (
+                <p className={`pdp-action-msg pdp-action-msg-${actionTone}`}>{actionMessage}</p>
+              ) : null}
+            </div>
+          </aside>
+        </section>
+
+        <section className="pdp-tabs-section">
+          <div className="pdp-tabs" role="tablist">
+            {showOverview ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "overview"}
+                className={`pdp-tab${activeTab === "overview" ? " is-active" : ""}`}
+                onClick={() => setActiveTab("overview")}
+              >
+                Overview
+              </button>
+            ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "specs"}
+              className={`pdp-tab${activeTab === "specs" ? " is-active" : ""}`}
+              onClick={() => setActiveTab("specs")}
+            >
+              Specs
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "terms"}
+              className={`pdp-tab${activeTab === "terms" ? " is-active" : ""}`}
+              onClick={() => setActiveTab("terms")}
+            >
+              Terms
+            </button>
+          </div>
+
+          <div className="pdp-tab-panel">
+            {activeTab === "overview" && showOverview ? (
+              <div className="pdp-overview">
+                {description ? <p>{description}</p> : null}
+                {qualityPoints.length ? (
+                  <ul>
+                    {qualityPoints.map((point) => <li key={point}>{point}</li>)}
+                  </ul>
                 ) : null}
               </div>
+            ) : null}
 
-              <div className="product-detail-qty-row">
-                <span>Quantity</span>
-                <div className="qty-stepper" aria-label="Quantity controls">
-                  <button
-                    className="qty-stepper-btn"
-                    disabled={quantity <= 1 || isAdding}
-                    onClick={() => handleQuantityChange(quantity - 1)}
-                    type="button"
-                  >
-                    -
-                  </button>
-                  <span className="qty-stepper-value">{quantity}</span>
-                  <button
-                    className="qty-stepper-btn"
-                    disabled={quantity >= Math.max(1, stockLimit) || isAdding || stockLimit <= 0}
-                    onClick={() => handleQuantityChange(quantity + 1)}
-                    type="button"
-                  >
-                    +
-                  </button>
-                </div>
+            {activeTab === "specs" ? (
+              <dl className="pdp-specs">
+                <div><dt>Category</dt><dd>{product.category} / {product.subcategory}</dd></div>
+                {product.quality ? <div><dt>Quality</dt><dd>{product.quality}</dd></div> : null}
+                {product.colors?.length ? <div><dt>Available colors</dt><dd>{product.colors.length}</dd></div> : null}
+                {product.size_mode === "varied" && product.sizes?.length
+                  ? <div><dt>Available sizes</dt><dd>{product.sizes.join(", ")}</dd></div>
+                  : <div><dt>Sizing</dt><dd>One size</dd></div>}
+                {product.event_type ? <div><dt>Event type</dt><dd>{product.event_type}</dd></div> : null}
+                {product.venue_type ? <div><dt>Venue type</dt><dd>{product.venue_type}</dd></div> : null}
+                {product.availability_note ? <div><dt>Availability</dt><dd>{product.availability_note}</dd></div> : null}
+                {product.sku ? <div><dt>SKU</dt><dd>{product.sku}</dd></div> : null}
+              </dl>
+            ) : null}
+
+            {activeTab === "terms" ? (
+              <div className="pdp-terms">
+                {type === "rent" || (type === "both" && activeMode === "rent") ? (
+                  <>
+                    <h3>Rental terms</h3>
+                    <ul>
+                      <li>Pricing is per day. Total = daily rate x rental days x quantity.</li>
+                      <li>Items must be returned in the condition received; damages may incur fees.</li>
+                      <li>Bookings are confirmed once payment is received.</li>
+                      <li>Cancellation and deposit terms are set by EventMart and shared at checkout.</li>
+                    </ul>
+                  </>
+                ) : (
+                  <>
+                    <h3>Purchase terms</h3>
+                    <ul>
+                      <li>Prices are listed per unit and include applicable taxes shown at checkout.</li>
+                      <li>Returns and exchanges are handled per EventMart's standard policy.</li>
+                      <li>Delivery timing depends on stock and shipping address.</li>
+                    </ul>
+                  </>
+                )}
               </div>
-
-              <div className="product-detail-actions">
-                <button
-                  className="btn primary"
-                  disabled={isAdding || !activeVariation || stockLimit <= 0}
-                  onClick={handleAddToCart}
-                  type="button"
-                >
-                  {isAdding ? "Adding..." : "Add to cart"}
-                </button>
-                <Link className="btn" to="/cart">
-                  View cart
-                </Link>
-              </div>
-
-              {actionMessage ? <p className={`cart-msg cart-msg-${actionTone}`}>{actionMessage}</p> : null}
-            </section>
-
+            ) : null}
           </div>
         </section>
 
-        {interestRecommendations.length ? (
-          <section className="product-detail-interest-section" aria-labelledby="product-detail-interest-title">
-            <div className="product-detail-interest-head">
-              <h2 id="product-detail-interest-title">You might be also interested in:</h2>
+        {isCustomizable ? (
+          <section className="pdp-custom-section" aria-labelledby="pdp-custom-heading">
+            <div className="pdp-custom-head">
+              <h2 id="pdp-custom-heading">Customize this item</h2>
+              {customizationFee > 0 ? (
+                <span className="pdp-custom-fee">
+                  + {formatMoney(customizationFee, product.currency)} customization fee
+                </span>
+              ) : (
+                <span className="pdp-custom-fee pdp-custom-fee-free">No extra fee</span>
+              )}
             </div>
+            <p className="pdp-custom-copy">
+              Upload a mockup to show placement and a final design file your production should use. Both fields are optional.
+            </p>
 
-            <div className={`product-detail-interest-carousel${hasInterestControls ? " has-controls" : ""}`}>
-              {hasInterestControls ? (
-                <button
-                  aria-label="Show previous products"
-                  className="product-detail-interest-arrow is-left"
-                  onClick={handleInterestPrev}
-                  type="button"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="m15 5-7 7 7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              ) : null}
-
-              <div className="product-detail-interest-viewport" ref={interestViewportRef}>
-                <div
-                  className="product-detail-interest-track"
-                  style={{
-                    gap: `${INTEREST_CAROUSEL_GAP}px`,
-                    transform: `translateX(-${interestTrackOffset}px)`,
-                    transitionDuration: `${INTEREST_CAROUSEL_MOVE_MS}ms`
-                  }}
-                >
-                  {interestRecommendations.map((entry) => (
-                    <div
-                      key={entry.product.id}
-                      className="product-detail-interest-slide"
-                      style={interestSlideWidth ? { width: `${interestSlideWidth}px` } : undefined}
-                    >
-                      <ProductCard
-                        product={entry.product}
-                        onOpen={(nextProduct) => {
-                          trackProductView(nextProduct, {
-                            category: product.category,
-                            eventType: activeEventType
-                          });
-                        }}
-                        isFeatured={Boolean(entry.product.featured)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {hasInterestControls ? (
-                <button
-                  aria-label="Show next products"
-                  className="product-detail-interest-arrow is-right"
-                  onClick={handleInterestNext}
-                  type="button"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="m9 5 7 7-7 7" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              ) : null}
+            <div className="pdp-custom-grid">
+              {[
+                { key: "mockup", label: "Mockup", description: "PNG or PDF showing rough placement." },
+                { key: "design", label: "Final design", description: "PNG, JPG, WEBP, or PDF for production." }
+              ].map((field) => (
+                <label className="pdp-custom-card" key={field.key}>
+                  <span className="pdp-custom-title">{field.label}</span>
+                  <span className="pdp-custom-desc">{field.description}</span>
+                  <input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                    onChange={(event) => handleUploadChange(field.key, event.target.files)}
+                  />
+                  <strong>{uploads[field.key]?.name || "Choose file"}</strong>
+                  {uploadErrors[field.key] ? (
+                    <small className="pdp-custom-error">{uploadErrors[field.key]}</small>
+                  ) : (
+                    <small>Supports PNG, JPG, WEBP, PDF</small>
+                  )}
+                </label>
+              ))}
             </div>
           </section>
         ) : null}

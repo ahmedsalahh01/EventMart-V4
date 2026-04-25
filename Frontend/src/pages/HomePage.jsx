@@ -1,35 +1,12 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import HeroSlideshow from "../components/HeroSlideshow";
 import SmartRecommendationBar from "../components/SmartRecommendationBar";
 import { buildEventTypeShopPath, listEventTypes } from "../lib/eventTypeConfig";
-import { HOME_HERO_SHOWCASE_IMAGES } from "../lib/homeHeroShowcaseImages";
 import { loadProducts } from "../lib/products";
 import { getSelectedEventType, trackCategoryView, trackEventTypeSelection } from "../lib/userBehavior";
 
-const HERO_RIBBON_REPEAT_COUNT = 4;
-
-function repeatHeroRibbonImages(images, repeatCount) {
-  return Array.from({ length: repeatCount }, () => images).flat();
-}
-
-const TOP_HERO_RIBBON_IMAGES = repeatHeroRibbonImages(HOME_HERO_SHOWCASE_IMAGES, HERO_RIBBON_REPEAT_COUNT);
-const BOTTOM_HERO_RIBBON_IMAGES = repeatHeroRibbonImages(
-  [...HOME_HERO_SHOWCASE_IMAGES.slice(3), ...HOME_HERO_SHOWCASE_IMAGES.slice(0, 3)],
-  HERO_RIBBON_REPEAT_COUNT
-);
-
-function buildHeroRibbonSlides(images, rowId) {
-  return [...images, ...images].map((item, index) => ({
-    ...item,
-    renderId: `${rowId}-${item.id}-${index}`
-  }));
-}
-
-const HERO_RIBBON_ROWS = [
-  { id: "top", slides: buildHeroRibbonSlides(TOP_HERO_RIBBON_IMAGES, "top") },
-  { id: "bottom", slides: buildHeroRibbonSlides(BOTTOM_HERO_RIBBON_IMAGES, "bottom") }
-];
 const PACKAGE_BUILDER_FEATURES = [
   {
     title: "Smart Bundle Suggestions",
@@ -65,8 +42,7 @@ function HomePage() {
     };
   }, []);
 
-  function handleHeroSearchSubmit(event) {
-    event.preventDefault();
+  function handleHeroSearchSubmit() {
     navigate(
       buildEventTypeShopPath(selectedEventType, {
         search: heroSearchQuery.trim()
@@ -77,75 +53,12 @@ function HomePage() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
       <main className="home-main" data-theme-scope="home">
-        <section className="market-hero">
-          <form className="hero-search" role="search" aria-label="Search EventMart products" onSubmit={handleHeroSearchSubmit}>
-            <div className="hero-search-shell">
-              <span className="hero-search-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-                  <path d="m16 16 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                </svg>
-              </span>
-              <input
-                type="search"
-                className="hero-search-input"
-                aria-label="Search event products"
-                placeholder="Search speakers, lighting, staging, and more"
-                value={heroSearchQuery}
-                onChange={(event) => setHeroSearchQuery(event.target.value)}
-              />
-              <button type="submit" className="hero-search-btn">
-                Search
-              </button>
-            </div>
-          </form>
-
-          <div className="market-hero-copy">
-            <h1 id="hero-title">Get Your Event- SIMPLE.</h1>
-            <p className="hero-text">
-              Shop or rent curated event equipment in minutes. Compare products, discover recommendations, unlock deals,
-              and discover the right setup for your event from one place.
-            </p>
-            <div className="hero-actions">
-              <Link to={buildEventTypeShopPath(selectedEventType)} className="btn-primary">
-                <span className="cta-orbit-label">Explore Shop</span>
-              </Link>
-              <Link to="/ai-planner" className="btn-secondary btn-secondary-ai">
-                <span className="hero-planner-link-mark" aria-hidden="true">
-                  <svg viewBox="0 0 48 48" fill="none">
-                    <path
-                      d="M24 4.5c1.2 8.2 2.8 9.8 11 11-8.2 1.2-9.8 2.8-11 11-1.2-8.2-2.8-9.8-11-11 8.2-1.2 9.8-2.8 11-11Z"
-                      stroke="currentColor"
-                      strokeWidth="3.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M37.5 22c.5 3.5 1.2 4.2 4.7 4.7-3.5.5-4.2 1.2-4.7 4.7-.5-3.5-1.2-4.2-4.7-4.7 3.5-.5 4.2-1.2 4.7-4.7Z"
-                      fill="currentColor"
-                    />
-                    <circle cx="13" cy="32.5" r="2.5" fill="currentColor" />
-                  </svg>
-                </span>
-                <span className="cta-orbit-label">Try AI Planner</span>
-              </Link>
-            </div>
-          </div>
-
-          <div className="market-hero-visual" aria-hidden="true">
-            {HERO_RIBBON_ROWS.map((row) => (
-              <div key={row.id} className={`hero-ribbon hero-ribbon-${row.id}`}>
-                <div className="hero-ribbon-track">
-                  {row.slides.map((slide) => (
-                    <div key={slide.renderId} className="hero-ribbon-card">
-                      <img className="hero-ribbon-image" src={slide.image} alt={slide.alt} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        <HeroSlideshow
+          searchQuery={heroSearchQuery}
+          onSearchQueryChange={setHeroSearchQuery}
+          onSearchSubmit={handleHeroSearchSubmit}
+          shopPath={buildEventTypeShopPath(selectedEventType)}
+        />
 
         <section className="quick-categories">
           <h3 className="section-mini-title">Quick Category Strip</h3>

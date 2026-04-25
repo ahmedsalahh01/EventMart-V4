@@ -85,6 +85,9 @@ ADD COLUMN IF NOT EXISTS venue_type TEXT NOT NULL DEFAULT '';
 ALTER TABLE products
 ADD COLUMN IF NOT EXISTS delivery_class TEXT NOT NULL DEFAULT '';
 
+ALTER TABLE products
+ADD COLUMN IF NOT EXISTS availability_note TEXT NOT NULL DEFAULT '';
+
 UPDATE products
 SET product_id = LPAD(id::text, 5, '0')
 WHERE product_id IS NULL;
@@ -270,6 +273,11 @@ CREATE TABLE IF NOT EXISTS packages (
   name TEXT NOT NULL,
   slug TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  customization_type TEXT NOT NULL DEFAULT 'not customizable',
+  venue_type TEXT NOT NULL DEFAULT 'hybrid',
+  recommended_for JSONB NOT NULL DEFAULT '[]'::jsonb,
+  fits_for_people INT NOT NULL DEFAULT 1,
+  price NUMERIC(12,2) NOT NULL DEFAULT 0,
   event_type TEXT NOT NULL DEFAULT '',
   visibility TEXT NOT NULL DEFAULT 'public',
   status TEXT NOT NULL DEFAULT 'draft',
@@ -284,6 +292,21 @@ ON packages (updated_at DESC, id DESC);
 
 ALTER TABLE packages
 ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE packages
+ADD COLUMN IF NOT EXISTS customization_type TEXT NOT NULL DEFAULT 'not customizable';
+
+ALTER TABLE packages
+ADD COLUMN IF NOT EXISTS venue_type TEXT NOT NULL DEFAULT 'hybrid';
+
+ALTER TABLE packages
+ADD COLUMN IF NOT EXISTS recommended_for JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE packages
+ADD COLUMN IF NOT EXISTS fits_for_people INT NOT NULL DEFAULT 1;
+
+ALTER TABLE packages
+ADD COLUMN IF NOT EXISTS price NUMERIC(12,2) NOT NULL DEFAULT 0;
 
 ALTER TABLE packages
 ADD COLUMN IF NOT EXISTS event_type TEXT NOT NULL DEFAULT '';
@@ -303,6 +326,89 @@ ADD COLUMN IF NOT EXISTS context_defaults JSONB NOT NULL DEFAULT '{}'::jsonb;
 UPDATE packages
 SET description = ''
 WHERE description IS NULL;
+
+UPDATE packages
+SET customization_type = CASE
+  WHEN LOWER(
+    TRIM(
+      COALESCE(
+        NULLIF(context_defaults->>'customizationType', ''),
+        NULLIF(context_defaults->>'customization_type', ''),
+        customization_type,
+        ''
+      )
+    )
+  ) IN ('customizable', 'not customizable', 'hybrid')
+    THEN LOWER(
+      TRIM(
+        COALESCE(
+          NULLIF(context_defaults->>'customizationType', ''),
+          NULLIF(context_defaults->>'customization_type', ''),
+          customization_type,
+          ''
+        )
+      )
+    )
+  WHEN LOWER(
+    TRIM(
+      COALESCE(
+        context_defaults->>'customizationAvailable',
+        context_defaults->>'customization_available',
+        ''
+      )
+    )
+  ) IN ('true', '1', 'yes', 'on')
+    THEN 'customizable'
+  ELSE 'not customizable'
+END;
+
+UPDATE packages
+SET venue_type = CASE
+  WHEN LOWER(
+    TRIM(
+      COALESCE(
+        NULLIF(context_defaults->>'venueType', ''),
+        NULLIF(context_defaults->>'venue_type', ''),
+        venue_type,
+        ''
+      )
+    )
+  ) IN ('indoor', 'outdoor', 'hybrid')
+    THEN LOWER(
+      TRIM(
+        COALESCE(
+          NULLIF(context_defaults->>'venueType', ''),
+          NULLIF(context_defaults->>'venue_type', ''),
+          venue_type,
+          ''
+        )
+      )
+    )
+  ELSE 'hybrid'
+END;
+
+UPDATE packages
+SET recommended_for = CASE
+  WHEN JSONB_TYPEOF(recommended_for) = 'array' AND JSONB_ARRAY_LENGTH(recommended_for) > 0
+    THEN recommended_for
+  WHEN TRIM(COALESCE(event_type, '')) <> ''
+    THEN TO_JSONB(ARRAY[LOWER(TRIM(event_type))])
+  ELSE '[]'::jsonb
+END;
+
+UPDATE packages
+SET fits_for_people = CASE
+  WHEN COALESCE(context_defaults->>'guestCount', context_defaults->>'guest_count', '') ~ '^\d+$'
+    THEN GREATEST((COALESCE(context_defaults->>'guestCount', context_defaults->>'guest_count'))::INT, 1)
+  ELSE GREATEST(COALESCE(fits_for_people, 1), 1)
+END;
+
+UPDATE packages
+SET price = CASE
+  WHEN COALESCE(context_defaults->>'packagePrice', context_defaults->>'package_price', '') ~ '^\d+(\.\d+)?$'
+    THEN (COALESCE(context_defaults->>'packagePrice', context_defaults->>'package_price'))::NUMERIC(12,2)
+  ELSE GREATEST(COALESCE(price, 0), 0)
+END;
 
 UPDATE packages
 SET event_type = ''
@@ -329,6 +435,62 @@ BEGIN
   ) THEN
     ALTER TABLE packages
     ADD CONSTRAINT packages_slug_key UNIQUE (slug);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'packages_customization_type_check'
+  ) THEN
+    ALTER TABLE packages
+    ADD CONSTRAINT packages_customization_type_check
+    CHECK (customization_type IN ('customizable', 'not customizable', 'hybrid'));
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'packages_venue_type_check'
+  ) THEN
+    ALTER TABLE packages
+    ADD CONSTRAINT packages_venue_type_check
+    CHECK (venue_type IN ('indoor', 'outdoor', 'hybrid'));
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'packages_fits_for_people_check'
+  ) THEN
+    ALTER TABLE packages
+    ADD CONSTRAINT packages_fits_for_people_check
+    CHECK (fits_for_people > 0);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'packages_price_check'
+  ) THEN
+    ALTER TABLE packages
+    ADD CONSTRAINT packages_price_check
+    CHECK (price >= 0);
   END IF;
 END
 $$;
@@ -367,6 +529,7 @@ CREATE TABLE IF NOT EXISTS package_items (
   product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   minimum_quantity INT NOT NULL DEFAULT 1,
   default_quantity INT NOT NULL DEFAULT 1,
+  customizable BOOLEAN NOT NULL DEFAULT false,
   is_required BOOLEAN NOT NULL DEFAULT false,
   preferred_mode TEXT NOT NULL DEFAULT '',
   applies_to_event_types JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -384,6 +547,9 @@ ON package_items (package_id, sort_order, id);
 
 ALTER TABLE package_items
 ADD COLUMN IF NOT EXISTS default_quantity INT NOT NULL DEFAULT 1;
+
+ALTER TABLE package_items
+ADD COLUMN IF NOT EXISTS customizable BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE package_items
 ADD COLUMN IF NOT EXISTS is_required BOOLEAN NOT NULL DEFAULT false;
@@ -405,6 +571,10 @@ ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
 
 UPDATE package_items
 SET default_quantity = COALESCE(default_quantity, minimum_quantity, 1);
+
+UPDATE package_items
+SET customizable = false
+WHERE customizable IS NULL;
 
 UPDATE package_items
 SET is_required = false
@@ -557,6 +727,8 @@ CREATE TABLE IF NOT EXISTS customization_uploads (
   upload_token TEXT UNIQUE NOT NULL,
   product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   variation_id BIGINT REFERENCES product_variations(id) ON DELETE SET NULL,
+  package_id BIGINT REFERENCES packages(id) ON DELETE SET NULL,
+  package_item_id BIGINT REFERENCES package_items(id) ON DELETE SET NULL,
   user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
   order_item_id BIGINT REFERENCES order_items(id) ON DELETE SET NULL,
   upload_kind TEXT NOT NULL,
@@ -566,6 +738,12 @@ CREATE TABLE IF NOT EXISTS customization_uploads (
   size_bytes INT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE customization_uploads
+ADD COLUMN IF NOT EXISTS package_id BIGINT REFERENCES packages(id) ON DELETE SET NULL;
+
+ALTER TABLE customization_uploads
+ADD COLUMN IF NOT EXISTS package_item_id BIGINT REFERENCES package_items(id) ON DELETE SET NULL;
 
 DO $$
 BEGIN

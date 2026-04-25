@@ -110,7 +110,11 @@ runTest("should validate customization uploads", () => {
   );
   assert.equal(
     validateCustomizationFile({ name: "notes.jpg", size: 512, type: "image/jpeg" }),
-    "Only PNG and PDF files are supported."
+    ""
+  );
+  assert.equal(
+    validateCustomizationFile({ name: "layout.webp", size: 512, type: "image/webp" }),
+    ""
   );
   assert.equal(
     validateCustomizationFile({
