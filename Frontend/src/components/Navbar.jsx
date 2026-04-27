@@ -6,12 +6,15 @@ import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
 
-const navItems = [
+const regularNavItems = [
   { to: "/", label: "Home" },
   { to: "/shop", label: "Shop" },
-  { to: "/ai-planner", label: "AI Planner" },
   { to: "/about", label: "About" },
   { to: "/contact", label: "Contact" }
+];
+
+const badgeNavItems = [
+  { to: "/packages", label: "Packages" }
 ];
 
 function Navbar() {
@@ -42,7 +45,7 @@ function Navbar() {
     };
   }, [isHomeRoute]);
 
-  const activePath = navItems.find((item) => item.to === location.pathname)?.to ?? null;
+  const activePath = regularNavItems.find((item) => item.to === location.pathname)?.to ?? null;
   const highlightedPath = hoveredPath ?? activePath;
   const navClassName = `navbar${isHomeRoute ? " navbar-home" : ""}${isHomeRoute && isScrolled ? " navbar-home-scrolled" : ""}`;
 
@@ -53,12 +56,12 @@ function Navbar() {
       </NavLink>
 
       <ul className="navlist" aria-label="Main navigation" onMouseLeave={() => setHoveredPath(null)}>
-        {navItems.map((item) => (
+        {regularNavItems.map((item) => (
           <li key={item.to}>
             <NavLink
               to={item.to}
               end={item.to === "/"}
-              className={({ isActive }) => (isActive || highlightedPath === item.to ? "active" : undefined)}
+              className={({ isActive }) => isActive || highlightedPath === item.to ? "active" : undefined}
               onMouseEnter={() => setHoveredPath(item.to)}
               onFocus={() => setHoveredPath(item.to)}
               onBlur={() => setHoveredPath(null)}
@@ -71,6 +74,16 @@ function Navbar() {
                   transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.6 }}
                 />
               ) : null}
+            </NavLink>
+          </li>
+        ))}
+        {badgeNavItems.map((item) => (
+          <li key={item.to}>
+            <NavLink
+              to={item.to}
+              className={({ isActive }) => `nav-badge${isActive ? " active" : ""}`}
+            >
+              {item.label}
             </NavLink>
           </li>
         ))}

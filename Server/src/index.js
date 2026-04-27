@@ -37,6 +37,7 @@ const {
   validateCheckoutSubmission
 } = require("./lib/checkout");
 const { applyPricingToResolvedLines, getBuilderCategory, normalizePackageMeta } = require("./lib/packageBuilder");
+const builderConfig = require("./lib/builderConfig");
 const createAdminProductsRouter = require("./routes/adminProducts");
 const createPackagesRouter = require("./routes/packages");
 const recommendationRouter = require("./routes/recommendations");
@@ -150,6 +151,20 @@ app.use(express.json({ limit: "120mb" }));
 app.use("/api/recommendations", recommendationRouter);
 app.use("/api/admin/products", createAdminProductsRouter({ pool }));
 app.use("/api", createPackagesRouter({ pool, removeManagedCustomizationFile }));
+
+app.get("/api/config/builder", (_req, res) => {
+  res.json({
+    attendeesRanges: builderConfig.ATTENDEES_RANGES,
+    categoryRequirementsByEvent: builderConfig.CATEGORY_REQUIREMENTS_BY_EVENT,
+    deliveryClassFees: builderConfig.DELIVERY_CLASS_FEES,
+    deliveryPlaceWindows: builderConfig.DELIVERY_PLACE_WINDOWS,
+    freeShippingMinimumUnits: builderConfig.FREE_SHIPPING_MINIMUM_UNITS,
+    homeCategories: builderConfig.HOME_CATEGORIES,
+    minimumMatrix: builderConfig.MINIMUM_MATRIX,
+    packageItemDiscountRate: builderConfig.PACKAGE_ITEM_DISCOUNT_RATE,
+    productQuantityLimits: builderConfig.PRODUCT_QUANTITY_LIMITS
+  });
+});
 app.use("/uploads", express.static(UPLOADS_DIR));
 app.use((error, _req, res, next) => {
   if (error?.type === "entity.too.large") {

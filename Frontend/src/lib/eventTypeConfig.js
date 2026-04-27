@@ -1,15 +1,18 @@
 const RAW_EVENT_TYPE_CONFIG = {
-  "private-party": {
-    slug: "private-party",
-    label: "Private Party / Bachelorette",
-    plannerLabel: "Private Party / Bachelorette",
-    shopHeading: "Private Party Products",
-    shopCtaLabel: "Shop Private Party Products",
+  party: {
+    slug: "party",
+    label: "Party",
+    plannerLabel: "Party",
+    shopHeading: "Party Products",
+    shopCtaLabel: "Shop Party Products",
     headingDescription: "Curated merch, giveaways, compact sound, and decor-friendly pieces for personal celebrations.",
-    cardDescription: "Compact merch, giveaways, lighting, and audio for intimate celebrations.",
+    cardDescription: "Compact merch, giveaways, lighting, and audio for personal celebrations.",
     aliases: [
+      "party",
+      "parties",
       "private parties",
       "private party",
+      "private-party",
       "private party / bachelorette",
       "bachelorette",
       "bachelorette party"
@@ -51,7 +54,7 @@ const RAW_EVENT_TYPE_CONFIG = {
     shopCtaLabel: "Shop Corporate Products",
     headingDescription: "Curated presentation, audio, screen, and branded merch products for polished corporate events.",
     cardDescription: "Professional AV, podium-style woodwork, screens, and branded merch for business events.",
-    aliases: ["corporate events", "conference", "conferences", "exhibition", "exhibitions"],
+    aliases: ["corporate events", "company event", "business event", "exhibition", "exhibitions"],
     allowedCategories: ["sound", "screen", "woodwork", "stage", "merch", "giveaways", "lighting"],
     preferredCategories: ["sound", "screen", "woodwork", "stage"],
     complementaryCategories: ["screen", "woodwork", "sound"],
@@ -60,6 +63,44 @@ const RAW_EVENT_TYPE_CONFIG = {
     shopQueryMapping: {
       defaultCategoryKey: "sound",
       chipCategoryKeys: ["sound", "screen", "woodwork", "stage", "merch"]
+    }
+  },
+  engagement: {
+    slug: "engagement",
+    label: "Engagement",
+    plannerLabel: "Engagement",
+    shopHeading: "Engagement Products",
+    shopCtaLabel: "Shop Engagement Products",
+    headingDescription: "Curated lighting, woodwork, sound, and keepsake picks for engagement celebrations.",
+    cardDescription: "Decor, lighting, sound, and keepsakes for engagement celebrations.",
+    aliases: ["engagements", "engagement party", "proposal", "proposal party"],
+    allowedCategories: ["woodwork", "lighting", "sound", "stage", "screen", "merch", "giveaways"],
+    preferredCategories: ["woodwork", "lighting", "sound", "giveaways"],
+    complementaryCategories: ["woodwork", "lighting", "sound"],
+    venueCompatibility: ["indoor", "outdoor"],
+    recommendedTags: ["engagement", "proposal", "celebration", "floral", "lighting", "backdrop", "keepsake"],
+    shopQueryMapping: {
+      defaultCategoryKey: "woodwork",
+      chipCategoryKeys: ["woodwork", "lighting", "sound", "giveaways", "stage"]
+    }
+  },
+  conference: {
+    slug: "conference",
+    label: "Conference",
+    plannerLabel: "Conference",
+    shopHeading: "Conference Products",
+    shopCtaLabel: "Shop Conference Products",
+    headingDescription: "Curated audio, display, staging, and branded merch products for conferences.",
+    cardDescription: "Presentation-ready sound, screens, staging, and branded support for conferences.",
+    aliases: ["conferences", "summit", "summits", "seminar", "seminars"],
+    allowedCategories: ["sound", "screen", "woodwork", "stage", "merch", "giveaways", "lighting"],
+    preferredCategories: ["sound", "screen", "stage", "woodwork"],
+    complementaryCategories: ["screen", "sound", "stage"],
+    venueCompatibility: ["indoor", "outdoor"],
+    recommendedTags: ["conference", "presentation", "podium", "screen", "speaker", "brand", "summit"],
+    shopQueryMapping: {
+      defaultCategoryKey: "sound",
+      chipCategoryKeys: ["sound", "screen", "stage", "woodwork", "merch"]
     }
   },
   outdoor: {
@@ -121,7 +162,7 @@ const RAW_EVENT_TYPE_CONFIG = {
   }
 };
 
-const EVENT_TYPE_ORDER = Object.freeze(["private-party", "birthday", "corporate", "outdoor", "indoor", "wedding"]);
+const EVENT_TYPE_ORDER = Object.freeze(["birthday", "party", "engagement", "corporate", "conference", "wedding", "indoor", "outdoor"]);
 
 function normalizeLookupToken(value) {
   return String(value || "")

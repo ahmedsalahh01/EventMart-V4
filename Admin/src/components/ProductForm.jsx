@@ -198,13 +198,13 @@ function ProductForm({
             <label htmlFor="quantity_available">Quantity Available</label>
             <input
               id="quantity_available"
+              min="0"
               name="quantity_available"
-              readOnly
+              onChange={onChange}
               placeholder="10"
               type="number"
               value={form.quantity_available}
             />
-            <small className="helper-text">Calculated from the variation rows below.</small>
           </div>
 
           <div className="field">
@@ -408,7 +408,7 @@ function ProductForm({
           </label>
           <label>
             <input checked={form.featured} name="featured" onChange={onChange} type="checkbox" />
-            Featured Badge
+            Featured on Home Page
           </label>
           <label>
             <input checked={form.customizable} name="customizable" onChange={onChange} type="checkbox" />

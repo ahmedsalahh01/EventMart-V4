@@ -7,6 +7,7 @@ const {
 
 (() => {
   const context = normalizePackageContext({
+    attendeesRange: "101-150",
     customizationAvailable: true,
     guestCount: "180",
     packageMode: "rent",
@@ -15,6 +16,7 @@ const {
   });
 
   assert.deepEqual(context, {
+    attendeesRange: "101-150",
     budget: 0,
     customizationAvailable: true,
     customizationType: "customizable",

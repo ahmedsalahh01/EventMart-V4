@@ -1,11 +1,14 @@
 const RAW_EVENT_TYPE_CONFIG = {
-  "private-party": {
-    slug: "private-party",
-    label: "Private Party / Bachelorette",
-    plannerLabel: "Private Party / Bachelorette",
+  party: {
+    slug: "party",
+    label: "Party",
+    plannerLabel: "Party",
     aliases: [
+      "party",
+      "parties",
       "private parties",
       "private party",
+      "private-party",
       "private party / bachelorette",
       "bachelorette",
       "bachelorette party"
@@ -21,7 +24,19 @@ const RAW_EVENT_TYPE_CONFIG = {
     slug: "corporate",
     label: "Corporate",
     plannerLabel: "Corporate",
-    aliases: ["corporate events", "conference", "conferences", "exhibition", "exhibitions"]
+    aliases: ["corporate events", "company event", "business event", "exhibition", "exhibitions"]
+  },
+  engagement: {
+    slug: "engagement",
+    label: "Engagement",
+    plannerLabel: "Engagement",
+    aliases: ["engagements", "engagement party", "proposal", "proposal party"]
+  },
+  conference: {
+    slug: "conference",
+    label: "Conference",
+    plannerLabel: "Conference",
+    aliases: ["conferences", "summit", "summits", "seminar", "seminars"]
   },
   outdoor: {
     slug: "outdoor",
@@ -43,7 +58,7 @@ const RAW_EVENT_TYPE_CONFIG = {
   }
 };
 
-const EVENT_TYPE_ORDER = Object.freeze(["private-party", "birthday", "corporate", "outdoor", "indoor", "wedding"]);
+const EVENT_TYPE_ORDER = Object.freeze(["birthday", "party", "engagement", "corporate", "conference", "wedding", "indoor", "outdoor"]);
 
 function normalizeLookupToken(value) {
   return String(value || "")

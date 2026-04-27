@@ -66,7 +66,7 @@ function ProductList({
                   Size mode: {product.size_mode === "varied" ? "Varied" : "One Size"} |{" "}
                   {product.customizable ? "Customizable" : "Standard"}
                 </p>
-                <p className="meta">Featured badge: {product.featured ? "On" : "Off"}</p>
+                <p className="meta">Featured on home page: {product.featured ? "Yes" : "No"}</p>
                 <p className="meta">Attachments: {imageCount}</p>
                 <p className="price-line">
                   Buy: {buy} | Rent/day: {rent}

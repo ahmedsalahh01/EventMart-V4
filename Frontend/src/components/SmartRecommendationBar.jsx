@@ -68,7 +68,7 @@ function SmartRecommendationBar({
   });
   const resolvedEventType = resolveEventType(currentEventType) || resolveEventType(behavior.selectedEventType);
   const eventConfig = getEventTypeConfig(resolvedEventType);
-  const sectionTitle = eventConfig ? `${title} for ${getEventTypeLabel(resolvedEventType)}` : title;
+  const sectionTitle = eventConfig ? `${title} — ${getEventTypeLabel(resolvedEventType)}` : title;
   const sectionLeadText = subtitle || leadText;
 
   if (!isLoading && !recommendations.length) {

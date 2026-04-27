@@ -76,23 +76,19 @@ const EVENT_COMPLEMENTARY_CATEGORY_MAP = Object.freeze({
     screen: ["sound", "woodwork", "stage"],
     woodwork: ["sound", "screen", "merch"]
   },
-  indoor: {
-    lighting: ["sound", "screen", "woodwork"],
-    sound: ["lighting", "screen", "woodwork"]
+  conference: {
+    sound: ["screen", "stage", "woodwork"],
+    screen: ["sound", "stage", "woodwork"],
+    stage: ["sound", "screen", "lighting"]
   },
-  outdoor: {
-    stage: ["sound", "screen", "lighting"],
-    screen: ["stage", "sound", "lighting"],
-    sound: ["stage", "screen", "lighting"]
+  engagement: {
+    woodwork: ["lighting", "sound", "giveaways"],
+    lighting: ["woodwork", "sound", "stage"],
+    giveaways: ["merch", "lighting", "woodwork"]
   },
-  "private-party": {
+  party: {
     merch: ["giveaways", "lighting", "sound"],
     giveaways: ["merch", "lighting", "sound"]
-  },
-  wedding: {
-    woodwork: ["lighting", "sound", "stage"],
-    lighting: ["woodwork", "sound", "stage"],
-    sound: ["woodwork", "lighting", "stage"]
   }
 });
 
@@ -205,7 +201,7 @@ function isEntityCompatibleWithEventType(entity, eventType) {
   const venueCompatibility = getVenueCompatibility(entity);
   const eventVenue = config.venueCompatibility;
 
-  if (!eventVenue.length || venueCompatibility.includes("indoor") && venueCompatibility.includes("outdoor")) {
+  if (!eventVenue.length || (venueCompatibility.includes("indoor") && venueCompatibility.includes("outdoor"))) {
     return true;
   }
 

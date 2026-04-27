@@ -1,13 +1,21 @@
 const { normalizeCatalogText } = require("./catalog");
 const { roundCurrency } = require("./checkout");
 const { resolveEventType } = require("./eventTypeConfig");
+const {
+  CATEGORY_REQUIREMENTS_BY_EVENT,
+  DELIVERY_CLASS_FEES,
+  DELIVERY_PLACE_WINDOWS,
+  FREE_SHIPPING_MINIMUM_UNITS,
+  PACKAGE_ITEM_DISCOUNT_RATE,
+  PRODUCT_QUANTITY_LIMITS
+} = require("./builderConfig");
 
 const PACKAGE_STATUS_VALUES = Object.freeze(["draft", "active", "inactive"]);
 const PACKAGE_VISIBILITY_VALUES = Object.freeze(["public", "private", "hidden"]);
 const PACKAGE_BUILDER_CATEGORY_ORDER = Object.freeze([
   "merch",
   "giveaways",
-  "tech",
+  "lighting",
   "stage",
   "screen",
   "sound",
@@ -25,9 +33,9 @@ const PACKAGE_BUILDER_CATEGORY_DEFINITIONS = Object.freeze([
     keywords: ["giveaway", "gift", "souvenir", "promo", "rubber wristband", "wristband", "badge", "keychain"]
   },
   {
-    key: "tech",
-    label: "Tech",
-    keywords: ["tech", "lighting", "uplight", "led", "electronic", "wireless", "controller", "accessory", "accessories"]
+    key: "lighting",
+    label: "Lighting Systems",
+    keywords: ["lighting", "uplight", "uplighting", "led", "beam", "wash light", "accent light", "light fixture"]
   },
   {
     key: "stage",
@@ -53,29 +61,6 @@ const PACKAGE_BUILDER_CATEGORY_DEFINITIONS = Object.freeze([
 const PACKAGE_BUILDER_CATEGORY_MAP = Object.freeze(
   Object.fromEntries(PACKAGE_BUILDER_CATEGORY_DEFINITIONS.map((entry) => [entry.key, entry]))
 );
-const DELIVERY_CLASS_FEES = Object.freeze({
-  standard: 180,
-  fragile: 280,
-  oversized: 420
-});
-const PACKAGE_ITEM_DISCOUNT_RATE = 0.15;
-const DELIVERY_PLACE_WINDOWS = Object.freeze({
-  metro: {
-    maxLeadDays: 3,
-    minLeadDays: 2,
-    places: ["cairo", "giza", "qalyubia"]
-  },
-  regional: {
-    maxLeadDays: 4,
-    minLeadDays: 3,
-    places: ["alexandria", "dakahlia", "gharbia", "monufia", "sharqia", "suez", "ismailia"]
-  },
-  extended: {
-    maxLeadDays: 6,
-    minLeadDays: 4,
-    places: []
-  }
-});
 
 function normalizeText(value, maxLength = 200) {
   return String(value || "")
@@ -214,7 +199,7 @@ function getBuilderCategory(product) {
     }
   }
 
-  return "tech";
+  return "merch";
 }
 
 function getBuilderCategoryLabel(categoryKey) {
@@ -325,6 +310,7 @@ function normalizePackageContext(value = {}) {
     deliveryPlace: normalizeText(value?.deliveryPlace || value?.delivery_place, 80),
     eventType,
     guestCount: Math.max(0, toWholeNumber(value?.guestCount ?? value?.guest_count, 0)),
+    attendeesRange: normalizeText(value?.attendeesRange || value?.attendees_range, 40),
     minimumPackagePrice: Math.max(0, toNumber(value?.minimumPackagePrice ?? value?.minimum_package_price, 0)),
     packageMode: resolvePackageMode(value?.packageMode ?? value?.package_mode),
     packagePrice: Math.max(0, toNumber(value?.packagePrice ?? value?.package_price, 0)),
@@ -339,13 +325,9 @@ function getEventQuantityLimit(categoryKey, eventType) {
     return Number.POSITIVE_INFINITY;
   }
 
-  if (["private-party", "birthday"].includes(eventType)) {
-    return 10;
-  }
-
-  if (["corporate", "indoor", "outdoor", "wedding"].includes(eventType)) {
-    return 20;
-  }
+  const { small, large } = PRODUCT_QUANTITY_LIMITS.eventTypeMerchGiveaway;
+  if (small.types.includes(eventType)) return small.max;
+  if (large.types.includes(eventType)) return large.max;
 
   return Number.POSITIVE_INFINITY;
 }
@@ -360,18 +342,17 @@ function getProductQuantityLimit(product, categoryKey, eventType) {
   }
 
   if (text.includes("rubber wristband")) {
-    limits.push(50);
+    limits.push(PRODUCT_QUANTITY_LIMITS.rubberWristband);
   }
 
-  // Current catalog stores screens as quantity counts rather than linear meters, so
-  // the 6-meter business rule is enforced as a maximum builder quantity of 6 units.
+  // Screens are stored as unit counts in the catalog; cap enforces the 6-meter display rule.
   if (categoryKey === "screen") {
-    limits.push(6);
+    limits.push(PRODUCT_QUANTITY_LIMITS.screen);
   }
 
   // Sound systems are modeled as unit/set counts in the current catalog.
   if (categoryKey === "sound") {
-    limits.push(2);
+    limits.push(PRODUCT_QUANTITY_LIMITS.sound);
   }
 
   limits.push(stock);
@@ -439,54 +420,14 @@ function getUnitPriceForMode(product, mode) {
 }
 
 function getCategoryRequirement(categoryKey, context) {
-  const guestCount = Math.max(0, Number(context?.guestCount || 0));
-  const venueType = normalizeLookupToken(context?.venueType);
   const eventType = resolveEventType(context?.eventType);
-
-  if (categoryKey === "sound") {
-    if (guestCount >= 40) {
-      return { level: "required", message: "Sound coverage is required for guest counts above 40." };
-    }
-    if (guestCount >= 20) {
-      return { level: "recommended", message: "A compact sound setup is recommended at this guest count." };
-    }
-  }
-
-  if (categoryKey === "stage") {
-    if (venueType === "outdoor" && guestCount >= 80) {
-      return { level: "required", message: "Outdoor events at this capacity need a stage-ready setup." };
-    }
-    if (guestCount >= 120) {
-      return { level: "recommended", message: "Consider staging support for better visibility." };
-    }
-  }
-
-  if (categoryKey === "screen") {
-    if (eventType === "corporate" || guestCount >= 100) {
-      return { level: "required", message: "Screens are required for corporate or large-capacity plans." };
-    }
-    if (guestCount >= 60) {
-      return { level: "recommended", message: "Screens improve visibility at this venue size." };
-    }
-  }
-
-  if (categoryKey === "woodwork") {
-    if (["wedding", "corporate"].includes(eventType)) {
-      return { level: "recommended", message: "Branded or decorative woodwork fits this event style well." };
-    }
-  }
-
-  if (categoryKey === "tech") {
-    if (eventType === "corporate" || venueType === "indoor") {
-      return { level: "recommended", message: "Tech accessories and lighting help complete the setup." };
-    }
-  }
-
-  if (["birthday", "private-party"].includes(eventType) && (categoryKey === "merch" || categoryKey === "giveaways")) {
-    return { level: "recommended", message: "Personalized merch and giveaways are strong fits for this event type." };
-  }
-
-  return { level: "optional", message: "Optional for this package." };
+  const level = CATEGORY_REQUIREMENTS_BY_EVENT[eventType]?.[categoryKey] || "optional";
+  const messages = {
+    required: `${getBuilderCategoryLabel(categoryKey)} is required for this event type.`,
+    recommended: `${getBuilderCategoryLabel(categoryKey)} is recommended for this event type.`,
+    optional: "Optional for this package."
+  };
+  return { level, message: messages[level] };
 }
 
 function getDeliveryEstimate(context, lines = []) {
@@ -522,20 +463,15 @@ function getShippingBaseFee(lines) {
 }
 
 function isFreeShippingEligible(lines) {
-  const byCategory = lines.reduce((map, line) => {
-    const categoryKey = line?.builderCategory || "tech";
-    map[categoryKey] = Number(map[categoryKey] || 0) + Math.max(0, Number(line?.quantity || 0));
-    return map;
-  }, {});
-
-  return Object.values(byCategory).some((count) => count >= 4);
+  const totalUnits = lines.reduce((sum, line) => sum + Math.max(0, Number(line?.quantity || 0)), 0);
+  return totalUnits >= FREE_SHIPPING_MINIMUM_UNITS;
 }
 
 function normalizePackageMeta(rawMeta = {}, fallback = {}) {
   const context = normalizePackageContext(rawMeta?.context || fallback.context || {});
 
   return {
-    builderCategory: rawMeta?.builderCategory || fallback.builderCategory || "tech",
+    builderCategory: rawMeta?.builderCategory || fallback.builderCategory || "lighting",
     customizationRequested: parseBoolean(
       rawMeta?.customizationRequested ?? rawMeta?.customization_requested,
       parseBoolean(fallback.customizationRequested, false)
@@ -944,22 +880,7 @@ function buildBuilderPreview({
       unitPrice
     });
 
-    if (row.packageItemConfig?.required && row.quantity < Math.max(1, Number(row.packageItemConfig.minimumQuantity || 1))) {
-      validationIssues.push({
-        code: "minimum_quantity",
-        level: "error",
-        message: `${row.name} must stay at or above ${row.packageItemConfig.minimumQuantity} for this package.`
-      });
-    }
   });
-
-  if (selectedLines.length < 4) {
-    validationIssues.push({
-      code: "minimum_products",
-      level: "error",
-      message: "Select at least 4 products before continuing."
-    });
-  }
 
   const categorySelections = selectedLines.reduce((map, line) => {
     const categoryKey = line.builderCategory;
@@ -977,14 +898,6 @@ function buildBuilderPreview({
   const categoryRequirements = PACKAGE_BUILDER_CATEGORY_ORDER.map((categoryKey) => {
     const requirement = getCategoryRequirement(categoryKey, normalizedContext);
     const selection = categorySelections[categoryKey] || { productCount: 0, quantity: 0 };
-
-    if (requirement.level === "required" && selection.productCount < 1) {
-      validationIssues.push({
-        code: `required_${categoryKey}`,
-        level: "error",
-        message: `${getBuilderCategoryLabel(categoryKey)} is required for this package setup.`
-      });
-    }
 
     return {
       key: categoryKey,
@@ -1019,24 +932,8 @@ function buildBuilderPreview({
     total: 0
   };
 
-  if (packageSummary.minimumPackagePrice > 0 && !packageSummary.meetsMinimumPackagePrice) {
-    validationIssues.push({
-      code: "minimum_package_price",
-      level: "error",
-      message: `Add more items to reach the minimum package price of ${packageSummary.currency} ${packageSummary.minimumPackagePrice.toFixed(2)}. Add ${packageSummary.currency} ${packageSummary.remainingToMinimumPrice.toFixed(2)} more to proceed.`
-    });
-  }
-
-  if (normalizedContext.budget > 0 && packageSummary.total > normalizedContext.budget) {
-    validationIssues.push({
-      code: "budget_overrun",
-      level: "warning",
-      message: `This package is ${roundCurrency(packageSummary.total - normalizedContext.budget)} over the selected budget.`
-    });
-  }
-
   return {
-    canCheckout: !validationIssues.some((issue) => issue.level === "error") && pricing.lines.length >= 4,
+    canCheckout: !validationIssues.some((issue) => issue.level === "error"),
     categories: categoryRequirements,
     context: normalizedContext,
     packageDefinition: packageDefinition

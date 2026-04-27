@@ -84,7 +84,11 @@ function PackagesPage() {
       });
       const cartItems = createCartItemsFromBuilderPreview(payload?.preview, {});
 
-      setItems((current) => [...current, ...cartItems]);
+      setItems((current) => {
+        const existingKeys = new Set(current.map((i) => i.cartItemKey));
+        const newItems = cartItems.filter((i) => !existingKeys.has(i.cartItemKey));
+        return [...current, ...newItems];
+      });
       setActionTone("success");
       setActionMessage(`${pkg.name} was added to your cart.`);
     } catch (requestError) {
@@ -174,7 +178,6 @@ function PackagesPage() {
                       <p className="package-card-kicker">{getPackageCustomizationLabel(pkg)}</p>
                       <h2>{pkg.name}</h2>
                     </div>
-                    <span className={`package-requirement-pill is-${pkg.status}`}>{pkg.status}</span>
                   </div>
 
                   <p className="package-copy">{buildPackageDescription(pkg)}</p>
@@ -183,13 +186,15 @@ function PackagesPage() {
                     <span className="package-list-feature-pill">{getPackageRecommendedForLabel(pkg)}</span>
                     <span className="package-list-feature-pill">{getPackageAudienceLabel(pkg)}</span>
                     <span className="package-list-feature-pill">{getPackageVenueLabel(pkg)}</span>
-                    <span className="package-list-feature-pill">{pkg.items.length} items included</span>
+                    <span className="package-list-feature-pill">{pkg.items?.length ?? 0} items included</span>
                   </div>
 
                   <div className="package-list-meta">
                     <span>Package price</span>
                     <strong>
-                      {displayPrice.currency} {displayPrice.amount.toFixed(2)}
+                      {displayPrice.amount > 0
+                        ? `${displayPrice.currency} ${displayPrice.amount.toFixed(2)}`
+                        : "Price on request"}
                     </strong>
                   </div>
 
@@ -212,8 +217,12 @@ function PackagesPage() {
           ) : (
             <section className="package-shell-card package-state-card package-list-empty">
               <p className="package-eyebrow">Browse Packages</p>
-              <h2>No packages match this search.</h2>
-              <p>Try another keyword or explore individual products instead.</p>
+              <h2>{search ? "No packages match this search." : "No packages available yet."}</h2>
+              <p>
+                {search
+                  ? "Try another keyword or explore individual products instead."
+                  : "Check back soon or explore individual products."}
+              </p>
               <Link className="package-primary-link" to="/shop">
                 Browse Products
               </Link>
