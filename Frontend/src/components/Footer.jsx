@@ -1,8 +1,31 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 function Footer() {
+  const location = useLocation();
+  const isHome = location.pathname === "/";
+
   return (
     <footer className="footer">
+      {!isHome && (
+        <div className="footer-stats-strip" aria-label="EventMart at a glance">
+          <div className="footer-stats-item">
+            <strong>500<em>+</em></strong>
+            <span>Products in catalog</span>
+          </div>
+          <div className="footer-stats-item">
+            <strong>5</strong>
+            <span>Event types covered</span>
+          </div>
+          <div className="footer-stats-item">
+            <strong>#<em>1</em></strong>
+            <span>Marketplace for Events Equipments in Egypt</span>
+          </div>
+          <div className="footer-stats-item">
+            <strong>Fast</strong>
+            <span>Flexible checkout &amp; delivery</span>
+          </div>
+        </div>
+      )}
       <div className="footer-inner">
         <section className="footer-brand-wrap" aria-label="EventMart company details">
           <Link to="/" className="footer-brand" aria-label="EventMart Home">

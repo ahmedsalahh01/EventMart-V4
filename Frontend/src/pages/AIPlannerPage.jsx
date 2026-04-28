@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { getEventTypeConfig, listEventTypes, resolveEventType } from "../lib/eventTypeConfig";
 import { loadProducts } from "../lib/products";
 import { rankProductsForEventType } from "../lib/recommendationEngine";
@@ -60,7 +60,16 @@ function buildLocalPlannerReply(prompt, context, products) {
   const attendees = Number(context?.attendees || 0) || 100;
   const budget = Number(context?.budget || 0) || 5000;
   const venue = context?.venue || "Indoor";
-  const picked = pickProductsByEventType(resolvedEventType, products);
+  const mode = context?.mode || "quick";
+
+  const allPicked = pickProductsByEventType(resolvedEventType, products);
+
+  const perItemBudget = budget * 0.45;
+  const affordable = allPicked.filter((p) => {
+    const price = Number(p.buy_price) || Number(p.rent_price_per_day) || 0;
+    return price === 0 || price <= perItemBudget;
+  });
+  const picked = affordable.length >= 2 ? affordable : allPicked;
 
   const lines = [
     `### Your ${eventType} Plan`,
@@ -79,14 +88,31 @@ function buildLocalPlannerReply(prompt, context, products) {
     });
   }
 
+  const prepWeeks = attendees > 500 ? 12 : attendees > 200 ? 8 : attendees > 50 ? 6 : 4;
+  const midWeeks = Math.round(prepWeeks / 2);
+
   lines.push(
     "",
     "### Suggested Timeline",
-    "- 72 Hours before (For Rented Products): confirm order and major equipment.",
-    "- 48 Hours Before: lock product quantities and delivery.",
-    "- Event day: setup starts 6-12 hours before opening time.",
+    `- ${prepWeeks} weeks before: confirm venue, vendors, and core equipment`,
+    `- ${midWeeks} weeks before: finalize quantities, delivery schedule, and crew`,
+    "- 1 week before: run setup rehearsal and review crew checklist",
+    "- Event day: setup starts 4–6 hours before guests arrive"
+  );
+
+  if (mode === "intelligent" || attendees > 200) {
+    lines.push(
+      "",
+      "### Budget Notes",
+      `- Scope for ${attendees} attendees at a ${venue} venue`,
+      `- Keep core equipment spend under ${formatMoney(budget * 0.6)} to stay on budget`,
+      `- Reserve ${formatMoney(budget * 0.2)} for day-of contingencies`
+    );
+  }
+
+  lines.push(
     "",
-    `I can refine this plan further. Tell me changes for: "${prompt}".`
+    "Want a more tailored plan? Share your event theme, specific equipment needs, or preferred product categories."
   );
 
   return lines.join("\n");
@@ -102,122 +128,8 @@ function renderInlineText(text) {
   });
 }
 
-function expandInlinePlannerMarkdown(content) {
-  return String(content || "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]*\n[ \t]*/g, "\n")
-    .replace(/([^\n])\s+(###\s+)/g, "$1\n\n$2")
-    .replace(/([^\n])\s+-\s+(?=(?:\*\*|[A-Za-z0-9]))/g, "$1\n- ")
-    .replace(/\s+(You can refine this plan|I can refine this plan further)\b/g, "\n\n$1")
-    .trim();
-}
-
-function stripPlannerFollowUp(content) {
-  const text = String(content || "").trim();
-  const match = text.match(/\b(?:You can refine this plan|I can refine this plan further)\b[\s\S]*$/i);
-
-  if (!match || typeof match.index !== "number") {
-    return { content: text, followUp: "" };
-  }
-
-  return {
-    content: text.slice(0, match.index).trim(),
-    followUp: match[0].trim()
-  };
-}
-
-function collectFormattedMatches(content, expression, formatter) {
-  const lines = [];
-
-  for (const match of String(content || "").matchAll(expression)) {
-    const line = formatter(match).trim();
-    if (line) lines.push(line);
-  }
-
-  return lines;
-}
-
-function splitBulletLikeItems(content) {
-  const normalized = String(content || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^- /, "");
-
-  if (!normalized) return [];
-
-  return normalized
-    .split(/\s+-\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => `- ${item}`);
-}
-
-function normalizePlannerSection(section) {
-  const trimmedSection = String(section || "").trim();
-  if (!trimmedSection) return "";
-
-  const headingMatch = trimmedSection.match(/^###\s+(.+?)(?=\n|\s+-\s+|$)/);
-  if (!headingMatch) return trimmedSection;
-
-  const heading = headingMatch[1].trim();
-  const body = trimmedSection.slice(headingMatch[0].length).trim();
-
-  if (!body) {
-    return `### ${heading}`;
-  }
-
-  let bodyLines = [];
-
-  if (/recommended products/i.test(heading)) {
-    bodyLines = collectFormattedMatches(
-      body,
-      /-\s+\*\*(.+?)\*\*\s*\((.+?)\)\s*-\s*([\s\S]*?)(?=(?:\s+-\s+\*\*.+?\*\*\s*\(.+?\)\s*-\s*|$))/g,
-      (_match) => `- **${_match[1].trim()}** (${_match[2].trim()}) - ${_match[3].trim()}`
-    );
-  } else if (/plan/i.test(heading)) {
-    bodyLines = collectFormattedMatches(
-      body,
-      /-\s+\*\*(.+?):\*\*\s*([\s\S]*?)(?=(?:\s+-\s+\*\*.+?:\*\*|$))/g,
-      (_match) => `- **${_match[1].trim()}:** ${_match[2].trim()}`
-    );
-  } else if (/timeline/i.test(heading)) {
-    bodyLines = splitBulletLikeItems(body);
-  }
-
-  if (!bodyLines.length) {
-    bodyLines = splitBulletLikeItems(body);
-  }
-
-  if (!bodyLines.length) {
-    bodyLines = body
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-
-  return [`### ${heading}`, ...bodyLines].join("\n");
-}
-
-function normalizePlannerMessage(content) {
-  const raw = expandInlinePlannerMarkdown(content);
-  if (!raw.includes("###")) return raw;
-
-  const { content: strippedContent, followUp } = stripPlannerFollowUp(raw);
-  const sections = strippedContent
-    .split(/(?=###\s+)/)
-    .map((section) => normalizePlannerSection(section))
-    .filter(Boolean);
-
-  if (!sections.length) {
-    return raw;
-  }
-
-  return [sections.join("\n\n"), followUp].filter(Boolean).join("\n\n");
-}
-
-function renderMessageContent(content, { normalizePlanner = false } = {}) {
-  const normalizedContent = normalizePlanner ? normalizePlannerMessage(content) : String(content || "");
-  const lines = normalizedContent.split("\n");
+function renderMessageContent(content) {
+  const lines = String(content || "").split("\n");
   const blocks = [];
   let listItems = [];
 
@@ -309,7 +221,7 @@ function renderStructuredMessage(data) {
       {data.summary ? <p>{data.summary}</p> : null}
 
       {data.questions.length ? (
-        <div className="ai-structured-section warning-section">
+        <div className="ai-structured-section">
           <h3>Questions</h3>
           <ul>
             {data.questions.map((question, index) => (
@@ -320,7 +232,7 @@ function renderStructuredMessage(data) {
       ) : null}
 
       {data.recommendations.length ? (
-        <div className="ai-structured-section warning-section">
+        <div className="ai-structured-section">
           <h3>Recommendations</h3>
           <div className="ai-recommendation-list">
             {data.recommendations.map((item, index) => {
@@ -409,6 +321,7 @@ function AIPlannerPage() {
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [products, setProducts] = useState([]);
+  const chatHistoryRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -421,6 +334,13 @@ function AIPlannerPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const el = chatHistoryRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, isTyping]);
 
   function addMessage(role, content, structured = null) {
     setMessages((current) => [
@@ -639,7 +559,7 @@ function AIPlannerPage() {
               <span className="planner-status">Planner ready</span>
             </div>
 
-            <div id="chatHistory" className="chat-history">
+            <div id="chatHistory" ref={chatHistoryRef} className="chat-history">
               {messages.map((message, index) => (
                 <div key={`${message.role}-${index}`} className={`message-row ${message.role === "user" ? "user" : "assistant"}`}>
                   <span className="message-avatar" aria-hidden="true">
@@ -648,7 +568,7 @@ function AIPlannerPage() {
                   <article className="message-bubble">
                     {message.structured
                       ? renderStructuredMessage(message.structured)
-                      : renderMessageContent(message.content, { normalizePlanner: message.role === "assistant" })}
+                      : renderMessageContent(message.content)}
                   </article>
                 </div>
               ))}

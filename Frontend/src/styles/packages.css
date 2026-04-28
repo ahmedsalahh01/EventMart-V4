@@ -595,6 +595,19 @@ html[data-interface-theme="dark"] .package-requirement-pill.is-error {
   gap: 10px;
 }
 
+.package-name-field {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--package-border);
+}
+
+.package-name-field span {
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--package-accent);
+}
+
 .package-validation,
 .package-inline-success,
 .package-inline-error,

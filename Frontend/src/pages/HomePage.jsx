@@ -119,6 +119,25 @@ function HomePage() {
           shopPath={buildEventTypeShopPath(selectedEventType)}
         />
 
+        <div className="home-stats-strip" aria-label="EventMart at a glance">
+          <div className="home-stats-item">
+            <strong>500<em>+</em></strong>
+            <span>Products in catalog</span>
+          </div>
+          <div className="home-stats-item">
+            <strong>5</strong>
+            <span>Event types covered</span>
+          </div>
+          <div className="home-stats-item">
+            <strong>#<em>1</em></strong>
+            <span> Marketplace for Events Equipments in Egypt</span>
+          </div>
+          <div className="home-stats-item">
+            <strong>Fast</strong>
+            <span>Flexible checkout &amp; delivery</span>
+          </div>
+        </div>
+
         {featuredProducts.length > 0 && (
           <section className="featured-section market-section" aria-labelledby="featured-title">
             <div className="section-head">
@@ -140,38 +159,18 @@ function HomePage() {
           <h3 className="section-mini-title">Browse by Category</h3>
           <div className="category-strip">
             <div className="category-track">
-              {[
-                "Sound Systems",
-                "Merchandise",
-                "Giveaways",
-                "Lighting Systems",
-                "Wireless Microphones",
-                "Stage Uplighting",
-                "Promo Booth Kits",
-                "LED Accent Lights"
-              ]
-                .concat([
-                  "Sound Systems",
-                  "Merchandise",
-                  "Giveaways",
-                  "Lighting Systems",
-                  "Wireless Microphones",
-                  "Stage Uplighting",
-                  "Promo Booth Kits",
-                  "LED Accent Lights"
-                ])
-                .map((category, index) => (
-                  <Link
-                    key={`${category}-${index}`}
-                    to={`/shop?category=${encodeURIComponent(category)}`}
-                    className="category-chip"
-                    aria-hidden={index > 7 ? "true" : undefined}
-                    tabIndex={index > 7 ? -1 : undefined}
-                    onClick={() => trackCategoryView(category, { source: "home-category-strip" })}
-                  >
-                    {category}
-                  </Link>
-                ))}
+              {categoryList.concat(categoryList).map((category, index) => (
+                <Link
+                  key={`${category}-${index}`}
+                  to={`/shop?category=${encodeURIComponent(category)}`}
+                  className="category-chip"
+                  aria-hidden={index >= categoryList.length ? "true" : undefined}
+                  tabIndex={index >= categoryList.length ? -1 : undefined}
+                  onClick={() => trackCategoryView(category, { source: "home-category-strip" })}
+                >
+                  {category}
+                </Link>
+              ))}
             </div>
           </div>
         </section>
@@ -251,48 +250,7 @@ function HomePage() {
           </div>
 
           <div className="trust-grid">
-            {[
-              {
-                title: "Shop or Rent Easily",
-                text: "Switch between purchase and rental options instantly for each product.",
-                icon: (
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" width="28" height="28">
-                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-                    <path d="M3 6h18" stroke="currentColor" strokeWidth="1.8"/>
-                    <path d="M16 10a4 4 0 0 1-8 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                )
-              },
-              {
-                title: "Curated Event Equipment",
-                text: "Only high-demand equipment categories with clear specs and pricing.",
-                icon: (
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" width="28" height="28">
-                    <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )
-              },
-              {
-                title: "Smart Recommendations",
-                text: "Discover relevant items based on what planners actually need.",
-                icon: (
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" width="28" height="28">
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
-                    <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                )
-              },
-              {
-                title: "Plan Faster",
-                text: "Move from discovery to checkout with fewer steps and clearer product choices.",
-                icon: (
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" width="28" height="28">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )
-              }
-            ].map(({ title, text, icon }) => (
+            {TRUST_CARDS.map(({ title, text, icon }) => (
               <article key={title} className="trust-card">
                 <div className="trust-card-icon" aria-hidden="true">{icon}</div>
                 <h3>{title}</h3>

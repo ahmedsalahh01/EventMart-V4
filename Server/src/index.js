@@ -289,31 +289,42 @@ function summarizeProductCatalog(rows) {
 }
 
 function fallbackPlannerReply(prompt, context, products) {
-  const eventType = String(context?.eventType || "Event");
+  const rawType = String(context?.eventType || "event");
   const attendees = Number(context?.attendees || 0) || 100;
   const budget = Number(context?.budget || 0) || 5000;
   const venue = String(context?.venue || "Indoor");
+  const mode = String(context?.mode || "quick");
+
+  const eventLabel = rawType.charAt(0).toUpperCase() + rawType.slice(1).replace(/-/g, " ");
 
   const categoryHints = {
-    wedding: ["wood", "sound", "stage"],
-    "private-party": ["merch", "giveaway", "sound"],
-    birthday: ["merch", "sound", "wood"],
-    corporate: ["sound", "stage", "wood"],
-    outdoor: ["stage", "sound", "screen"],
-    indoor: ["light", "sound", "screen"]
+    wedding: ["sound", "stage", "light", "wood", "screen"],
+    "private-party": ["sound", "light", "merch", "giveaway"],
+    birthday: ["sound", "light", "merch", "screen"],
+    corporate: ["sound", "stage", "screen", "light", "wood"],
+    outdoor: ["stage", "sound", "screen", "light"],
+    concert: ["sound", "stage", "screen", "light"],
+    conference: ["sound", "screen", "stage", "wood"],
+    default: ["sound", "light", "stage", "screen"]
   };
 
-  const hints = categoryHints[eventType.toLowerCase()] || [];
-  const picked = products
-    .filter((item) => {
-      if (!hints.length) return true;
-      const c = String(item.category || "").toLowerCase();
-      return hints.some((hint) => c.includes(hint));
-    })
-    .slice(0, 5);
+  const hints = categoryHints[rawType.toLowerCase()] || categoryHints.default;
+
+  let picked = products.filter((item) => {
+    const c = String(item.category || "").toLowerCase();
+    return hints.some((hint) => c.includes(hint));
+  });
+
+  const perItemBudget = budget * 0.45;
+  const affordable = picked.filter((item) => {
+    const price = Number(item.buy_price) || Number(item.rent_price_per_day) || 0;
+    return price === 0 || price <= perItemBudget;
+  });
+
+  picked = (affordable.length >= 3 ? affordable : picked).slice(0, 5);
 
   const lines = [
-    `### Your ${eventType} Plan`,
+    `### Your ${eventLabel} Plan`,
     `- **Attendees:** ${attendees}`,
     `- **Venue:** ${venue}`,
     `- **Budget:** ${formatUsd(budget)}`,
@@ -322,7 +333,7 @@ function fallbackPlannerReply(prompt, context, products) {
   ];
 
   if (picked.length === 0) {
-    lines.push("- No products found yet. Add products from Admin to get matching recommendations.");
+    lines.push("- No matching products found. Add more products from Admin to get catalog-aware recommendations.");
   } else {
     picked.forEach((item) => {
       const price = Number.isFinite(Number(item.buy_price))
@@ -330,20 +341,35 @@ function fallbackPlannerReply(prompt, context, products) {
         : Number.isFinite(Number(item.rent_price_per_day))
           ? `${formatUsd(item.rent_price_per_day)}/day`
           : "Price unavailable";
-
       lines.push(`- **${item.name}** (${item.mode}) - ${price}`);
     });
   }
 
+  const prepWeeks = attendees > 500 ? 12 : attendees > 200 ? 8 : attendees > 50 ? 6 : 4;
+  const midWeeks = Math.round(prepWeeks / 2);
+
   lines.push(
     "",
     "### Suggested Timeline",
-    "- 8 weeks before: confirm venue and core equipment",
-    "- 4 weeks before: finalize quantities and delivery",
-    "- 1 week before: setup rehearsal and crew checklist",
-    "- Event day: setup starts 4-6 hours before guests",
+    `- ${prepWeeks} weeks before: confirm venue, vendors, and core equipment`,
+    `- ${midWeeks} weeks before: finalize quantities, delivery schedule, and crew`,
+    "- 1 week before: run setup rehearsal and review crew checklist",
+    "- Event day: setup starts 4–6 hours before guests arrive"
+  );
+
+  if (mode === "intelligent" || attendees > 200) {
+    lines.push(
+      "",
+      "### Budget Notes",
+      `- Scope for ${attendees} attendees at a ${venue} venue`,
+      `- Keep core equipment spend under ${formatUsd(budget * 0.6)} to stay on budget`,
+      `- Reserve ${formatUsd(budget * 0.2)} for day-of contingencies`
+    );
+  }
+
+  lines.push(
     "",
-    `You can refine this plan by adding more details to: "${prompt}".`
+    "Want a more tailored plan? Share your event theme, specific equipment needs, or preferred product categories."
   );
 
   return lines.join("\n");

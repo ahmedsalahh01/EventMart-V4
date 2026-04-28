@@ -15,7 +15,6 @@ import {
 } from "../lib/packageMinimums";
 import { apiRequest } from "../lib/api";
 import {
-  createCartItemsFromBuilderPreview,
   createPackageGroupId,
   previewPackageBuilder
 } from "../lib/packages";
@@ -65,6 +64,7 @@ function PackageBuilderPage() {
     venueType: ""
   }));
   const [packageGroupId] = useState(() => createPackageGroupId(packageSlug ? "package" : "builder"));
+  const [packageName, setPackageName] = useState("My Event Package");
   const { requireAuth } = useRequireAuth();
   const { setItems } = useCart();
 
@@ -188,19 +188,55 @@ function PackageBuilderPage() {
     setMessage("");
   }
 
-  function replacePackageCartItems(nextPreview) {
-    const cartItems = createCartItemsFromBuilderPreview(nextPreview);
+  function buildPackageCartItem(nextPreview) {
+    const name = packageName.trim() || "My Event Package";
+    const selectedItems = Array.isArray(nextPreview?.selectedItems) ? nextPreview.selectedItems : [];
+    const products = Array.isArray(nextPreview?.products) ? nextPreview.products : [];
+    const productMap = new Map(products.map((p) => [Number(p.id), p]));
 
-    setItems((current) => [
-      ...current.filter((item) => item?.package_meta?.packageGroupId !== packageGroupId),
-      ...cartItems
-    ]);
+    const description = selectedItems
+      .map((entry) => {
+        const product = productMap.get(Number(entry.id));
+        if (!product || !entry.quantity) return null;
+        const modeLabel = entry.mode === "rent" ? "Rent" : "Buy";
+        return `${product.name} ×${entry.quantity} (${modeLabel})`;
+      })
+      .filter(Boolean)
+      .join(", ");
+
+    const totalPrice = Number(nextPreview?.summary?.finalTotal || 0);
+    const currency = String(nextPreview?.summary?.currency || "EGP");
+
+    return {
+      id: packageGroupId,
+      name,
+      description,
+      unit_price: totalPrice,
+      currency,
+      quantity: 1,
+      mode: "buy",
+      category: "Package",
+      subcategory: "Custom Package",
+      buy_enabled: true,
+      rent_enabled: false,
+      package_meta: {
+        packageGroupId,
+        isBuilderPackage: true,
+        packagePrice: totalPrice
+      }
+    };
   }
 
   function handleSaveToCart(nextPreview, { checkout = false } = {}) {
     if (!nextPreview?.canCheckout || minimumViolations.length > 0) return;
 
-    replacePackageCartItems(nextPreview);
+    const packageItem = buildPackageCartItem(nextPreview);
+
+    setItems((current) => [
+      ...current.filter((item) => item?.package_meta?.packageGroupId !== packageGroupId),
+      packageItem
+    ]);
+
     setMessage(checkout ? "Package saved to cart. Redirecting to checkout..." : "Package saved to your cart.");
 
     if (checkout) {
@@ -518,6 +554,17 @@ function PackageBuilderPage() {
           <div className="package-shell-card package-summary-card">
             <p className="package-eyebrow">Pricing Summary</p>
             <h2>Package totals</h2>
+
+            <label className="package-field package-name-field">
+              <span>Package name</span>
+              <input
+                type="text"
+                value={packageName}
+                onChange={(e) => setPackageName(e.target.value)}
+                placeholder="My Event Package"
+                maxLength={80}
+              />
+            </label>
 
             <div className="package-summary-list">
               {preview ? (

@@ -683,6 +683,16 @@ html[data-interface-theme="dark"] [data-theme-scope="planner"] .planner-header-c
   }
 }
 
+.warning-section {
+  background: var(--planner-warning-bg);
+  border-color: var(--planner-warning-border);
+}
+
+.warning-section h3,
+.warning-section li {
+  color: var(--planner-warning-text);
+}
+
 @media (max-width: 640px) {
   .planner-page {
     width: min(var(--max-width), calc(100% - var(--page-inline)));
@@ -736,13 +746,4 @@ html[data-interface-theme="dark"] [data-theme-scope="planner"] .planner-header-c
   .chat-input-row {
     padding: 14px 16px 16px;
   }
-  .warning-section {
-  background: var(--planner-warning-bg);
-  border-color: var(--planner-warning-border);
-}
-
-.warning-section h3,
-.warning-section li {
-  color: var(--planner-warning-text);
-}
 }

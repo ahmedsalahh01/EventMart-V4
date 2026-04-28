@@ -9,12 +9,14 @@ import { buildAuthPath, shouldShowCartIcon } from "../lib/authNavigation";
 const regularNavItems = [
   { to: "/", label: "Home" },
   { to: "/shop", label: "Shop" },
+  { to: "/ai-planner", label: "AI Planner" },
   { to: "/about", label: "About" },
   { to: "/contact", label: "Contact" }
 ];
 
-const badgeNavItems = [
-  { to: "/packages", label: "Packages" }
+const packagesDropdownItems = [
+  { to: "/packages", label: "Browse Packages" },
+  { to: "/package-builder", label: "Create Package" }
 ];
 
 function Navbar() {
@@ -45,7 +47,7 @@ function Navbar() {
     };
   }, [isHomeRoute]);
 
-  const activePath = regularNavItems.find((item) => item.to === location.pathname)?.to ?? null;
+  const activePath = regularNavItems.find((item) => item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to))?.to ?? null;
   const highlightedPath = hoveredPath ?? activePath;
   const navClassName = `navbar${isHomeRoute ? " navbar-home" : ""}${isHomeRoute && isScrolled ? " navbar-home-scrolled" : ""}`;
 
@@ -77,16 +79,31 @@ function Navbar() {
             </NavLink>
           </li>
         ))}
-        {badgeNavItems.map((item) => (
-          <li key={item.to}>
-            <NavLink
-              to={item.to}
-              className={({ isActive }) => `nav-badge${isActive ? " active" : ""}`}
-            >
-              {item.label}
-            </NavLink>
-          </li>
-        ))}
+        <li className="nav-packages-item">
+          <button
+            type="button"
+            className={`nav-badge nav-packages-trigger${packagesDropdownItems.some((i) => location.pathname.startsWith(i.to)) ? " active" : ""}`}
+          >
+            Packages
+            <svg className="nav-packages-chevron" viewBox="0 0 12 12" fill="none" aria-hidden="true" width="11" height="11">
+              <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <div className="nav-packages-dropdown">
+            <ul className="nav-packages-dropdown-inner">
+              {packagesDropdownItems.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    className={({ isActive }) => isActive ? "active" : undefined}
+                  >
+                    {item.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </li>
       </ul>
 
       <div className="nav-actions">
