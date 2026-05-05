@@ -9,36 +9,28 @@ import {
   savePackage
 } from "../lib/admin";
 
-const PACKAGE_VENUE_OPTIONS = [
+const VENUE_OPTIONS = [
   { label: "Indoor", value: "indoor" },
   { label: "Outdoor", value: "outdoor" },
   { label: "Hybrid", value: "hybrid" }
 ];
-const PACKAGE_CUSTOMIZATION_TYPE_OPTIONS = [
+const CUSTOMIZATION_OPTIONS = [
   { label: "Not Customizable", value: "not customizable" },
   { label: "Customizable", value: "customizable" },
   { label: "Hybrid", value: "hybrid" }
 ];
 
-function createSimplePackageItem() {
-  const item = createEmptyPackageItem();
-
-  return {
-    ...item,
-    customizable: false,
-    description: "",
-    quantityPerItem: "1"
-  };
+function createSimpleItem() {
+  return { ...createEmptyPackageItem(), customizable: false, description: "", quantityPerItem: "1" };
 }
 
-function createSimplePackageForm() {
-  const form = createEmptyPackageForm();
-
+function createSimpleForm() {
+  const base = createEmptyPackageForm();
   return {
-    ...form,
+    ...base,
     active: true,
     contextDefaults: {
-      ...form.contextDefaults,
+      ...base.contextDefaults,
       customizationAvailable: false,
       customizationType: "not customizable",
       guestCount: "",
@@ -48,24 +40,14 @@ function createSimplePackageForm() {
       recommendedFor: "",
       venueType: "hybrid"
     },
-    items: [createSimplePackageItem()],
+    items: [createSimpleItem()],
     status: "active",
     visibility: "public"
   };
 }
 
-function simplifyLoadedPackage(pkg) {
+function loadForm(pkg) {
   const form = buildFormFromPackage(pkg);
-  const nextItems = Array.isArray(form.items) && form.items.length
-    ? form.items.map((item) => ({
-        ...createSimplePackageItem(),
-        ...item,
-        customizable: Boolean(item?.customizable),
-        description: String(item?.description || item?.notes || ""),
-        quantityPerItem: String(item?.quantityPerItem || item?.defaultQuantity || item?.minimumQuantity || 1)
-      }))
-    : [createSimplePackageItem()];
-
   return {
     ...form,
     active: true,
@@ -80,150 +62,119 @@ function simplifyLoadedPackage(pkg) {
       recommendedFor: String(form.contextDefaults?.recommendedFor || ""),
       venueType: form.contextDefaults?.venueType || "hybrid"
     },
-    items: nextItems,
+    items: Array.isArray(form.items) && form.items.length
+      ? form.items.map((item) => ({
+          ...createSimpleItem(),
+          ...item,
+          customizable: Boolean(item?.customizable),
+          description: String(item?.description || item?.notes || ""),
+          quantityPerItem: String(item?.quantityPerItem || item?.defaultQuantity || item?.minimumQuantity || 1)
+        }))
+      : [createSimpleItem()],
     status: "active",
     visibility: "public"
   };
 }
 
-function resolveItemProduct(item, productMap) {
-  return productMap.get(String(item?.productId || item?.product?.id || "")) || item?.product || null;
+function resolveProduct(item, map) {
+  return map.get(String(item?.productId || item?.product?.id || "")) || item?.product || null;
 }
 
-function getPackageCurrency(form, productMap) {
-  const selectedProduct = (Array.isArray(form?.items) ? form.items : [])
-    .map((item) => resolveItemProduct(item, productMap))
-    .find(Boolean);
-
-  return String(selectedProduct?.currency || "EGP");
+function getCurrency(form, map) {
+  const p = (Array.isArray(form?.items) ? form.items : []).map((i) => resolveProduct(i, map)).find(Boolean);
+  return String(p?.currency || "EGP");
 }
 
-function getCustomizationTypeLabel(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "customizable") return "Customizable";
-  if (normalized === "hybrid") return "Hybrid";
-  return "Not customizable";
+function venueLabel(v) {
+  return v === "indoor" ? "Indoor" : v === "outdoor" ? "Outdoor" : "Hybrid";
 }
 
-function getVenueLabel(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "indoor") return "Indoor";
-  if (normalized === "outdoor") return "Outdoor";
-  if (normalized === "hybrid") return "Hybrid";
-  return "General";
-}
-
-function getRecommendedForLabel(value) {
-  return String(value || "")
-    .split(/\r?\n|,/)
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .join(", ");
+function customLabel(v) {
+  return v === "customizable" ? "Customizable" : v === "hybrid" ? "Hybrid" : "Standard";
 }
 
 function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products, productsError }) {
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(createSimplePackageForm());
+  const [form, setForm] = useState(createSimpleForm());
   const [notice, setNotice] = useState("");
   const [pageError, setPageError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [search, setSearch] = useState("");
+
   const safePackages = Array.isArray(packages) ? packages : [];
   const safeProducts = Array.isArray(products) ? products : [];
 
   const productMap = useMemo(
-    () => new Map(safeProducts.map((product) => [String(product.id), product])),
+    () => new Map(safeProducts.map((p) => [String(p.id), p])),
     [safeProducts]
   );
 
-  const packageCurrency = useMemo(
-    () => getPackageCurrency(form, productMap),
-    [form, productMap]
-  );
+  const filteredPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return safePackages;
+    return safePackages.filter((pkg) =>
+      [pkg.name, pkg.description, ...(Array.isArray(pkg.items) ? pkg.items.map((i) => i?.product?.name) : [])]
+        .join(" ").toLowerCase().includes(q)
+    );
+  }, [safePackages, search]);
 
-  function resetForm({ clearNotice = true } = {}) {
+  const currency = useMemo(() => getCurrency(form, productMap), [form, productMap]);
+
+  function reset({ clearNotice = true } = {}) {
     setEditingId(null);
-    setForm(createSimplePackageForm());
-    if (clearNotice) {
-      setNotice("");
-    }
+    setForm(createSimpleForm());
+    if (clearNotice) setNotice("");
     setPageError("");
   }
 
-  function updateField(field, value) {
-    setForm((current) => ({
-      ...current,
-      [field]: value
-    }));
-    setNotice("");
-    setPageError("");
+  function setField(field, value) {
+    setForm((c) => ({ ...c, [field]: value }));
+    setNotice(""); setPageError("");
   }
 
-  function updateContextField(field, value) {
-    setForm((current) => ({
-      ...current,
+  function setCtx(field, value) {
+    setForm((c) => ({
+      ...c,
       contextDefaults: {
-        ...current.contextDefaults,
+        ...c.contextDefaults,
         [field]: value,
         customizationAvailable:
-          field === "customizationType"
-            ? value !== "not customizable"
-            : current.contextDefaults.customizationType !== "not customizable"
+          field === "customizationType" ? value !== "not customizable"
+          : c.contextDefaults.customizationType !== "not customizable"
       }
     }));
-    setNotice("");
-    setPageError("");
+    setNotice(""); setPageError("");
   }
 
-  function updateItem(itemIndex, field, value) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.map((item, index) => (
-        index === itemIndex
-          ? {
-              ...item,
-              [field]: value
-            }
-          : item
-      ))
+  function setItem(idx, field, value) {
+    setForm((c) => ({
+      ...c,
+      items: c.items.map((item, i) => i === idx ? { ...item, [field]: value } : item)
     }));
-    setNotice("");
-    setPageError("");
+    setNotice(""); setPageError("");
   }
 
   function addItem() {
-    setForm((current) => ({
-      ...current,
-      items: [...current.items, createSimplePackageItem()]
-    }));
-    setNotice("");
-    setPageError("");
+    setForm((c) => ({ ...c, items: [...c.items, createSimpleItem()] }));
   }
 
-  function removeItem(itemIndex) {
-    setForm((current) => ({
-      ...current,
-      items: current.items.length === 1
-        ? [createSimplePackageItem()]
-        : current.items.filter((_, index) => index !== itemIndex)
+  function removeItem(idx) {
+    setForm((c) => ({
+      ...c,
+      items: c.items.length === 1 ? [createSimpleItem()] : c.items.filter((_, i) => i !== idx)
     }));
-    setNotice("");
-    setPageError("");
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setIsSaving(true);
-    setNotice("");
-    setPageError("");
-
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setIsSaving(true); setNotice(""); setPageError("");
     try {
-      const payload = buildPackagePayload(form);
-      await savePackage(payload, editingId);
+      await savePackage(buildPackagePayload(form), editingId);
       await onPackagesRefresh();
-      resetForm({ clearNotice: false });
-      setNotice(editingId ? "Package updated successfully." : "Package created successfully.");
-    } catch (submitError) {
-      setPageError(submitError?.message || "Unable to save this package.");
+      reset({ clearNotice: false });
+      setNotice(editingId ? "Package updated." : "Package created.");
+    } catch (err) {
+      setPageError(err?.message || "Unable to save package.");
     } finally {
       setIsSaving(false);
     }
@@ -231,30 +182,21 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
 
   function handleEdit(pkg) {
     setEditingId(pkg.id);
-    setForm(simplifyLoadedPackage(pkg));
-    setNotice("");
-    setPageError("");
+    setForm(loadForm(pkg));
+    setNotice(""); setPageError("");
     window.scrollTo({ behavior: "smooth", top: 0 });
   }
 
   async function handleDelete(pkg) {
-    const confirmed = window.confirm(`Delete "${pkg.name}"?`);
-    if (!confirmed) return;
-
-    setNotice("");
-    setPageError("");
-
+    if (!window.confirm(`Delete "${pkg.name}"?`)) return;
+    setNotice(""); setPageError("");
     try {
       await removePackage(pkg.id);
       await onPackagesRefresh();
-
-      if (editingId === pkg.id) {
-        resetForm();
-      }
-
-      setNotice("Package deleted successfully.");
-    } catch (deleteError) {
-      setPageError(deleteError?.message || "Unable to delete this package.");
+      if (editingId === pkg.id) reset();
+      setNotice("Package deleted.");
+    } catch (err) {
+      setPageError(err?.message || "Unable to delete package.");
     }
   }
 
@@ -263,329 +205,237 @@ function PackagesPage({ error, isLoading, onPackagesRefresh, packages, products,
       <div className="section-head">
         <div>
           <h2>Packages</h2>
-          <p className="muted">Create frontend-ready packages with exact package pricing, venue/customization metadata, and catalog-backed package items.</p>
+          <p className="muted">Build event packages from your catalog with fixed pricing and venue metadata.</p>
+        </div>
+        <div className="title-actions">
+          <span className="pkg-count-badge">{safePackages.length} package{safePackages.length !== 1 ? "s" : ""}</span>
         </div>
       </div>
 
       <div className="section-stack">
-        {error ? (
+        {(error || productsError || pageError) && (
           <div className="feedback-panel error">
-            <strong>Package data could not be refreshed.</strong>
-            <span>{error}</span>
+            <strong>Something went wrong.</strong>
+            <span>{error || productsError || pageError}</span>
           </div>
-        ) : null}
-
-        {productsError ? (
-          <div className="feedback-panel error">
-            <strong>Product data is incomplete for package editing.</strong>
-            <span>{productsError}</span>
-          </div>
-        ) : null}
-
-        {pageError ? (
-          <div className="feedback-panel error">
-            <strong>There was a problem with the last package action.</strong>
-            <span>{pageError}</span>
-          </div>
-        ) : null}
-
-        {notice ? (
+        )}
+        {notice && (
           <div className="feedback-panel success">
-            <strong>Packages updated.</strong>
-            <span>{notice}</span>
+            <strong>Done.</strong> <span>{notice}</span>
           </div>
-        ) : null}
+        )}
 
         <div className="admin-packages-grid">
-          <form className="panel product-form package-editor-form" onSubmit={handleSubmit}>
-            <div className="package-editor-head">
-              <div>
-                <h3>{editingId ? "Edit Package" : "Create Package"}</h3>
-                <p className="helper-text">Packages are saved with the exact storefront price, then expanded into their included catalog items when added to cart.</p>
-              </div>
+          {/* ── Form ─────────────────────────────────────────── */}
+          <form className="panel package-editor-form" onSubmit={handleSubmit}>
+            <div className="pkg-form-header">
+              <h3>{editingId ? "✏️ Edit Package" : "➕ New Package"}</h3>
+              <p className="helper-text">
+                Set the package name, price, and event context — then add catalog items below.
+              </p>
             </div>
 
+            <div className="pkg-section-label">Basic Info</div>
             <div className="form-grid">
               <div className="field">
-                <label htmlFor="package-name">Package Name</label>
-                <input
-                  id="package-name"
-                  onChange={(event) => updateField("name", event.target.value)}
-                  placeholder="Wedding Essentials Package"
-                  value={form.name}
-                />
+                <label htmlFor="pkg-name">Package Name *</label>
+                <input id="pkg-name" required placeholder="Wedding Essentials" value={form.name}
+                  onChange={(e) => setField("name", e.target.value)} />
               </div>
 
               <div className="field">
-                <label htmlFor="package-price">Package Price</label>
-                <input
-                  id="package-price"
-                  min="0"
-                  onChange={(event) => updateContextField("packagePrice", event.target.value)}
-                  placeholder="15499.75"
-                  step="0.01"
-                  type="number"
+                <label htmlFor="pkg-price">Package Price *</label>
+                <input id="pkg-price" type="number" min="0" step="0.01" placeholder="15499.75"
                   value={form.contextDefaults.packagePrice}
-                />
-                <small>
-                  This is the exact price shown on the frontend package cards and details page.
-                </small>
+                  onChange={(e) => setCtx("packagePrice", e.target.value)} />
+                <small>Exact price shown on the storefront package cards.</small>
               </div>
 
               <div className="field">
-                <label htmlFor="package-fits-for-people">Fits For People</label>
-                <input
-                  id="package-fits-for-people"
-                  min="1"
-                  onChange={(event) => updateContextField("guestCount", event.target.value)}
-                  placeholder="150"
-                  type="number"
+                <label htmlFor="pkg-guests">Fits How Many People</label>
+                <input id="pkg-guests" type="number" min="1" placeholder="150"
                   value={form.contextDefaults.guestCount}
-                />
+                  onChange={(e) => setCtx("guestCount", e.target.value)} />
               </div>
 
               <div className="field">
-                <label htmlFor="package-venue-type">Venue Type</label>
-                <select
-                  id="package-venue-type"
-                  onChange={(event) => updateContextField("venueType", event.target.value)}
-                  value={form.contextDefaults.venueType}
-                >
-                  {PACKAGE_VENUE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
+                <label htmlFor="pkg-venue">Venue Type</label>
+                <select id="pkg-venue" value={form.contextDefaults.venueType}
+                  onChange={(e) => setCtx("venueType", e.target.value)}>
+                  {VENUE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
 
               <div className="field">
-                <label htmlFor="package-customization-type">Customization Type</label>
-                <select
-                  id="package-customization-type"
-                  onChange={(event) => updateContextField("customizationType", event.target.value)}
-                  value={form.contextDefaults.customizationType}
-                >
-                  {PACKAGE_CUSTOMIZATION_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
+                <label htmlFor="pkg-custom">Customization</label>
+                <select id="pkg-custom" value={form.contextDefaults.customizationType}
+                  onChange={(e) => setCtx("customizationType", e.target.value)}>
+                  {CUSTOMIZATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
 
               <div className="field package-form-span-full">
-                <label htmlFor="package-description">Package Description</label>
-                <textarea
-                  id="package-description"
-                  onChange={(event) => updateField("description", event.target.value)}
-                  placeholder="Describe what makes this package useful and what event setup it is best for."
-                  rows="4"
+                <label htmlFor="pkg-desc">Description</label>
+                <textarea id="pkg-desc" rows="3" placeholder="Describe this package and which events it suits best."
                   value={form.description}
-                />
+                  onChange={(e) => setField("description", e.target.value)} />
               </div>
 
               <div className="field package-form-span-full">
-                <label htmlFor="package-recommended-for">Recommended For</label>
-                <textarea
-                  id="package-recommended-for"
-                  onChange={(event) => updateContextField("recommendedFor", event.target.value)}
-                  placeholder="weddings&#10;birthdays&#10;conferences"
-                  rows="3"
+                <label htmlFor="pkg-recommended">Recommended For</label>
+                <textarea id="pkg-recommended" rows="2"
+                  placeholder={"weddings\nbirthdays\nconferences"}
                   value={form.contextDefaults.recommendedFor}
-                />
-                <small>
-                  Enter one or more event uses, separated by commas or new lines.
-                </small>
-              </div>
-
-              <div className="field">
-                <label>Frontend Price Preview</label>
-                <div className="package-simple-price-card">
-                  <strong>{formatMoney(form.contextDefaults.packagePrice || 0, packageCurrency)}</strong>
-                  <span>Stored package price shown on Browse Packages and View Package.</span>
-                  <span>
-                    {getVenueLabel(form.contextDefaults.venueType)} | {getCustomizationTypeLabel(form.contextDefaults.customizationType)}
-                  </span>
-                </div>
+                  onChange={(e) => setCtx("recommendedFor", e.target.value)} />
+                <small>One event type per line, or comma-separated.</small>
               </div>
             </div>
 
-            <div className="package-editor-panel">
-              <div className="package-editor-panel-head">
-                <div>
-                  <h4>Items From Catalog</h4>
-                  <p className="helper-text">Each package item must come from the existing catalog. Set the package-specific description, fixed quantity, and whether that item accepts customization uploads.</p>
-                </div>
-                <button className="btn ghost" onClick={addItem} type="button">
-                  Add Item
-                </button>
-              </div>
+            {/* Price preview */}
+            <div className="pkg-price-preview">
+              <span className="pkg-preview-price">{formatMoney(form.contextDefaults.packagePrice || 0, currency)}</span>
+              <span className="pkg-preview-meta">
+                {venueLabel(form.contextDefaults.venueType)} · {customLabel(form.contextDefaults.customizationType)}
+                {form.contextDefaults.guestCount ? ` · Up to ${form.contextDefaults.guestCount} guests` : ""}
+              </span>
+            </div>
 
-              <div className="package-item-grid">
-                {form.items.map((item, itemIndex) => {
-                  const product = resolveItemProduct(item, productMap);
+            {/* ── Items ──────────────────────────────────────── */}
+            <div className="pkg-section-label" style={{ marginTop: "20px" }}>
+              Catalog Items
+              <button className="btn ghost pkg-add-item-btn" onClick={addItem} type="button">+ Add Item</button>
+            </div>
 
-                  return (
-                    <div className="package-simple-item-row package-simple-item-row-wide" key={item.id}>
-                      <div className="field package-item-field package-item-field-catalog">
-                        <label htmlFor={`package-item-product-${item.id}`}>Catalog Item</label>
-                        <select
-                          id={`package-item-product-${item.id}`}
-                          onChange={(event) => updateItem(itemIndex, "productId", event.target.value)}
-                          value={item.productId}
-                        >
-                          <option value="">Select a catalog item</option>
-                          {safeProducts.map((productOption) => (
-                            <option key={productOption.id} value={productOption.id}>
-                              {productOption.name}
-                            </option>
+            <div className="package-item-grid">
+              {form.items.map((item, idx) => {
+                const product = resolveProduct(item, productMap);
+                return (
+                  <div className="pkg-item-row" key={item.id}>
+                    <div className="pkg-item-main">
+                      <div className="field">
+                        <label>Catalog Item</label>
+                        <select value={item.productId}
+                          onChange={(e) => setItem(idx, "productId", e.target.value)}>
+                          <option value="">— Select a product —</option>
+                          {safeProducts.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
                         </select>
                       </div>
-
-                      <div className="field package-item-field package-item-field-description">
-                        <label htmlFor={`package-item-description-${item.id}`}>Item Description</label>
-                        <textarea
-                          className="package-item-description-input"
-                          id={`package-item-description-${item.id}`}
-                          onChange={(event) => updateItem(itemIndex, "description", event.target.value)}
-                          placeholder="Describe this item inside the package."
-                          rows="1"
-                          value={item.description}
-                        />
-                      </div>
-
-                      <div className="field package-item-field package-item-field-quantity">
-                        <label htmlFor={`package-item-quantity-${item.id}`}>Quantity Per Item</label>
-                        <input
-                          id={`package-item-quantity-${item.id}`}
-                          min="1"
-                          onChange={(event) => updateItem(itemIndex, "quantityPerItem", event.target.value)}
-                          type="number"
-                          value={item.quantityPerItem}
-                        />
-                      </div>
-
-                      <label className="package-checkbox package-checkbox-inline package-item-toggle">
-                        <input
-                          checked={Boolean(item.customizable)}
-                          onChange={(event) => updateItem(itemIndex, "customizable", event.target.checked)}
-                          type="checkbox"
-                        />
-                        <span>Customizable</span>
-                      </label>
-
-                      <button className="btn ghost package-item-remove-button" onClick={() => removeItem(itemIndex)} type="button">
-                        Remove
-                      </button>
-
-                      {product ? (
-                        <div className="package-item-preview">
-                          <strong>{product.name}</strong>
-                          <span>
-                            {product.category} / {product.subcategory}
-                          </span>
-                          <span>
-                            Package quantity {item.quantityPerItem || "1"}
-                          </span>
+                      <div className="pkg-item-controls">
+                        <div className="field">
+                          <label>Qty</label>
+                          <input type="number" min="1" value={item.quantityPerItem}
+                            onChange={(e) => setItem(idx, "quantityPerItem", e.target.value)} />
                         </div>
-                      ) : (
-                        <p className="package-empty-note">Choose a catalog item to include it in the package.</p>
-                      )}
+                        <label className="pkg-item-checkbox">
+                          <input type="checkbox" checked={Boolean(item.customizable)}
+                            onChange={(e) => setItem(idx, "customizable", e.target.checked)} />
+                          <span>Customizable</span>
+                        </label>
+                        <button className="btn ghost pkg-remove-btn" type="button" onClick={() => removeItem(idx)}>
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="field" style={{ marginTop: "6px" }}>
+                      <label>Item Note (optional)</label>
+                      <input placeholder="e.g. Includes setup and teardown"
+                        value={item.description}
+                        onChange={(e) => setItem(idx, "description", e.target.value)} />
+                    </div>
+                    {product && (
+                      <div className="pkg-item-chip">
+                        <span>{product.category} / {product.subcategory}</span>
+                        {product.buy_price ? <span>{formatMoney(product.buy_price, product.currency)}</span> : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="form-actions">
               <button className="btn primary" disabled={isSaving} type="submit">
-                {isSaving ? "Saving..." : editingId ? "Update Package" : "Create Package"}
+                {isSaving ? "Saving…" : editingId ? "Update Package" : "Create Package"}
               </button>
-              <button className="btn ghost" onClick={resetForm} type="button">
-                Reset
-              </button>
+              <button className="btn ghost" type="button" onClick={reset}>Reset</button>
             </div>
           </form>
 
+          {/* ── Package List ──────────────────────────────────── */}
           <section className="panel">
-            <div className="package-editor-head">
-              <div>
-                <h3>Saved Packages</h3>
-              </div>
+            <div className="list-head">
+              <h3>Saved Packages <span className="muted">({filteredPackages.length})</span></h3>
+              <input type="search" placeholder="Search packages…" value={search}
+                onChange={(e) => setSearch(e.target.value)} />
             </div>
 
-            {isLoading ? (
-              <div className="feedback-panel">
-                <strong>Loading packages...</strong>
-                <span>The package list will appear as soon as the API responds.</span>
-              </div>
-            ) : null}
+            {isLoading && (
+              <div className="feedback-panel"><strong>Loading packages…</strong></div>
+            )}
 
             <div className="package-list">
-              {safePackages.length ? (
-                safePackages.map((pkg) => {
-                  const simpleForm = simplifyLoadedPackage(pkg);
-                  const displayPrice = formatMoney(
-                    simpleForm.contextDefaults.packagePrice || 0,
-                    getPackageCurrency(simpleForm, productMap)
-                  );
-                  const recommendedForLabel = getRecommendedForLabel(simpleForm.contextDefaults.recommendedFor);
-
-                  return (
-                    <article className="package-card" key={pkg.id}>
-                      <div className="package-card-main">
-                        <div className="package-card-head">
-                          <div>
-                            <h4>{pkg.name}</h4>
-                            <p className="meta">
-                              {getVenueLabel(simpleForm.contextDefaults.venueType)} | {getCustomizationTypeLabel(simpleForm.contextDefaults.customizationType)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <p className="meta">
-                          Fits {simpleForm.contextDefaults.guestCount || "flexible"} people
-                          {recommendedForLabel ? ` | ${recommendedForLabel}` : ""}
-                        </p>
-                        <p className="meta">{simpleForm.description || "No description provided."}</p>
-                        <p className="price-line">Overall price {displayPrice}</p>
-
-                        <div className="package-card-items">
-                          {simpleForm.items.map((item) => {
-                            const product = resolveItemProduct(item, productMap);
-
-                            return (
-                              <div className="package-card-item" key={item.id}>
-                              <div className="package-card-item-copy">
-                                  <strong title={product?.name || "Catalog item"}>{product?.name || "Catalog item"}</strong>
-                                  <span>Qty {item.quantityPerItem || item.defaultQuantity || 1}</span>
-                                  <p>{item.description || product?.description || "No item description provided."}</p>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="product-actions">
-                        <button className="btn primary" onClick={() => handleEdit(pkg)} type="button">
-                          Edit
-                        </button>
-                        <button className="btn ghost" onClick={() => { void handleDelete(pkg); }} type="button">
-                          Delete
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })
-              ) : (
+              {!isLoading && filteredPackages.length === 0 && (
                 <div className="feedback-panel">
-                  <strong>No packages found.</strong>
-                  <span>Create your first package using the form on the left.</span>
+                  <strong>{search ? "No packages match your search." : "No packages yet."}</strong>
+                  <span>{search ? "Try a different keyword." : "Create your first package using the form."}</span>
                 </div>
               )}
+
+              {filteredPackages.map((pkg) => {
+                const f = loadForm(pkg);
+                const price = formatMoney(f.contextDefaults.packagePrice || 0, getCurrency(f, productMap));
+                const itemCount = Array.isArray(f.items) ? f.items.filter((i) => i.productId).length : 0;
+                const recommended = String(f.contextDefaults.recommendedFor || "")
+                  .split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+
+                return (
+                  <article className="pkg-card" key={pkg.id}>
+                    <div className="pkg-card-top">
+                      <div>
+                        <h4>{pkg.name}</h4>
+                        <div className="pkg-badges">
+                          <span className="pkg-badge pkg-badge--venue">{venueLabel(f.contextDefaults.venueType)}</span>
+                          <span className="pkg-badge pkg-badge--custom">{customLabel(f.contextDefaults.customizationType)}</span>
+                          <span className="pkg-badge pkg-badge--items">{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
+                          {f.contextDefaults.guestCount && (
+                            <span className="pkg-badge">👥 {f.contextDefaults.guestCount}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="pkg-card-price">{price}</span>
+                    </div>
+
+                    {f.description && <p className="pkg-card-desc">{f.description}</p>}
+
+                    {recommended.length > 0 && (
+                      <div className="pkg-recommended-tags">
+                        {recommended.slice(0, 4).map((tag) => (
+                          <span key={tag} className="pkg-tag">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="pkg-card-items-preview">
+                      {f.items.filter((i) => i.productId).map((item) => {
+                        const p = resolveProduct(item, productMap);
+                        return (
+                          <div key={item.id} className="pkg-card-item-chip">
+                            <span>{p?.name || "Unknown"}</span>
+                            <span className="pkg-item-qty">×{item.quantityPerItem || 1}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="product-actions">
+                      <button className="btn primary" type="button" onClick={() => handleEdit(pkg)}>Edit</button>
+                      <button className="btn ghost" type="button" onClick={() => void handleDelete(pkg)}>Delete</button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
         </div>

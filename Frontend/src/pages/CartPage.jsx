@@ -26,7 +26,7 @@ function CartPage() {
 
   const { error: pricingError, isLoading: pricingLoading, summary } = useCartPricingSummary(items);
 
-  const currency = items[0]?.currency || "USD";
+  const currency = items[0]?.currency || "EGP";
   const hasItems = items.length > 0;
   const authLabel = isAuthenticated && firstName ? `Hi, ${firstName}` : "Sign In";
   const cartTitle = selectedEventType ? `${getEventTypeConfig(selectedEventType)?.label || "Event"} Cart` : "Shopping Cart";
