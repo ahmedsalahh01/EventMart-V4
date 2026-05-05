@@ -186,6 +186,9 @@ html[data-interface-theme="dark"] [data-theme-scope="contact"] .contact-form tex
   font-size: 14px;
 }
 
+.form-status--success { color: #4ade80; }
+.form-status--error   { color: #f87171; }
+
 @media (max-width: 920px) {
   .contact-grid {
     grid-template-columns: 1fr;

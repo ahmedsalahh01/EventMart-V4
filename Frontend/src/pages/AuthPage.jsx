@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { resolvePostAuthPath } from "../lib/authNavigation";
+import { apiRequest } from "../lib/api";
 import "./../styles/auth.css";
 
 const INITIAL_SIGNIN_FORM = {
@@ -273,6 +274,11 @@ function AuthPage() {
   const [showSignInPassword, setShowSignInPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [forgotStep, setForgotStep] = useState(null); // null | "request" | "reset"
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotToken, setForgotToken] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotGeneratedToken, setForgotGeneratedToken] = useState("");
 
   const maxBirthDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -419,10 +425,50 @@ function AuthPage() {
   }
 
   function handleForgotPassword() {
-    setStatus({
-      message: "Password reset is not connected yet. Please use your existing password for now.",
-      tone: "info"
-    });
+    setForgotStep("request");
+    setForgotEmail("");
+    setForgotToken("");
+    setForgotNewPassword("");
+    setForgotGeneratedToken("");
+    clearStatus();
+  }
+
+  function handleCancelForgot() {
+    setForgotStep(null);
+    clearStatus();
+  }
+
+  async function handleForgotRequest(event) {
+    event.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setStatus({ message: "Requesting reset code…", tone: "pending" });
+    try {
+      const data = await apiRequest("/api/auth/forgot-password", {
+        method: "POST",
+        body: { email: forgotEmail.trim() }
+      });
+      setForgotGeneratedToken(data?.reset_token || "");
+      setForgotStep("reset");
+      setStatus({ message: data?.message || "Code generated.", tone: "success" });
+    } catch (err) {
+      setStatus({ message: err?.message || "Request failed.", tone: "error" });
+    }
+  }
+
+  async function handleForgotReset(event) {
+    event.preventDefault();
+    if (!forgotToken.trim() || !forgotNewPassword) return;
+    setStatus({ message: "Resetting password…", tone: "pending" });
+    try {
+      const data = await apiRequest("/api/auth/reset-password", {
+        method: "POST",
+        body: { token: forgotToken.trim(), password: forgotNewPassword }
+      });
+      setForgotStep(null);
+      setStatus({ message: data?.message || "Password updated! You can now sign in.", tone: "success" });
+    } catch (err) {
+      setStatus({ message: err?.message || "Reset failed.", tone: "error" });
+    }
   }
 
   function handleSocialClick(providerLabel) {
@@ -617,6 +663,62 @@ function AuthPage() {
 
                   <button type="submit" className="auth-submit-btn">
                     Create Account
+                  </button>
+                </form>
+              ) : forgotStep === "request" ? (
+                <form className="auth-form" onSubmit={handleForgotRequest} noValidate>
+                  <p className="auth-forgot-hint">Enter your account email and we'll generate a reset code.</p>
+                  <AuthField
+                    autoComplete="email"
+                    icon="email"
+                    id="forgotEmail"
+                    inputMode="email"
+                    label="Email Address"
+                    name="forgotEmail"
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    required
+                    type="email"
+                    value={forgotEmail}
+                  />
+                  <button type="submit" className="auth-submit-btn">Send Reset Code</button>
+                  <button type="button" className="auth-inline-link" style={{ marginTop: "8px" }} onClick={handleCancelForgot}>
+                    ← Back to sign in
+                  </button>
+                </form>
+              ) : forgotStep === "reset" ? (
+                <form className="auth-form" onSubmit={handleForgotReset} noValidate>
+                  {forgotGeneratedToken && (
+                    <div className="auth-reset-token-box">
+                      <p className="auth-forgot-hint">Your reset code (copy this):</p>
+                      <code className="auth-reset-token-value">{forgotGeneratedToken}</code>
+                    </div>
+                  )}
+                  <AuthField
+                    icon="lock"
+                    id="forgotToken"
+                    label="Reset Code"
+                    name="forgotToken"
+                    onChange={(e) => setForgotToken(e.target.value)}
+                    placeholder="Paste your reset code"
+                    required
+                    type="text"
+                    value={forgotToken}
+                  />
+                  <AuthField
+                    icon="lock"
+                    id="forgotNewPassword"
+                    label="New Password"
+                    name="forgotNewPassword"
+                    onChange={(e) => setForgotNewPassword(e.target.value)}
+                    placeholder="New password (min 6 characters)"
+                    required
+                    type="password"
+                    value={forgotNewPassword}
+                  />
+                  <button type="submit" className="auth-submit-btn">Set New Password</button>
+                  <button type="button" className="auth-inline-link" style={{ marginTop: "8px" }} onClick={handleCancelForgot}>
+                    ← Back to sign in
                   </button>
                 </form>
               ) : (

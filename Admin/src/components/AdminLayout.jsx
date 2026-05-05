@@ -8,7 +8,7 @@ const navItems = [
   { to: "/analytics", label: "Product Analysis" }
 ];
 
-function AdminLayout({ children }) {
+function AdminLayout({ children, onLogout, adminUser }) {
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -29,6 +29,13 @@ function AdminLayout({ children }) {
             </NavLink>
           ))}
         </nav>
+
+        <div className="admin-sidebar-footer">
+          {adminUser && <p className="admin-sidebar-user">{adminUser.name || adminUser.email}</p>}
+          <button type="button" className="admin-logout-btn" onClick={onLogout}>
+            Sign Out
+          </button>
+        </div>
       </aside>
 
       <main className="admin-main">{children}</main>

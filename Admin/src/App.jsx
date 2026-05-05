@@ -4,12 +4,22 @@ import AppScaleFrame from "./components/AppScaleFrame";
 import AdminLayout from "./components/AdminLayout";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import DashboardPage from "./pages/DashboardPage";
+import LoginPage from "./pages/LoginPage";
 import PackagesPage from "./pages/PackagesPage";
 import ProductsPage from "./pages/ProductsPage";
 import UsersPage from "./pages/UsersPage";
-import { METRICS_KEY, loadPackages, loadProducts, loadUsers } from "./lib/admin";
+import { ADMIN_TOKEN_KEY, ADMIN_USER_KEY, METRICS_KEY, loadPackages, loadProducts, loadUsers } from "./lib/admin";
 
 function App() {
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) || "");
+  const [adminUser, setAdminUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(ADMIN_USER_KEY) || "null");
+    } catch {
+      return null;
+    }
+  });
+
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -20,6 +30,18 @@ function App() {
   const [usersError, setUsersError] = useState("");
   const [packagesError, setPackagesError] = useState("");
   const [metricsRevision, setMetricsRevision] = useState(0);
+
+  function handleLogin(token, user) {
+    setAdminToken(token);
+    setAdminUser(user);
+  }
+
+  function handleLogout() {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_USER_KEY);
+    setAdminToken("");
+    setAdminUser(null);
+  }
 
   async function refreshProducts() {
     setProductsLoading(true);
@@ -73,10 +95,11 @@ function App() {
   }
 
   useEffect(() => {
+    if (!adminToken) return;
     void refreshProducts().catch(() => {});
     void refreshUsers().catch(() => {});
     void refreshPackages().catch(() => {});
-  }, []);
+  }, [adminToken]);
 
   useEffect(() => {
     function handleStorage(event) {
@@ -89,9 +112,17 @@ function App() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
+  if (!adminToken) {
+    return (
+      <AppScaleFrame>
+        <LoginPage onLogin={handleLogin} />
+      </AppScaleFrame>
+    );
+  }
+
   return (
     <AppScaleFrame>
-      <AdminLayout>
+      <AdminLayout onLogout={handleLogout} adminUser={adminUser}>
         <Routes>
           <Route
             path="/"

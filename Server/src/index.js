@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
@@ -47,7 +49,11 @@ const fsp = fs.promises;
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
-const JWT_SECRET = process.env.JWT_SECRET || "eventmart_dev_secret_change_me";
+if (!process.env.JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET environment variable is not set.");
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 const UPLOADS_DIR = path.resolve(__dirname, "../uploads");
@@ -144,13 +150,14 @@ app.use((req, _res, next) => {
 });
 
 app.use(cors(corsOptions));
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
 app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "120mb" }));
 app.use("/api/recommendations", recommendationRouter);
-app.use("/api/admin/products", createAdminProductsRouter({ pool }));
-app.use("/api", createPackagesRouter({ pool, removeManagedCustomizationFile }));
+app.use("/api/admin/products", requireAdminAuth, createAdminProductsRouter({ pool }));
+app.use("/api", createPackagesRouter({ pool, removeManagedCustomizationFile, requireAdminAuth }));
 
 app.get("/api/config/builder", (_req, res) => {
   res.json({
@@ -230,6 +237,15 @@ function requireAuth(req, res, next) {
   } catch (_error) {
     return res.status(401).json({ error: "Invalid or expired token." });
   }
+}
+
+function requireAdminAuth(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.auth.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required." });
+    }
+    return next();
+  });
 }
 
 async function ensureSchema() {
@@ -2256,7 +2272,7 @@ app.post("/api/geolocation/reverse-egypt", async (req, res) => {
   }
 });
 
-app.post(["/product-images/upload", "/api/product-images/upload"], PRODUCT_IMAGE_UPLOAD_PARSER, async (req, res) => {
+app.post(["/product-images/upload", "/api/product-images/upload"], requireAdminAuth, PRODUCT_IMAGE_UPLOAD_PARSER, async (req, res) => {
   try {
     const productCode = parseProductCode(req.query.product_id);
     const mimeType = String(req.headers["content-type"] || "")
@@ -2290,7 +2306,7 @@ app.post(["/product-images/upload", "/api/product-images/upload"], PRODUCT_IMAGE
   }
 });
 
-app.delete(["/product-images", "/api/product-images"], async (req, res) => {
+app.delete(["/product-images", "/api/product-images"], requireAdminAuth, async (req, res) => {
   try {
     const urls = normalizeImageSourceList(req.body?.urls);
     await Promise.all(
@@ -2477,7 +2493,7 @@ app.get("/api/products/slug/:slug", async (req, res) => {
   }
 });
 
-app.post(["/products", "/api/products"], async (req, res) => {
+app.post(["/products", "/api/products"], requireAdminAuth, async (req, res) => {
   try {
     const product = normalizeProductPayload(req.body);
 
@@ -2548,7 +2564,7 @@ app.post(["/products", "/api/products"], async (req, res) => {
   }
 });
 
-app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
+app.put(["/products/:id", "/api/products/:id"], requireAdminAuth, async (req, res) => {
   try {
     const routeProductId = parseProductRouteId(req.params.id);
     const product = normalizeProductPayload(req.body);
@@ -2619,7 +2635,7 @@ app.put(["/products/:id", "/api/products/:id"], async (req, res) => {
   }
 });
 
-app.delete(["/products/:id", "/api/products/:id"], async (req, res) => {
+app.delete(["/products/:id", "/api/products/:id"], requireAdminAuth, async (req, res) => {
   try {
     const routeProductId = parseProductRouteId(req.params.id);
     const existingImagesResult = await pool.query(
@@ -2654,7 +2670,15 @@ app.delete(["/products/:id", "/api/products/:id"], async (req, res) => {
   }
 });
 
-app.post("/api/ai-planner", async (req, res) => {
+const aiPlannerLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many AI planner requests. Please wait a minute and try again." }
+});
+
+app.post("/api/ai-planner", requireAuth, aiPlannerLimiter, async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
     const context = req.body?.context && typeof req.body.context === "object" ? req.body.context : {};
@@ -2783,7 +2807,7 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-app.get("/api/users", async (_req, res) => {
+app.get("/api/users", requireAdminAuth, async (_req, res) => {
   try {
     const users = await pool.query(
       `SELECT id, name, email, role, created_at, last_login_at
@@ -3133,6 +3157,122 @@ app.get("/api/me/orders", requireAuth, async (req, res) => {
       error: "Server error",
       details: err.message
     });
+  }
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
+    }
+
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
+      [email]
+    );
+
+    if (!userResult.rows.length) {
+      // Don't reveal whether the email exists
+      return res.json({ message: "If that email is registered, a reset code has been generated." });
+    }
+
+    const userId = userResult.rows[0].id;
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+       VALUES ($1, $2, $3)`,
+      [userId, token, expiresAt]
+    );
+
+    // In production this token would be emailed. For demo purposes we return it directly.
+    return res.json({
+      message: "Reset code generated. Use it within 1 hour.",
+      reset_token: token
+    });
+  } catch (err) {
+    console.error("FORGOT PASSWORD ROUTE ERROR:", err.message);
+    return res.status(500).json({ error: "Unable to process request." });
+  }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "").trim();
+    const password = String(req.body?.password || "");
+
+    if (!token || !password) {
+      return res.status(400).json({ error: "Reset token and new password are required." });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters." });
+    }
+
+    const tokenResult = await pool.query(
+      `SELECT id, user_id, expires_at, used_at
+       FROM password_reset_tokens
+       WHERE token = $1 LIMIT 1`,
+      [token]
+    );
+
+    if (!tokenResult.rows.length) {
+      return res.status(400).json({ error: "Invalid or expired reset token." });
+    }
+
+    const tokenRow = tokenResult.rows[0];
+
+    if (tokenRow.used_at) {
+      return res.status(400).json({ error: "This reset token has already been used." });
+    }
+
+    if (new Date(tokenRow.expires_at) < new Date()) {
+      return res.status(400).json({ error: "This reset token has expired. Please request a new one." });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+
+    await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [hashedPassword, tokenRow.user_id]);
+    await pool.query("UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1", [tokenRow.id]);
+
+    return res.json({ message: "Password updated successfully. You can now sign in." });
+  } catch (err) {
+    console.error("RESET PASSWORD ROUTE ERROR:", err.message);
+    return res.status(500).json({ error: "Unable to reset password." });
+  }
+});
+
+app.post("/api/contact", async (req, res) => {
+  try {
+    const fullName = String(req.body?.fullName || "").trim();
+    const email = normalizeEmail(req.body?.email);
+    const subject = String(req.body?.subject || "").trim();
+    const message = String(req.body?.message || "").trim();
+
+    if (!fullName || !email || !subject || !message) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    if (fullName.length > 200 || subject.length > 300 || message.length > 5000) {
+      return res.status(400).json({ error: "One or more fields exceed the maximum length." });
+    }
+
+    await pool.query(
+      `INSERT INTO contact_messages (full_name, email, subject, message)
+       VALUES ($1, $2, $3, $4)`,
+      [fullName, email, subject, message]
+    );
+
+    return res.json({ success: true, message: "Message received. We'll be in touch soon." });
+  } catch (err) {
+    console.error("CONTACT ROUTE ERROR:", err.message);
+    return res.status(500).json({ error: "Unable to send your message right now. Please try again later." });
   }
 });
 

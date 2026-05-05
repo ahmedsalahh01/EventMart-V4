@@ -556,3 +556,28 @@ html[data-interface-theme="dark"] [data-theme-scope="auth"] {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Password reset ──────────────────────────────────────── */
+.auth-forgot-hint {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted, #9ca3af);
+}
+
+.auth-reset-token-box {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(74, 222, 128, 0.07);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  margin-bottom: 4px;
+}
+
+.auth-reset-token-value {
+  display: block;
+  margin-top: 6px;
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: #4ade80;
+  user-select: all;
+}

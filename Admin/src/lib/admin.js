@@ -1,4 +1,6 @@
 export const METRICS_KEY = "eventmart_product_metrics_v1";
+export const ADMIN_TOKEN_KEY = "eventmart_admin_token";
+export const ADMIN_USER_KEY = "eventmart_admin_user";
 
 const PRODUCTION_API_URL = "https://eventmart-v4-production.up.railway.app";
 const PRODUCTS_PATH = "/api/products";
@@ -253,6 +255,11 @@ export function resolveAssetUrl(source, fallback = PLACEHOLDER_IMAGE_URL) {
   return value;
 }
 
+function getAdminAuthHeader() {
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function apiRequestJson(path, options = {}) {
   const runtimeLocation = readRuntimeLocation();
   const primaryBaseUrl = normalizeBaseUrl(options.baseUrl || resolveApiBaseUrl({ location: runtimeLocation }));
@@ -272,6 +279,7 @@ async function apiRequestJson(path, options = {}) {
         cache: options.cache || "no-store",
         headers: {
           ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...getAdminAuthHeader(),
           ...(options.headers || {})
         },
         body: options.body ? JSON.stringify(options.body) : undefined
@@ -349,7 +357,8 @@ export async function uploadProductImage(file, { productId, themeMode } = {}) {
           method: "POST",
           cache: "no-store",
           headers: {
-            "Content-Type": file?.type || "application/octet-stream"
+            "Content-Type": file?.type || "application/octet-stream",
+            ...getAdminAuthHeader()
           },
           body: file
         });

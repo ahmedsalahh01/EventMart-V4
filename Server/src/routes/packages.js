@@ -745,7 +745,7 @@ async function savePackageRecord(client, payload, editingId = null) {
   return packageId;
 }
 
-function createPackagesRouter({ pool, removeManagedCustomizationFile = null }) {
+function createPackagesRouter({ pool, removeManagedCustomizationFile = null, requireAdminAuth = (_req, _res, next) => next() }) {
   const router = express.Router();
 
   router.get("/packages", async (req, res) => {
@@ -775,7 +775,7 @@ function createPackagesRouter({ pool, removeManagedCustomizationFile = null }) {
     }
   });
 
-  router.post("/packages", async (req, res) => {
+  router.post("/packages", requireAdminAuth, async (req, res) => {
     const client = await pool.connect();
 
     try {
@@ -794,7 +794,7 @@ function createPackagesRouter({ pool, removeManagedCustomizationFile = null }) {
     }
   });
 
-  router.put("/packages/:identifier", async (req, res) => {
+  router.put("/packages/:identifier", requireAdminAuth, async (req, res) => {
     const client = await pool.connect();
 
     try {
@@ -818,7 +818,7 @@ function createPackagesRouter({ pool, removeManagedCustomizationFile = null }) {
     }
   });
 
-  router.delete("/packages/:identifier", async (req, res) => {
+  router.delete("/packages/:identifier", requireAdminAuth, async (req, res) => {
     try {
       const current = await getPackageByIdentifier(pool, req.params.identifier, { includeAll: true });
       if (!current) {
@@ -856,7 +856,7 @@ function createPackagesRouter({ pool, removeManagedCustomizationFile = null }) {
     }
   });
 
-  router.post("/packages/preview", async (req, res) => {
+  router.post("/packages/preview", requireAdminAuth, async (req, res) => {
     try {
       const draftPackage =
         req.body?.package && typeof req.body.package === "object"
