@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { formatMoney, getRangeFromPreset } from "../lib/admin";
 
 function MetricCard({ title, value, sub, accent = "default", icon }) {
@@ -28,6 +29,7 @@ function MiniBar({ label, count, total }) {
 }
 
 function DashboardPage({ error, isLoading, onRefresh, products }) {
+  const navigate = useNavigate();
   const initialRange = getRangeFromPreset("month");
   const [preset, setPreset] = useState("month");
   const [rangeStart, setRangeStart] = useState(initialRange.startInput);
@@ -183,8 +185,20 @@ function DashboardPage({ error, isLoading, onRefresh, products }) {
 
         {snap?.lowStockItems.length > 0 && (
           <div className="panel dash-warning-panel">
-            <h3>⚠️ Low Stock Alerts</h3>
-            <p className="muted" style={{ marginBottom: "12px" }}>These products are at or below their reorder level.</p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "12px", gap: "12px" }}>
+              <div>
+                <h3>⚠️ Low Stock Alerts</h3>
+                <p className="muted">These products are at or below their reorder level.</p>
+              </div>
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={() => navigate("/products")}
+                style={{ flexShrink: 0 }}
+              >
+                Manage Products →
+              </button>
+            </div>
             <div className="low-stock-list">
               {snap.lowStockItems.map((p) => (
                 <div className="low-stock-row" key={p.id}>

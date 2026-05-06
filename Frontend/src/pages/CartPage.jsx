@@ -343,8 +343,9 @@ function CartPage() {
             currentEventType={selectedEventType}
             ctaLabel="Shop Matching Products"
             ctaTo={selectedEventType ? buildEventTypeShopPath(selectedEventType) : "/shop"}
+            hideEventSuffix
             limit={4}
-            title="Recommended for Your Cart"
+            title="You might be also interested in"
           />
         ) : null}
       </main>

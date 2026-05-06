@@ -778,6 +778,50 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ── Performance Indexes ────────────────────────────────────
+CREATE INDEX IF NOT EXISTS products_active_idx
+ON products (active);
+
+CREATE INDEX IF NOT EXISTS products_category_idx
+ON products (category);
+
+CREATE INDEX IF NOT EXISTS products_subcategory_idx
+ON products (subcategory);
+
+CREATE INDEX IF NOT EXISTS products_active_featured_idx
+ON products (active, featured);
+
+CREATE INDEX IF NOT EXISTS orders_user_created_idx
+ON orders (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS customization_uploads_user_idx
+ON customization_uploads (user_id);
+
+-- ── Missing Constraints ────────────────────────────────────
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'product_inventory_qty_non_negative'
+  ) THEN
+    ALTER TABLE product_inventory
+    ADD CONSTRAINT product_inventory_qty_non_negative
+    CHECK (quantity_available >= 0);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'product_inventory_reorder_non_negative'
+  ) THEN
+    ALTER TABLE product_inventory
+    ADD CONSTRAINT product_inventory_reorder_non_negative
+    CHECK (reorder_level >= 0);
+  END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS contact_messages (
   id BIGSERIAL PRIMARY KEY,
   full_name TEXT NOT NULL,

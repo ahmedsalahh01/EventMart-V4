@@ -29,12 +29,6 @@ const INITIAL_STATUS = {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?[0-9\s\-()]{7,}$/;
 
-const SOCIAL_OPTIONS = [
-  { id: "google", label: "Continue with Google" },
-  { id: "outlook", label: "Continue with Outlook" },
-  { id: "apple", label: "Continue with Apple" }
-];
-
 function resolveMode(searchParams) {
   return searchParams.get("tab") === "signin" ? "signin" : "signup";
 }
@@ -78,38 +72,6 @@ function FieldIcon({ icon }) {
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <rect x="4.5" y="10.5" width="15" height="9" rx="2.4" stroke="currentColor" strokeWidth="1.8" />
           <path d="M8 10.5V8a4 4 0 1 1 8 0v2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-      );
-    default:
-      return null;
-  }
-}
-
-function SocialIcon({ provider }) {
-  switch (provider) {
-    case "google":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M21 12.2c0-.75-.07-1.45-.19-2.14H12v4.05h5.04a4.42 4.42 0 0 1-1.87 2.89v2.4h3.09c1.81-1.67 2.74-4.12 2.74-7.2Z" fill="currentColor" />
-          <path d="M12 21c2.52 0 4.63-.84 6.17-2.28l-3.09-2.4c-.86.57-1.95.91-3.08.91-2.37 0-4.38-1.6-5.1-3.74H3.7v2.47A9.31 9.31 0 0 0 12 21Z" fill="currentColor" opacity="0.72" />
-          <path d="M6.9 13.49A5.58 5.58 0 0 1 6.6 12c0-.52.1-1.03.3-1.49V8.04H3.7A9.02 9.02 0 0 0 2.75 12c0 1.45.35 2.83.95 3.96l3.2-2.47Z" fill="currentColor" opacity="0.58" />
-          <path d="M12 6.78c1.37 0 2.6.47 3.56 1.4l2.67-2.67C16.63 4.02 14.52 3 12 3A9.31 9.31 0 0 0 3.7 8.04l3.2 2.47C7.62 8.38 9.63 6.78 12 6.78Z" fill="currentColor" opacity="0.86" />
-        </svg>
-      );
-    case "outlook":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M13.5 4h6.25A1.25 1.25 0 0 1 21 5.25v13.5A1.25 1.25 0 0 1 19.75 20H13.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M13.5 7.5H21l-4.35 4.11a1.7 1.7 0 0 1-2.3 0L10 7.5h3.5Z" fill="currentColor" opacity="0.28" />
-          <rect x="3" y="6" width="10" height="12" rx="2.4" stroke="currentColor" strokeWidth="1.8" />
-          <path d="M8 14.6c1.66 0 3-1.43 3-3.2s-1.34-3.2-3-3.2-3 1.43-3 3.2 1.34 3.2 3 3.2Z" stroke="currentColor" strokeWidth="1.8" />
-        </svg>
-      );
-    case "apple":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M15.23 5.38c.74-.89 1.22-2.12 1.08-3.38-1.08.07-2.37.72-3.11 1.61-.68.8-1.28 2.04-1.12 3.22 1.21.09 2.41-.61 3.15-1.45Z" fill="currentColor" />
-          <path d="M18.25 12.76c.02-2.2 1.8-3.25 1.88-3.3-1.03-1.5-2.62-1.71-3.18-1.73-1.34-.14-2.63.8-3.31.8-.7 0-1.76-.78-2.9-.76-1.48.02-2.87.87-3.63 2.2-1.57 2.72-.4 6.73 1.12 8.93.74 1.08 1.61 2.27 2.77 2.23 1.12-.05 1.54-.72 2.9-.72 1.35 0 1.73.72 2.92.69 1.2-.02 1.95-1.08 2.68-2.17.86-1.25 1.22-2.47 1.23-2.54-.02-.01-2.45-.94-2.48-3.63Z" fill="currentColor" opacity="0.88" />
         </svg>
       );
     default:
@@ -471,13 +433,6 @@ function AuthPage() {
     }
   }
 
-  function handleSocialClick(providerLabel) {
-    setStatus({
-      message: `${providerLabel} authentication will be available soon.`,
-      tone: "info"
-    });
-  }
-
   return (
     <>
       <Link to="/" className="auth-fixed-logo" aria-label="EventMart Home">
@@ -767,26 +722,6 @@ function AuthPage() {
                   </button>
                 </form>
               )}
-
-              <div className="auth-divider" aria-hidden="true">
-                <span>or continue with</span>
-              </div>
-
-              <div className="auth-social-list">
-                {SOCIAL_OPTIONS.map((provider) => (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    className="auth-social-btn"
-                    onClick={() => handleSocialClick(provider.label.replace("Continue with ", ""))}
-                  >
-                    <span className="auth-social-icon">
-                      <SocialIcon provider={provider.id} />
-                    </span>
-                    <span>{provider.label}</span>
-                  </button>
-                ))}
-              </div>
 
               <p className="auth-footer-copy">
                 {isSignUp ? (

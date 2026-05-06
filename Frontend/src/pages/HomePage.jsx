@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiRequest } from "../lib/api";
 import HeroSlideshow from "../components/HeroSlideshow";
-import ProductCard from "../components/shop/ProductCard";
+import FeaturedCarousel from "../components/FeaturedCarousel";
 import { buildEventTypeShopPath, listEventTypes } from "../lib/eventTypeConfig";
 import { loadProducts } from "../lib/products";
 import { getSelectedEventType, trackCategoryView, trackEventTypeSelection } from "../lib/userBehavior";
@@ -140,17 +140,29 @@ function HomePage() {
 
         {featuredProducts.length > 0 && (
           <section className="featured-section market-section" aria-labelledby="featured-title">
-            <div className="section-head">
-              <div>
-                <p className="section-kicker">Handpicked</p>
-                <h2 id="featured-title">Featured Items</h2>
+            {/* decorative background glows */}
+            <span className="featured-glow featured-glow--1" aria-hidden="true" />
+            <span className="featured-glow featured-glow--2" aria-hidden="true" />
+            <span className="featured-glow featured-glow--3" aria-hidden="true" />
+
+            <div className="featured-inner">
+              <div className="featured-header">
+                <div className="featured-header-copy">
+                  <p className="featured-kicker">Handpicked</p>
+                  <h2 id="featured-title" className="featured-title">Featured Items</h2>
+                  <p className="featured-subtitle">
+                    Curated equipment trusted by event professionals across Egypt.
+                  </p>
+                </div>
+                <Link className="featured-view-all-btn" to="/shop" aria-label="View all products">
+                  View All Products
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="16" height="16">
+                    <path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </Link>
               </div>
-              <Link className="section-link" to="/shop">View All Products</Link>
-            </div>
-            <div className="featured-grid">
-              {featuredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
+
+              <FeaturedCarousel products={featuredProducts} />
             </div>
           </section>
         )}

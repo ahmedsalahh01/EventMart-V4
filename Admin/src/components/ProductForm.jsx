@@ -78,13 +78,16 @@ function ProductForm({
           </div>
           <div className="field">
             <label htmlFor="category">Category *</label>
-            <input id="category" name="category" type="text" required
-              placeholder="Lighting" value={form.category} onChange={onChange} />
-          </div>
-          <div className="field">
-            <label htmlFor="subcategory">Subcategory *</label>
-            <input id="subcategory" name="subcategory" type="text" required
-              placeholder="Stage Lights" value={form.subcategory} onChange={onChange} />
+            <select id="category" name="category" required value={form.category} onChange={onChange}>
+              <option value="">Select a category</option>
+              <option value="Lighting">Lighting</option>
+              <option value="Sound">Sound</option>
+              <option value="Stage">Stage</option>
+              <option value="Furniture">Furniture</option>
+              <option value="Merchandise">Merchandise</option>
+              <option value="Tech & UV">Tech &amp; UV</option>
+              <option value="Sound Systems">Sound Systems</option>
+            </select>
           </div>
         </div>
 

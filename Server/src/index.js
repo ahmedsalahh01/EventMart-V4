@@ -1596,11 +1596,7 @@ function sendProductError(res, error, logPrefix) {
   }
 
   console.error(logPrefix, error.message);
-
-  return res.status(500).json({
-    error: "Server error",
-    details: error.message
-  });
+  return res.status(500).json({ error: "Server error." });
 }
 
 function sendPackageError(res, error, logPrefix) {
@@ -1613,11 +1609,7 @@ function sendPackageError(res, error, logPrefix) {
   }
 
   console.error(logPrefix, error.message);
-
-  return res.status(500).json({
-    error: "Server error",
-    details: error.message
-  });
+  return res.status(500).json({ error: "Server error." });
 }
 
 function sendCheckoutError(res, error, logPrefix) {
@@ -1633,11 +1625,7 @@ function sendCheckoutError(res, error, logPrefix) {
   }
 
   console.error(logPrefix, error.message);
-
-  return res.status(500).json({
-    error: "Server error",
-    details: error.message
-  });
+  return res.status(500).json({ error: "Server error." });
 }
 
 function setCatalogResponseHeaders(res) {
@@ -2468,11 +2456,30 @@ app.delete(["/customization-uploads", "/api/customization-uploads"], requireAuth
   }
 });
 
-app.get(["/products", "/api/products"], async (_req, res) => {
+app.get(["/products", "/api/products"], async (req, res) => {
   try {
     setCatalogResponseHeaders(res);
-    const rows = await listProducts();
-    res.json(rows);
+    const allRows = await listProducts();
+
+    const limitParam = Number(req.query.limit);
+    const pageParam = Number(req.query.page);
+    const limit = limitParam > 0 && limitParam <= 200 ? limitParam : 0;
+
+    if (!limit) {
+      return res.json(allRows);
+    }
+
+    const page = pageParam > 0 ? pageParam : 1;
+    const offset = (page - 1) * limit;
+    const slice = allRows.slice(offset, offset + limit);
+
+    return res.json({
+      data: slice,
+      page,
+      limit,
+      total: allRows.length,
+      totalPages: Math.ceil(allRows.length / limit)
+    });
   } catch (err) {
     return sendProductError(res, err, "PRODUCTS ROUTE ERROR:");
   }
@@ -2678,6 +2685,23 @@ const aiPlannerLimiter = rateLimit({
   message: { error: "Too many AI planner requests. Please wait a minute and try again." }
 });
 
+const authLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: "Too many login attempts. Please try again in 15 minutes." }
+});
+
+const authRegisterLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many registration attempts. Please try again in an hour." }
+});
+
 app.post("/api/ai-planner", requireAuth, aiPlannerLimiter, async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
@@ -2712,14 +2736,11 @@ app.post("/api/ai-planner", requireAuth, aiPlannerLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error("AI PLANNER ROUTE ERROR:", err.message);
-    return res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    return res.status(500).json({ error: "Server error." });
   }
 });
 
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register", authRegisterLimiter, async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
     const email = normalizeEmail(req.body?.email);
@@ -2755,14 +2776,11 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(201).json({ user, token });
   } catch (err) {
     console.error("REGISTER ROUTE ERROR:", err.message);
-    res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    res.status(500).json({ error: "Server error." });
   }
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authLoginLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "");
@@ -2800,10 +2818,32 @@ app.post("/api/auth/login", async (req, res) => {
     res.json({ user, token });
   } catch (err) {
     console.error("LOGIN ROUTE ERROR:", err.message);
-    res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+app.put("/api/users/:id/role", requireAdminAuth, async (req, res) => {
+  const userId = Number(req.params.id);
+  const { role } = req.body || {};
+
+  if (!["admin", "customer"].includes(role)) {
+    return res.status(400).json({ error: "Role must be 'admin' or 'customer'." });
+  }
+
+  if (userId === req.auth.userId) {
+    return res.status(403).json({ error: "You cannot change your own role." });
+  }
+
+  try {
+    const result = await pool.query(
+      "UPDATE users SET role = $1 WHERE id = $2 RETURNING id, name, email, role",
+      [role, userId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "User not found." });
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error("USER ROLE UPDATE ERROR:", err.message);
+    return res.status(500).json({ error: "Server error." });
   }
 });
 
@@ -2817,10 +2857,7 @@ app.get("/api/users", requireAdminAuth, async (_req, res) => {
     res.json(users.rows);
   } catch (err) {
     console.error("USERS ROUTE ERROR:", err.message);
-    res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    res.status(500).json({ error: "Server error." });
   }
 });
 
@@ -2843,10 +2880,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
     return res.json({ user: sanitizeUser(user) });
   } catch (err) {
     console.error("ME ROUTE ERROR:", err.message);
-    return res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    return res.status(500).json({ error: "Server error." });
   }
 });
 
@@ -2928,10 +2962,7 @@ app.put("/api/me", requireAuth, async (req, res) => {
     return res.json({ user, token });
   } catch (err) {
     console.error("UPDATE ME ROUTE ERROR:", err.message);
-    return res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    return res.status(500).json({ error: "Server error." });
   }
 });
 
@@ -3120,6 +3151,95 @@ app.get("/api/orders/:publicOrderId/confirmation", requireAuth, async (req, res)
   }
 });
 
+const ORDER_STATUS_TRANSITIONS = {
+  pending:    ["confirmed", "cancelled"],
+  confirmed:  ["processing", "cancelled"],
+  processing: ["shipped", "cancelled"],
+  shipped:    ["delivered", "cancelled"],
+  delivered:  ["completed"],
+  completed:  [],
+  cancelled:  []
+};
+
+app.patch("/api/admin/orders/:id/status", requireAdminAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  const newStatus = String(req.body?.status || "").toLowerCase().trim();
+
+  if (!orderId || !newStatus) {
+    return res.status(400).json({ error: "Order ID and status are required." });
+  }
+
+  if (!Object.keys(ORDER_STATUS_TRANSITIONS).includes(newStatus)) {
+    return res.status(400).json({ error: `Invalid status "${newStatus}".` });
+  }
+
+  try {
+    const current = await pool.query(
+      "SELECT id, status FROM orders WHERE id = $1 LIMIT 1",
+      [orderId]
+    );
+
+    if (!current.rows.length) {
+      return res.status(404).json({ error: "Order not found." });
+    }
+
+    const currentStatus = String(current.rows[0].status || "").toLowerCase();
+    const allowed = ORDER_STATUS_TRANSITIONS[currentStatus] || [];
+
+    if (!allowed.includes(newStatus)) {
+      return res.status(409).json({
+        error: `Cannot transition from "${currentStatus}" to "${newStatus}". Allowed: ${allowed.length ? allowed.join(", ") : "none"}.`
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE orders SET status = $1 WHERE id = $2
+       RETURNING id, public_order_id, status`,
+      [newStatus, orderId]
+    );
+
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error("ORDER STATUS UPDATE ERROR:", err.message);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+app.get("/api/admin/orders", requireAdminAuth, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+        o.id,
+        o.public_order_id,
+        o.status,
+        o.delivery_estimate,
+        o.subtotal,
+        o.tax,
+        o.discount,
+        o.shipping,
+        o.total,
+        o.currency,
+        o.deposit_required,
+        o.deposit_paid,
+        o.deposit_status,
+        o.created_at,
+        o.paid_at,
+        u.name  AS customer_name,
+        u.email AS customer_email,
+        COALESCE(SUM(oi.quantity), 0)::INT AS total_items
+      FROM orders o
+      LEFT JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      GROUP BY o.id, u.name, u.email
+      ORDER BY o.created_at DESC`
+    );
+    return res.json(result.rows);
+  } catch (err) {
+    console.error("ADMIN ORDERS ROUTE ERROR:", err.message);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
 app.get("/api/me/orders", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
@@ -3153,10 +3273,7 @@ app.get("/api/me/orders", requireAuth, async (req, res) => {
     return res.json(result.rows);
   } catch (err) {
     console.error("ME ORDERS ROUTE ERROR:", err.message);
-    return res.status(500).json({
-      error: "Server error",
-      details: err.message
-    });
+    return res.status(500).json({ error: "Server error." });
   }
 });
 

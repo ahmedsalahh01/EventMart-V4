@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(node --experimental-vm-modules src/lib/packageMinimums.test.js)",
-      "Bash(dir)"
+      "Bash(dir)",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\hp\\\\Desktop\\\\EventMart-V4\\\\Frontend\\\\src\\\\pages\\\\\" -Filter \"*.jsx\" | Select-Object Name)"
     ]
   }
 }

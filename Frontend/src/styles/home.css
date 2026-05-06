@@ -806,28 +806,240 @@ html[data-interface-theme="dark"] #themeIconMoon {
 }
 
 /* =========================
-   Featured Section Wrapper
+   Featured Section — Framed Card
    ========================= */
 
 .featured-section {
-  padding: 32px;
+  /* card token variables — mirrors .shop-v2 so ProductCard renders correctly outside that scope */
+  --sv2-surface: var(--c-2);
+  --sv2-border: color-mix(in srgb, var(--c-6) 12%, transparent);
+  --sv2-border-strong: color-mix(in srgb, var(--c-6) 22%, transparent);
+  --sv2-text: var(--c-6);
+  --sv2-text-soft: color-mix(in srgb, var(--c-6) 72%, transparent);
+  --sv2-text-muted: color-mix(in srgb, var(--c-6) 55%, transparent);
+  --sv2-accent: var(--page-accent-solid);
+  --sv2-accent-soft: color-mix(in srgb, var(--page-accent-solid) 12%, transparent);
+  --sv2-accent-ink: var(--page-accent-ink, var(--page-accent-solid));
+  --sv2-shadow: 0 1px 2px color-mix(in srgb, var(--c-9) 8%, transparent),
+                0 1px 1px color-mix(in srgb, var(--c-9) 4%, transparent);
+  --sv2-shadow-hover: 0 8px 24px -8px color-mix(in srgb, var(--c-9) 22%, transparent);
+
+  /* sits naturally inside .home-main — gets the page's left/right margin automatically */
   border-radius: 28px;
-  border: 1px solid color-mix(in srgb, var(--c-9) 7%, var(--c-72));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+
   background:
-    radial-gradient(ellipse at 80% 0%, color-mix(in srgb, var(--c-11) 5%, transparent) 0%, transparent 52%),
-    linear-gradient(180deg, color-mix(in srgb, var(--c-3) 40%, var(--c-2)) 0%, var(--c-2) 100%);
-  box-shadow: 0 4px 24px -8px color-mix(in srgb, var(--c-9) 8%, transparent);
+    radial-gradient(ellipse at 14% 58%, rgba(45, 210, 155, 0.26) 0%, transparent 45%),
+    radial-gradient(ellipse at 82% 16%, rgba(34, 165, 210, 0.20) 0%, transparent 44%),
+    radial-gradient(ellipse at 50% 95%, rgba(10, 70, 120, 0.32) 0%, transparent 38%),
+    linear-gradient(148deg, #071a28 0%, #0b2d3e 38%, #0e3a4c 66%, #071a28 100%);
+
+  box-shadow:
+    0 0 0 1px rgba(104, 234, 188, 0.06),
+    0 24px 64px -20px rgba(0, 0, 0, 0.60),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
+/* dark mode: keep dark bg + use dark card tokens for ProductCard */
 html[data-interface-theme="dark"] .featured-section {
-  background:
-    radial-gradient(ellipse at 80% 0%, color-mix(in srgb, var(--c-12) 8%, transparent) 0%, transparent 52%),
-    linear-gradient(180deg, color-mix(in srgb, var(--c-2) 48%, transparent) 0%, color-mix(in srgb, var(--c-2) 38%, transparent) 100%);
-  border-color: var(--dark-border-soft);
+  border-color: rgba(255, 255, 255, 0.08);
+  --sv2-surface: var(--dark-surface-2);
+  --sv2-border: var(--dark-border-soft);
+  --sv2-border-strong: var(--dark-border-strong);
+  --sv2-text: var(--c-1);
+  --sv2-text-soft: color-mix(in srgb, var(--c-1) 72%, transparent);
+  --sv2-text-muted: color-mix(in srgb, var(--c-1) 55%, transparent);
+  --sv2-shadow: var(--dark-shadow-soft);
+  --sv2-shadow-hover: var(--dark-shadow-strong);
 }
 
-.featured-section .section-head {
-  margin-bottom: 24px;
+/* ── Decorative glows (clipped by border-radius + overflow:hidden) ── */
+.featured-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.featured-glow--1 {
+  width: 500px;
+  height: 500px;
+  top: -160px;
+  left: -100px;
+  background: radial-gradient(circle, rgba(45, 210, 160, 0.24) 0%, transparent 70%);
+}
+
+.featured-glow--2 {
+  width: 380px;
+  height: 380px;
+  bottom: -90px;
+  right: 6%;
+  background: radial-gradient(circle, rgba(34, 175, 225, 0.20) 0%, transparent 70%);
+}
+
+.featured-glow--3 {
+  width: 280px;
+  height: 280px;
+  top: 50%;
+  left: 52%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle, rgba(104, 234, 188, 0.12) 0%, transparent 70%);
+}
+
+/* ── Inner content — padding inside the card ── */
+.featured-inner {
+  position: relative;
+  z-index: 1;
+  padding: 52px 52px 56px;
+  display: grid;
+  gap: 36px;
+}
+
+/* ── Header row ────────────────────────────── */
+.featured-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.featured-header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Kicker pill ───────────────────────────── */
+.featured-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: #68eabc;
+  background: rgba(104, 234, 188, 0.13);
+  border: 1px solid rgba(104, 234, 188, 0.30);
+  width: fit-content;
+}
+
+.featured-kicker::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #68eabc;
+  box-shadow: 0 0 8px rgba(104, 234, 188, 0.80);
+  flex-shrink: 0;
+}
+
+/* ── Title ─────────────────────────────────── */
+.featured-title {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 42px);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+/* ── Subtitle ──────────────────────────────── */
+.featured-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.50);
+  max-width: 400px;
+  line-height: 1.65;
+}
+
+/* ── View All button ───────────────────────── */
+.featured-view-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(104, 234, 188, 0.30);
+  background: rgba(104, 234, 188, 0.09);
+  color: #68eabc;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.featured-view-all-btn svg {
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.featured-view-all-btn:hover {
+  background: rgba(104, 234, 188, 0.18);
+  border-color: rgba(104, 234, 188, 0.55);
+  transform: translateY(-1px);
+}
+
+.featured-view-all-btn:hover svg {
+  transform: translateX(3px);
+}
+
+/* ── Carousel arrow overrides for dark bg ──── */
+.featured-section .fc-arrow {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.featured-section .fc-arrow:hover:not(:disabled) {
+  background: rgba(104, 234, 188, 0.18);
+  border-color: rgba(104, 234, 188, 0.45);
+}
+
+/* ── Responsive ────────────────────────────── */
+@media (max-width: 980px) {
+  .featured-section {
+    border-radius: 22px;
+  }
+
+  .featured-inner {
+    padding: 40px 40px 44px;
+    gap: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  .featured-section {
+    border-radius: 18px;
+  }
+
+  .featured-inner {
+    padding: 28px 24px 32px;
+    gap: 22px;
+  }
+
+  .featured-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .featured-title {
+    font-size: 24px;
+  }
+
+  .featured-view-all-btn {
+    align-self: flex-start;
+  }
 }
 
 /* =========================
@@ -1473,22 +1685,109 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
    Featured Items Section
    ========================= */
 
-.featured-grid {
+/* static fallback when all cards fit without scrolling */
+.fc-static-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(var(--fc-cols, 3), 1fr);
   gap: 22px;
 }
 
-@media (max-width: 1200px) {
-  .featured-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+/* ── Carousel wrapper ──────────────────────── */
+.fc-wrapper {
+  position: relative;
+  padding: 0 52px;          /* room for arrows */
 }
 
+.fc-viewport {
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.fc-track {
+  display: flex;
+  gap: 22px;
+  will-change: transform;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fc-slide {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* ── Arrow buttons ─────────────────────────── */
+.fc-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, border-color 0.2s;
+  backdrop-filter: blur(8px);
+  padding: 0;
+  /* keep it clear of the dots */
+  margin-top: -14px;
+}
+
+.fc-arrow svg {
+  width: 20px;
+  height: 20px;
+}
+
+.fc-arrow--left  { left: 0; }
+.fc-arrow--right { right: 0; }
+
+.fc-arrow:hover:not(:disabled) {
+  background: rgba(104, 234, 188, 0.22);
+  border-color: rgba(104, 234, 188, 0.45);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.fc-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── Dot indicators ────────────────────────── */
+.fc-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.fc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, width 0.25s;
+}
+
+.fc-dot--active {
+  width: 24px;
+  border-radius: 4px;
+  background: #68eabc;
+  transform: none;
+}
+
+/* ── Responsive ────────────────────────────── */
 @media (max-width: 640px) {
-  .featured-grid {
-    grid-template-columns: 1fr;
-  }
+  .fc-wrapper { padding: 0 40px; }
+  .fc-arrow { width: 36px; height: 36px; }
+  .fc-arrow svg { width: 16px; height: 16px; }
 }
 
 /* =========================
@@ -2481,7 +2780,6 @@ html[data-interface-theme="dark"] .footer-bottom p {
     grid-template-columns: 1fr;
   }
 
-  .featured-section,
   .trust-section {
     padding: 24px;
     border-radius: 22px;
@@ -2606,7 +2904,6 @@ html[data-interface-theme="dark"] .footer-bottom p {
     flex-direction: column;
   }
 
-  .featured-section,
   .trust-section {
     padding: 20px 16px;
     border-radius: 20px;

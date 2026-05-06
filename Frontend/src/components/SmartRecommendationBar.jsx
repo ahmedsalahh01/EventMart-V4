@@ -15,6 +15,7 @@ function SmartRecommendationBar({
   currentProduct = null,
   ctaLabel = "View All Products",
   ctaTo = "/shop",
+  hideEventSuffix = false,
   limit = 4,
   products = null,
   showReasons = false,
@@ -68,7 +69,7 @@ function SmartRecommendationBar({
   });
   const resolvedEventType = resolveEventType(currentEventType) || resolveEventType(behavior.selectedEventType);
   const eventConfig = getEventTypeConfig(resolvedEventType);
-  const sectionTitle = eventConfig ? `${title} — ${getEventTypeLabel(resolvedEventType)}` : title;
+  const sectionTitle = (!hideEventSuffix && eventConfig) ? `${title} — ${getEventTypeLabel(resolvedEventType)}` : title;
   const sectionLeadText = subtitle || leadText;
 
   if (!isLoading && !recommendations.length) {

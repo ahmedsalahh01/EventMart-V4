@@ -5,6 +5,7 @@ import AdminLayout from "./components/AdminLayout";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
+import OrdersPage from "./pages/OrdersPage";
 import PackagesPage from "./pages/PackagesPage";
 import ProductsPage from "./pages/ProductsPage";
 import UsersPage from "./pages/UsersPage";
@@ -22,12 +23,15 @@ function App() {
 
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [packages, setPackages] = useState([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [productsError, setProductsError] = useState("");
   const [usersError, setUsersError] = useState("");
+  const [ordersError, setOrdersError] = useState("");
   const [packagesError, setPackagesError] = useState("");
   const [metricsRevision, setMetricsRevision] = useState(0);
 
@@ -77,6 +81,26 @@ function App() {
     }
   }
 
+  async function refreshOrders() {
+    setOrdersLoading(true);
+    setOrdersError("");
+    try {
+      const token = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+      const baseUrl = String(import.meta.env?.VITE_API_URL || "").trim().replace(/\/+$/, "") || "https://eventmart-v4-production.up.railway.app";
+      const res = await fetch(`${baseUrl}/api/admin/orders`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      setOrders(Array.isArray(rows) ? rows : []);
+      return rows;
+    } catch (err) {
+      setOrdersError(err?.message || "Unable to load orders.");
+      setOrders([]);
+      throw err;
+    } finally {
+      setOrdersLoading(false);
+    }
+  }
+
   async function refreshPackages() {
     setPackagesLoading(true);
     setPackagesError("");
@@ -98,6 +122,7 @@ function App() {
     if (!adminToken) return;
     void refreshProducts().catch(() => {});
     void refreshUsers().catch(() => {});
+    void refreshOrders().catch(() => {});
     void refreshPackages().catch(() => {});
   }, [adminToken]);
 
@@ -150,6 +175,7 @@ function App() {
             path="/users"
             element={
               <UsersPage
+                adminUser={adminUser}
                 error={usersError}
                 isLoading={usersLoading}
                 onUsersRefresh={refreshUsers}
@@ -166,6 +192,17 @@ function App() {
                 metricsRevision={metricsRevision}
                 onRefresh={refreshProducts}
                 products={products}
+              />
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <OrdersPage
+                error={ordersError}
+                isLoading={ordersLoading}
+                onRefresh={refreshOrders}
+                orders={orders}
               />
             }
           />

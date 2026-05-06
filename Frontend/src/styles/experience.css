@@ -1,4 +1,3 @@
-.smart-recommendation-bar,
 .event-type-shop-heading,
 .bundle-pricing-summary {
   display: grid;
@@ -11,7 +10,12 @@
 }
 
 .smart-recommendation-bar {
-  padding-top: 18px;
+  display: grid;
+  gap: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .smart-recommendation-bar,
@@ -314,7 +318,6 @@ html[data-interface-theme="dark"] .event-type-bundle-section {
 }
 
 @media (max-width: 900px) {
-  .smart-recommendation-bar,
   .event-type-shop-heading,
   .bundle-pricing-summary {
     padding: 22px;
