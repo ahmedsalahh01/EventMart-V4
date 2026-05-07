@@ -996,13 +996,14 @@ html[data-interface-theme="dark"] .featured-section {
 
 /* ── Carousel arrow overrides for dark bg ──── */
 .featured-section .fc-arrow {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(10, 18, 32, 0.55);
 }
 
-.featured-section .fc-arrow:hover:not(:disabled) {
-  background: rgba(104, 234, 188, 0.18);
-  border-color: rgba(104, 234, 188, 0.45);
+.featured-section .fc-arrow:hover {
+  background: rgba(104, 234, 188, 0.22);
+  border-color: rgba(104, 234, 188, 0.5);
+  box-shadow: 0 8px 24px -6px rgba(104, 234, 188, 0.38);
 }
 
 /* ── Responsive ────────────────────────────── */
@@ -1695,7 +1696,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
 /* ── Carousel wrapper ──────────────────────── */
 .fc-wrapper {
   position: relative;
-  padding: 0 52px;          /* room for arrows */
+  padding: 0 56px;
 }
 
 .fc-viewport {
@@ -1707,7 +1708,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
   display: flex;
   gap: 22px;
   will-change: transform;
-  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.52s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fc-slide {
@@ -1718,24 +1719,25 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
 /* ── Arrow buttons ─────────────────────────── */
 .fc-arrow {
   position: absolute;
-  top: 50%;
+  /* vertically centered on the card area; subtract half of dots + progress height below */
+  top: calc(50% - 22px);
   transform: translateY(-50%);
   z-index: 2;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  background: rgba(15, 25, 40, 0.52);
   color: #fff;
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s, border-color 0.2s;
-  backdrop-filter: blur(8px);
+  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   padding: 0;
-  /* keep it clear of the dots */
-  margin-top: -14px;
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.38);
 }
 
 .fc-arrow svg {
@@ -1743,18 +1745,40 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
   height: 20px;
 }
 
-.fc-arrow--left  { left: 0; }
-.fc-arrow--right { right: 0; }
+.fc-arrow--left  { left: 4px; }
+.fc-arrow--right { right: 4px; }
 
-.fc-arrow:hover:not(:disabled) {
-  background: rgba(104, 234, 188, 0.22);
-  border-color: rgba(104, 234, 188, 0.45);
-  transform: translateY(-50%) scale(1.08);
+.fc-arrow:hover {
+  background: rgba(104, 234, 188, 0.26);
+  border-color: rgba(104, 234, 188, 0.55);
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 8px 24px -6px rgba(104, 234, 188, 0.35);
 }
 
-.fc-arrow:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+.fc-arrow:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+/* ── Progress bar (auto-play indicator) ────── */
+.fc-progress {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.fc-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: #68eabc;
+  animation: fc-progress-fill 4s linear forwards;
+  transform-origin: left;
+}
+
+@keyframes fc-progress-fill {
+  from { width: 0%; }
+  to   { width: 100%; }
 }
 
 /* ── Dot indicators ────────────────────────── */
@@ -1762,7 +1786,7 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
   display: flex;
   justify-content: center;
   gap: 8px;
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .fc-dot {
@@ -1771,23 +1795,27 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
   border-radius: 50%;
   border: none;
   padding: 0;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.28);
   cursor: pointer;
-  transition: background 0.2s, transform 0.2s, width 0.25s;
+  transition: background 0.22s ease, width 0.25s ease;
+}
+
+.fc-dot:hover {
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .fc-dot--active {
-  width: 24px;
+  width: 26px;
   border-radius: 4px;
   background: #68eabc;
-  transform: none;
 }
 
 /* ── Responsive ────────────────────────────── */
 @media (max-width: 640px) {
-  .fc-wrapper { padding: 0 40px; }
-  .fc-arrow { width: 36px; height: 36px; }
-  .fc-arrow svg { width: 16px; height: 16px; }
+  .fc-wrapper { padding: 0 42px; }
+  .fc-arrow { width: 38px; height: 38px; left: 2px; }
+  .fc-arrow--right { right: 2px; }
+  .fc-arrow svg { width: 17px; height: 17px; }
 }
 
 /* =========================

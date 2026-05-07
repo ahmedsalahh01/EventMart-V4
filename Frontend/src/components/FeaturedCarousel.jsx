@@ -3,6 +3,7 @@ import ProductCard from "./shop/ProductCard";
 
 const GAP = 22;
 const INTERVAL_MS = 4000;
+const SLIDESHOW_MIN = 4;
 
 function getColumns(width) {
   if (width >= 1024) return 3;
@@ -12,18 +13,18 @@ function getColumns(width) {
 
 function FeaturedCarousel({ products }) {
   const viewportRef = useRef(null);
-  const trackRef    = useRef(null);
   const timerRef    = useRef(null);
 
-  const [index,    setIndex]    = useState(0);
-  const [step,     setStep]     = useState(0);
-  const [cols,     setCols]     = useState(3);
-  const [paused,   setPaused]   = useState(false);
+  const [index,  setIndex]  = useState(0);
+  const [step,   setStep]   = useState(0);
+  const [cols,   setCols]   = useState(3);
+  const [paused, setPaused] = useState(false);
 
   const total    = products.length;
+  const canSlide = total >= SLIDESHOW_MIN;
   const maxIndex = Math.max(0, total - cols);
 
-  // Measure slide width from the live DOM so resize is handled correctly
+  // Measure slide width from live DOM so resize is handled correctly
   const measure = useCallback(() => {
     const vw = viewportRef.current?.offsetWidth;
     if (!vw) return;
@@ -39,53 +40,55 @@ function FeaturedCarousel({ products }) {
     return () => ro.disconnect();
   }, [measure]);
 
-  // Clamp index when cols / product count changes
+  // Clamp index when cols or product count changes
   useEffect(() => {
     setIndex((i) => Math.min(i, Math.max(0, total - cols)));
   }, [cols, total]);
-
-  const go = useCallback((next) => {
-    setIndex(Math.max(0, Math.min(next, maxIndex)));
-  }, [maxIndex]);
 
   const advance = useCallback(() => {
     setIndex((i) => (i >= maxIndex ? 0 : i + 1));
   }, [maxIndex]);
 
-  function startTimer() {
+  const startTimer = useCallback(() => {
     clearInterval(timerRef.current);
     timerRef.current = setInterval(advance, INTERVAL_MS);
-  }
+  }, [advance]);
 
+  // Auto-play: only when 4+ items and not paused/hovered
   useEffect(() => {
-    if (!paused) startTimer();
-    else clearInterval(timerRef.current);
+    if (!canSlide || paused) {
+      clearInterval(timerRef.current);
+      return undefined;
+    }
+    startTimer();
     return () => clearInterval(timerRef.current);
-  }, [paused, advance]);
+  }, [canSlide, paused, startTimer]);
 
+  // Use functional setter so rapid clicks never mis-read stale index
   function handlePrev() {
-    go(index <= 0 ? maxIndex : index - 1);
+    setIndex((i) => (i <= 0 ? maxIndex : i - 1));
     startTimer();
   }
 
   function handleNext() {
-    go(index >= maxIndex ? 0 : index + 1);
+    setIndex((i) => (i >= maxIndex ? 0 : i + 1));
     startTimer();
   }
 
   if (!products.length) return null;
 
-  // If all products fit without scrolling, render a plain grid
-  if (total <= cols) {
+  // Fewer than 4 featured items → plain grid, no carousel
+  if (!canSlide) {
     return (
-      <div className="fc-static-grid" style={{ "--fc-cols": cols }}>
+      <div className="fc-static-grid" style={{ "--fc-cols": Math.min(total, 3) }}>
         {products.map((p) => <ProductCard key={p.id} product={p} />)}
       </div>
     );
   }
 
   const translateX = index * step;
-  const slideStyle = { flexBasis: step > 0 ? `${step - GAP}px` : undefined };
+  // Fallback basis before first measurement so cards aren't full-width
+  const slideBasis = step > 0 ? `${step - GAP}px` : "calc(33.333% - 15px)";
 
   return (
     <div
@@ -95,25 +98,28 @@ function FeaturedCarousel({ products }) {
     >
       {/* Left arrow */}
       <button
+        type="button"
         className="fc-arrow fc-arrow--left"
-        aria-label="Previous"
+        aria-label="Previous featured items"
         onClick={handlePrev}
-        disabled={total <= cols}
       >
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
 
-      {/* Viewport — clips the track */}
+      {/* Viewport — clips the scrolling track */}
       <div className="fc-viewport" ref={viewportRef}>
         <div
           className="fc-track"
-          ref={trackRef}
           style={{ transform: `translateX(-${translateX}px)` }}
         >
           {products.map((p) => (
-            <div className="fc-slide" key={p.id} style={slideStyle}>
+            <div
+              key={p.id}
+              className="fc-slide"
+              style={{ flexBasis: slideBasis }}
+            >
               <ProductCard product={p} />
             </div>
           ))}
@@ -122,26 +128,34 @@ function FeaturedCarousel({ products }) {
 
       {/* Right arrow */}
       <button
+        type="button"
         className="fc-arrow fc-arrow--right"
-        aria-label="Next"
+        aria-label="Next featured items"
         onClick={handleNext}
-        disabled={total <= cols}
       >
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
+
+      {/* Progress bar auto-play indicator */}
+      {!paused && (
+        <div className="fc-progress" aria-hidden="true">
+          <div key={`${index}-${paused}`} className="fc-progress-bar" />
+        </div>
+      )}
 
       {/* Dot indicators */}
       <div className="fc-dots" role="tablist" aria-label="Featured items navigation">
         {Array.from({ length: maxIndex + 1 }, (_, i) => (
           <button
             key={i}
+            type="button"
             role="tab"
             aria-selected={i === index}
-            aria-label={`Go to slide ${i + 1}`}
+            aria-label={`Go to position ${i + 1}`}
             className={`fc-dot${i === index ? " fc-dot--active" : ""}`}
-            onClick={() => { go(i); startTimer(); }}
+            onClick={() => { setIndex(i); startTimer(); }}
           />
         ))}
       </div>

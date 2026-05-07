@@ -3,7 +3,10 @@
     "allow": [
       "Bash(node --experimental-vm-modules src/lib/packageMinimums.test.js)",
       "Bash(dir)",
-      "Bash(Get-ChildItem \"c:\\\\Users\\\\hp\\\\Desktop\\\\EventMart-V4\\\\Frontend\\\\src\\\\pages\\\\\" -Filter \"*.jsx\" | Select-Object Name)"
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\hp\\\\Desktop\\\\EventMart-V4\\\\Frontend\\\\src\\\\pages\\\\\" -Filter \"*.jsx\" | Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hp\\\\Desktop\\\\EventMart-V4\" -Recurse -Directory -Depth 2)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)"
     ]
   }
 }

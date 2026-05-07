@@ -2210,3 +2210,17 @@ button:disabled {
   color: #68eabc;
   border-color: rgba(104, 234, 188, 0.22);
 }
+
+/* ── Order card actions ──────────────────────────────────── */
+.admin-order-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.admin-order-error {
+  font-size: 12px;
+  color: #f87171;
+  margin-top: 2px;
+}

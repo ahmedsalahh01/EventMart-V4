@@ -73,6 +73,12 @@ function AuthProvider({ children }) {
     persist(nextSession);
   }
 
+  function loginWithToken(token, user) {
+    persist({ token, user });
+    clearSmartRecommendationCache();
+    announceBehaviorScopeChange();
+  }
+
   const firstName = String(session?.user?.name || "")
     .trim()
     .split(/\s+/)
@@ -87,7 +93,8 @@ function AuthProvider({ children }) {
       login,
       register,
       logout,
-      updateSession
+      updateSession,
+      loginWithToken
     }),
     [session, firstName]
   );

@@ -56,6 +56,11 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const RESEND_FROM = process.env.RESEND_FROM || "EventMart <noreply@eventmart.com>";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "";
 const UPLOADS_DIR = path.resolve(__dirname, "../uploads");
 const PRODUCT_UPLOADS_DIR = path.join(UPLOADS_DIR, "products");
 const PRIVATE_UPLOADS_DIR = path.resolve(__dirname, "../private-uploads");
@@ -140,7 +145,7 @@ const corsOptions = {
     return callback(null, false);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 };
 
@@ -193,6 +198,8 @@ function sanitizeUser(userRow) {
     name: userRow.name,
     email: userRow.email,
     role: userRow.role,
+    email_verified: Boolean(userRow.email_verified),
+    has_google: Boolean(userRow.google_id),
     created_at: userRow.created_at,
     last_login_at: userRow.last_login_at
   };
@@ -2767,12 +2774,22 @@ app.post("/api/auth/register", authRegisterLimiter, async (req, res) => {
     const created = await pool.query(
       `INSERT INTO users (name, email, password_hash)
        VALUES ($1, $2, $3)
-       RETURNING id, name, email, role, created_at, last_login_at`,
+       RETURNING id, name, email, role, email_verified, google_id, created_at, last_login_at`,
       [name, email, passwordHash]
     );
 
     const user = sanitizeUser(created.rows[0]);
-    const token = createAuthToken(user);
+    const token = createAuthToken(created.rows[0]);
+
+    if (RESEND_API_KEY) {
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      pool.query(
+        "INSERT INTO email_verification_codes (user_id, code, expires_at) VALUES ($1, $2, $3)",
+        [created.rows[0].id, code, expiresAt]
+      ).then(() => sendVerificationEmail(email, code)).catch(() => {});
+    }
+
     res.status(201).json({ user, token });
   } catch (err) {
     console.error("REGISTER ROUTE ERROR:", err.message);
@@ -2809,7 +2826,7 @@ app.post("/api/auth/login", authLoginLimiter, async (req, res) => {
       `UPDATE users
        SET last_login_at = NOW()
        WHERE id = $1
-       RETURNING id, name, email, role, created_at, last_login_at`,
+       RETURNING id, name, email, role, email_verified, google_id, created_at, last_login_at`,
       [userRow.id]
     );
 
@@ -3362,6 +3379,201 @@ app.post("/api/auth/reset-password", async (req, res) => {
   } catch (err) {
     console.error("RESET PASSWORD ROUTE ERROR:", err.message);
     return res.status(500).json({ error: "Unable to reset password." });
+  }
+});
+
+async function sendVerificationEmail(toEmail, code) {
+  if (!RESEND_API_KEY) return;
+  const { Resend } = require("resend");
+  const resend = new Resend(RESEND_API_KEY);
+  await resend.emails.send({
+    from: RESEND_FROM,
+    to: toEmail,
+    subject: "Verify your EventMart email",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
+        <h2 style="margin:0 0 8px;color:#163047">EventMart</h2>
+        <p style="color:#475569;margin:0 0 24px">Enter this code to verify your email address:</p>
+        <div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#226f73;padding:20px;background:#f0fdf9;border-radius:12px;text-align:center">${code}</div>
+        <p style="color:#94a3b8;font-size:13px;margin:24px 0 0">This code expires in 10 minutes. If you didn't request this, ignore it.</p>
+      </div>
+    `
+  });
+}
+
+app.post("/api/auth/send-verification", requireAuth, async (req, res) => {
+  try {
+    if (!RESEND_API_KEY) {
+      return res.status(503).json({ error: "Email service is not configured." });
+    }
+
+    const userResult = await pool.query(
+      "SELECT id, email, email_verified FROM users WHERE id = $1 LIMIT 1",
+      [req.auth.userId]
+    );
+    const user = userResult.rows[0];
+    if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.email_verified) return res.status(400).json({ error: "Email is already verified." });
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await pool.query(
+      `INSERT INTO email_verification_codes (user_id, code, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, code, expiresAt]
+    );
+
+    await sendVerificationEmail(user.email, code);
+
+    return res.json({ message: "Verification code sent to your email." });
+  } catch (err) {
+    console.error("SEND VERIFICATION ERROR:", err.message);
+    return res.status(500).json({ error: "Failed to send verification email." });
+  }
+});
+
+app.post("/api/auth/verify-email", requireAuth, async (req, res) => {
+  try {
+    const code = String(req.body?.code || "").trim();
+    if (!code) return res.status(400).json({ error: "Verification code is required." });
+
+    const codeResult = await pool.query(
+      `SELECT id, expires_at, used_at FROM email_verification_codes
+       WHERE user_id = $1 AND code = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [req.auth.userId, code]
+    );
+
+    const codeRow = codeResult.rows[0];
+    if (!codeRow) return res.status(400).json({ error: "Invalid verification code." });
+    if (codeRow.used_at) return res.status(400).json({ error: "This code has already been used." });
+    if (new Date(codeRow.expires_at) < new Date()) {
+      return res.status(400).json({ error: "This code has expired. Please request a new one." });
+    }
+
+    await pool.query(
+      "UPDATE email_verification_codes SET used_at = NOW() WHERE id = $1",
+      [codeRow.id]
+    );
+
+    const updated = await pool.query(
+      `UPDATE users SET email_verified = true WHERE id = $1
+       RETURNING id, name, email, role, email_verified, google_id, created_at, last_login_at`,
+      [req.auth.userId]
+    );
+
+    const user = sanitizeUser(updated.rows[0]);
+    const token = createAuthToken(updated.rows[0]);
+    return res.json({ user, token, message: "Email verified successfully." });
+  } catch (err) {
+    console.error("VERIFY EMAIL ERROR:", err.message);
+    return res.status(500).json({ error: "Failed to verify email." });
+  }
+});
+
+app.get("/api/auth/google", (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT_URI) {
+    return res.status(503).json({ error: "Google Sign-In is not configured." });
+  }
+
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "offline",
+    prompt: "select_account"
+  });
+
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+app.get("/api/auth/google/callback", async (req, res) => {
+  const frontendBase = FRONTEND_URL || "http://localhost:5173";
+
+  try {
+    const code = String(req.query.code || "").trim();
+    if (!code) {
+      return res.redirect(`${frontendBase}/auth?tab=signin&error=google_cancelled`);
+    }
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code"
+      })
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      console.error("Google token error:", tokenData);
+      return res.redirect(`${frontendBase}/auth?tab=signin&error=google_token`);
+    }
+
+    const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const googleUser = await userInfoResponse.json();
+
+    if (!googleUser.email) {
+      return res.redirect(`${frontendBase}/auth?tab=signin&error=google_no_email`);
+    }
+
+    const email = normalizeEmail(googleUser.email);
+    const googleId = String(googleUser.sub || "");
+    const name = String(googleUser.name || googleUser.email.split("@")[0] || "User").trim();
+
+    let userRow;
+
+    const byGoogle = await pool.query(
+      "SELECT * FROM users WHERE google_id = $1 LIMIT 1",
+      [googleId]
+    );
+
+    if (byGoogle.rows.length > 0) {
+      userRow = byGoogle.rows[0];
+      await pool.query(
+        "UPDATE users SET last_login_at = NOW() WHERE id = $1",
+        [userRow.id]
+      );
+    } else {
+      const byEmail = await pool.query(
+        "SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
+        [email]
+      );
+
+      if (byEmail.rows.length > 0) {
+        userRow = byEmail.rows[0];
+        await pool.query(
+          "UPDATE users SET google_id = $1, email_verified = true, last_login_at = NOW() WHERE id = $2",
+          [googleId, userRow.id]
+        );
+        userRow.google_id = googleId;
+        userRow.email_verified = true;
+      } else {
+        const created = await pool.query(
+          `INSERT INTO users (name, email, google_id, email_verified)
+           VALUES ($1, $2, $3, true)
+           RETURNING *`,
+          [name, email, googleId]
+        );
+        userRow = created.rows[0];
+      }
+    }
+
+    const user = sanitizeUser(userRow);
+    const jwtToken = createAuthToken(userRow);
+
+    return res.redirect(`${frontendBase}/auth/callback?token=${encodeURIComponent(jwtToken)}&user=${encodeURIComponent(JSON.stringify(user))}`);
+  } catch (err) {
+    console.error("GOOGLE CALLBACK ERROR:", err.message);
+    return res.redirect(`${frontendBase}/auth?tab=signin&error=google_server`);
   }
 });
 

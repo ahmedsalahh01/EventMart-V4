@@ -17,6 +17,8 @@ import OrderConfirmationPage from "./pages/OrderConfirmationPage";
 import PackageBuilderPage from "./pages/PackageBuilderPage";
 import PackageDetailPage from "./pages/PackageDetailPage";
 import PackagesPage from "./pages/PackagesPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 
 function App() {
   const location = useLocation();
@@ -67,6 +69,15 @@ function App() {
           <Route path="/packages" element={<PackagesPage />} />
           <Route path="/packages/:identifier" element={<PackageDetailPage />} />
           <Route path="/package-builder" element={<PackageBuilderPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route
+            path="/verify-email"
+            element={(
+              <ProtectedRoute>
+                <VerifyEmailPage />
+              </ProtectedRoute>
+            )}
+          />
           <Route path="/signin" element={<Navigate to="/auth?tab=signin" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
