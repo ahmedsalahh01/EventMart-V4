@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { formatMoney, getRangeFromPreset } from "../lib/admin";
+import { formatMoney, getRangeFromPreset, METRICS_KEY } from "../lib/admin";
 
 function MetricCard({ title, value, sub, accent = "default", icon }) {
   return (
@@ -15,20 +15,44 @@ function MetricCard({ title, value, sub, accent = "default", icon }) {
   );
 }
 
-function MiniBar({ label, count, total }) {
+function MiniBar({ label, count, total, color }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
     <div className="mini-bar-row">
       <span className="mini-bar-label">{label}</span>
       <div className="mini-bar-track">
-        <div className="mini-bar-fill" style={{ width: `${pct}%` }} />
+        <div className="mini-bar-fill" style={{ width: `${pct}%`, background: color }} />
       </div>
       <span className="mini-bar-count">{count}</span>
     </div>
   );
 }
 
-function DashboardPage({ error, isLoading, onRefresh, products }) {
+function FunnelBar({ label, value, max, pct, color, sub }) {
+  return (
+    <div className="funnel-row">
+      <div className="funnel-row-head">
+        <span className="funnel-label">{label}</span>
+        <span className="funnel-value">{value.toLocaleString()}</span>
+      </div>
+      <div className="funnel-track">
+        <div className="funnel-fill" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      {sub && <span className="funnel-sub">{sub}</span>}
+    </div>
+  );
+}
+
+function getMetricsMap() {
+  try {
+    const raw = localStorage.getItem(METRICS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function DashboardPage({ error, isLoading, onRefresh, orders = [], ordersLoading, products, users = [] }) {
   const navigate = useNavigate();
   const initialRange = getRangeFromPreset("month");
   const [preset, setPreset] = useState("month");
@@ -52,6 +76,7 @@ function DashboardPage({ error, isLoading, onRefresh, products }) {
     });
   }
 
+  // ── Catalog snapshot ─────────────────────────────────────────────────────
   const snap = useMemo(() => {
     if (!products.length) return null;
     const active = products.filter((p) => p.active).length;
@@ -90,31 +115,105 @@ function DashboardPage({ error, isLoading, onRefresh, products }) {
     };
   }, [products]);
 
-  const rangeSnap = useMemo(() => {
-    if (!products.length) return null;
-    const inRange = products.filter((p) => {
-      const d = new Date(p.created_at || p.updated_at);
-      if (isNaN(d)) return false;
-      if (currentRange.start && d < currentRange.start) return false;
-      if (currentRange.end && d > currentRange.end) return false;
-      return true;
+  // ── Orders analytics ──────────────────────────────────────────────────────
+  const orderSnap = useMemo(() => {
+    if (!orders.length) return null;
+    const currency = orders[0]?.currency || "EGP";
+    const active = orders.filter((o) => o.status !== "cancelled");
+    const totalRevenue = active.reduce((s, o) => s + Number(o.total || 0), 0);
+    const totalItems = active.reduce((s, o) => s + Number(o.total_items || 0), 0);
+    const avgOrderValue = active.length ? totalRevenue / active.length : 0;
+    const avgItemsPerOrder = active.length ? totalItems / active.length : 0;
+
+    const statusCounts = {};
+    orders.forEach((o) => {
+      const s = String(o.status || "pending");
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
     });
-    const avgPrice = inRange.length
-      ? inRange.reduce((s, p) => s + Number(p.buy_price ?? p.rent_price_per_day ?? 0), 0) / inRange.length
-      : 0;
-    const lowInRange = inRange.filter(
-      (p) => Number(p.quantity_available) <= Number(p.reorder_level || 0)
-    ).length;
-    const categories = new Set(inRange.map((p) => p.category).filter(Boolean)).size;
-    return { avgPrice, categories, count: inRange.length, currency: products[0]?.currency || "EGP", lowInRange };
-  }, [products, currentRange]);
+
+    return {
+      active: active.length,
+      avgItemsPerOrder,
+      avgOrderValue,
+      currency,
+      statusCounts,
+      total: orders.length,
+      totalItems,
+      totalRevenue
+    };
+  }, [orders]);
+
+  // ── Profit / expense estimates from localStorage metrics + product costs ──
+  const profitSnap = useMemo(() => {
+    if (!products.length) return null;
+    const metrics = getMetricsMap();
+    let totalProfit = 0;
+    let totalCOGS = 0;
+    let totalSoldUnits = 0;
+
+    products.forEach((p) => {
+      const m = metrics[p.id] || {};
+      const sold = Number(m.purchase || 0);
+      if (!sold) return;
+      const buyPrice = Number(p.buy_price || 0);
+      const unitCost = Number(p.unit_cost || 0);
+      const overhead = Number(p.overhead_cost || 0);
+      totalProfit += (buyPrice - unitCost - overhead) * sold;
+      totalCOGS += (unitCost + overhead) * sold;
+      totalSoldUnits += sold;
+    });
+
+    const currency = products[0]?.currency || "EGP";
+    return { currency, totalCOGS, totalProfit, totalSoldUnits };
+  }, [products]);
+
+  // ── Customer & funnel analytics from localStorage ─────────────────────────
+  const funnelSnap = useMemo(() => {
+    const metrics = getMetricsMap();
+    let totalVisits = 0;
+    let totalAddToCart = 0;
+    let totalPurchases = 0;
+
+    Object.values(metrics).forEach((m) => {
+      totalVisits += Number(m.product_view || 0);
+      totalAddToCart += Number(m.add_to_cart || 0);
+      totalPurchases += Number(m.purchase || 0);
+    });
+
+    const totalCustomers = users.length;
+    const avgCartItems = totalCustomers > 0 ? totalAddToCart / totalCustomers : 0;
+    const cartAbandoned = Math.max(0, totalAddToCart - totalPurchases);
+    const conversionRate = totalAddToCart > 0 ? (totalPurchases / totalAddToCart) * 100 : 0;
+    const funnelMax = Math.max(totalVisits, 1);
+
+    return {
+      avgCartItems,
+      cartAbandoned,
+      conversionRate,
+      funnelMax,
+      totalAddToCart,
+      totalCustomers,
+      totalPurchases,
+      totalVisits
+    };
+  }, [users]);
+
+  const STATUS_COLORS = {
+    pending: "#fbbf24",
+    confirmed: "#60a5fa",
+    processing: "#a78bfa",
+    shipped: "#34d399",
+    delivered: "#4ade80",
+    completed: "#68eabc",
+    cancelled: "#f87171"
+  };
 
   return (
     <section className="admin-section">
       <div className="section-head">
         <div>
           <h2>Dashboard</h2>
-          <p className="muted">Live catalog overview — {snap?.total ?? 0} total products.</p>
+          <p className="muted">Live overview — {snap?.total ?? 0} products · {orderSnap?.total ?? 0} orders · {funnelSnap.totalCustomers} customers.</p>
         </div>
         <div className="title-actions">
           <div className="filters-row">
@@ -143,7 +242,166 @@ function DashboardPage({ error, isLoading, onRefresh, products }) {
           </div>
         )}
 
-        <p className="dash-section-label">All-Time Catalog</p>
+        {/* ── Financial Overview ─────────────────────────────────── */}
+        <p className="dash-section-label">💰 Financial Overview</p>
+        <div className="dashboard-grid dashboard-grid--4">
+          <MetricCard
+            accent="green"
+            icon="💵"
+            title="Total Sales Revenue"
+            value={orderSnap ? formatMoney(orderSnap.totalRevenue, orderSnap.currency) : "—"}
+            sub={`${orderSnap?.active ?? 0} non-cancelled orders`}
+          />
+          <MetricCard
+            accent="teal"
+            icon="📈"
+            title="Estimated Gross Profit"
+            value={profitSnap ? formatMoney(profitSnap.totalProfit, profitSnap.currency) : "—"}
+            sub="Revenue minus unit cost & overhead per item sold"
+          />
+          <MetricCard
+            accent="yellow"
+            icon="🏷️"
+            title="Estimated Total Expenses"
+            value={profitSnap ? formatMoney(profitSnap.totalCOGS, profitSnap.currency) : "—"}
+            sub="Unit cost + overhead across all recorded sales"
+          />
+          <MetricCard
+            accent="blue"
+            icon="🧾"
+            title="Avg Order Value"
+            value={orderSnap ? formatMoney(orderSnap.avgOrderValue, orderSnap.currency) : "—"}
+            sub="Across all non-cancelled orders"
+          />
+        </div>
+
+        {/* ── Orders Overview ────────────────────────────────────── */}
+        <p className="dash-section-label">📦 Orders Overview</p>
+        <div className="dashboard-grid dashboard-grid--4">
+          <MetricCard
+            accent="blue"
+            icon="🛍️"
+            title="Total Orders"
+            value={orderSnap?.total ?? (ordersLoading ? "…" : "0")}
+            sub={`${orderSnap?.active ?? 0} active · ${orderSnap?.statusCounts?.cancelled ?? 0} cancelled`}
+          />
+          <MetricCard
+            accent="green"
+            icon="📦"
+            title="Total Items Sold"
+            value={orderSnap?.totalItems ?? "—"}
+            sub="Sum of items across all non-cancelled orders"
+          />
+          <MetricCard
+            accent="purple"
+            icon="📊"
+            title="Avg Items / Order"
+            value={orderSnap ? orderSnap.avgItemsPerOrder.toFixed(1) : "—"}
+            sub="Non-cancelled orders"
+          />
+          <MetricCard
+            accent="teal"
+            icon="🗓️"
+            title="Catalog Value"
+            value={snap ? formatMoney(snap.catalogValue, snap.currency) : "—"}
+            sub="Buy price × available qty"
+          />
+        </div>
+
+        {orderSnap && Object.keys(orderSnap.statusCounts).length > 0 && (
+          <div className="panel">
+            <h3>Order Status Breakdown</h3>
+            <p className="muted" style={{ marginBottom: "14px" }}>Distribution of orders across all statuses.</p>
+            <div className="dash-breakdown-list">
+              {Object.entries(orderSnap.statusCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([status, count]) => (
+                  <MiniBar
+                    key={status}
+                    label={status.charAt(0).toUpperCase() + status.slice(1)}
+                    count={count}
+                    total={orderSnap.total}
+                    color={STATUS_COLORS[status]}
+                  />
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Customer & Funnel Analysis ─────────────────────────── */}
+        <p className="dash-section-label">📣 Marketing & Funnel Analysis</p>
+        <div className="dashboard-grid dashboard-grid--4">
+          <MetricCard
+            accent="blue"
+            icon="👥"
+            title="Total Customers"
+            value={funnelSnap.totalCustomers}
+            sub="Registered user accounts"
+          />
+          <MetricCard
+            accent="purple"
+            icon="👁️"
+            title="Website Product Views"
+            value={funnelSnap.totalVisits.toLocaleString()}
+            sub="Total product page visits recorded"
+          />
+          <MetricCard
+            accent="teal"
+            icon="🛒"
+            title="Total Add-to-Cart Events"
+            value={funnelSnap.totalAddToCart.toLocaleString()}
+            sub={`Avg ${funnelSnap.avgCartItems.toFixed(1)} add-to-cart events per customer`}
+          />
+          <MetricCard
+            accent={funnelSnap.conversionRate >= 20 ? "green" : "yellow"}
+            icon="🔁"
+            title="Cart Conversion Rate"
+            value={`${funnelSnap.conversionRate.toFixed(1)}%`}
+            sub={`${funnelSnap.totalPurchases} purchased · ${funnelSnap.cartAbandoned} abandoned cart`}
+          />
+        </div>
+
+        <div className="panel dash-funnel-panel">
+          <h3>Sales Funnel</h3>
+          <p className="muted" style={{ marginBottom: "18px" }}>Customer journey from product view to purchase.</p>
+          <div className="funnel-list">
+            <FunnelBar
+              label="Product Views"
+              value={funnelSnap.totalVisits}
+              max={funnelSnap.funnelMax}
+              pct={100}
+              color="rgba(96, 165, 250, 0.7)"
+              sub="Top of funnel — discovered products"
+            />
+            <FunnelBar
+              label="Added to Cart"
+              value={funnelSnap.totalAddToCart}
+              max={funnelSnap.funnelMax}
+              pct={funnelSnap.funnelMax > 0 ? Math.round((funnelSnap.totalAddToCart / funnelSnap.funnelMax) * 100) : 0}
+              color="rgba(167, 139, 250, 0.7)"
+              sub={`${funnelSnap.funnelMax > 0 ? ((funnelSnap.totalAddToCart / funnelSnap.funnelMax) * 100).toFixed(1) : 0}% of views`}
+            />
+            <FunnelBar
+              label="Placed Order"
+              value={funnelSnap.totalPurchases}
+              max={funnelSnap.funnelMax}
+              pct={funnelSnap.funnelMax > 0 ? Math.round((funnelSnap.totalPurchases / funnelSnap.funnelMax) * 100) : 0}
+              color="rgba(104, 234, 188, 0.7)"
+              sub={`${funnelSnap.totalAddToCart > 0 ? ((funnelSnap.totalPurchases / funnelSnap.totalAddToCart) * 100).toFixed(1) : 0}% cart-to-purchase conversion`}
+            />
+            <FunnelBar
+              label="Abandoned Cart"
+              value={funnelSnap.cartAbandoned}
+              max={funnelSnap.funnelMax}
+              pct={funnelSnap.funnelMax > 0 ? Math.round((funnelSnap.cartAbandoned / funnelSnap.funnelMax) * 100) : 0}
+              color="rgba(248, 113, 113, 0.6)"
+              sub="Added to cart but did not place an order"
+            />
+          </div>
+        </div>
+
+        {/* ── Catalog Snapshot ───────────────────────────────────── */}
+        <p className="dash-section-label">🗂️ Catalog Snapshot</p>
         <div className="dashboard-grid dashboard-grid--6">
           <MetricCard accent="blue" icon="📦" title="Total Products" value={snap?.total ?? "—"}
             sub={`${snap?.active ?? 0} active · ${snap?.inactive ?? 0} inactive`} />
@@ -157,18 +415,6 @@ function DashboardPage({ error, isLoading, onRefresh, products }) {
             sub="Buy price × available qty" />
           <MetricCard accent="default" icon="⭐" title="Featured / Custom" value={snap ? `${snap.featured} / ${snap.customizable}` : "—"}
             sub="Featured on home · Customizable" />
-        </div>
-
-        <p className="dash-section-label">Selected Range — {rangeSnap?.count ?? 0} products</p>
-        <div className="dashboard-grid">
-          <MetricCard accent="blue" icon="📅" title="Products In Range" value={rangeSnap?.count ?? "—"}
-            sub="Created or updated within the selected period" />
-          <MetricCard accent="teal" icon="📊" title="Avg Starting Price" value={rangeSnap ? formatMoney(rangeSnap.avgPrice, rangeSnap.currency) : "—"}
-            sub="Buy price if available, else rent/day" />
-          <MetricCard accent="default" icon="🗂️" title="Categories In Range" value={rangeSnap?.categories ?? "—"}
-            sub="Unique categories in this period" />
-          <MetricCard accent="yellow" icon="📉" title="Low/Out of Stock" value={rangeSnap?.lowInRange ?? "—"}
-            sub="At or below reorder level in this period" />
         </div>
 
         {snap?.categories.length > 0 && (

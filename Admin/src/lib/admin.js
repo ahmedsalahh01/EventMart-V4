@@ -1219,6 +1219,7 @@ export function createEmptyProductForm(products) {
     sizes: "",
     subcategory: "",
     customizable: false,
+    customization_price: "",
     variations: [createEmptyVariationRow("one-size")],
     unit_cost: "0"
   };
@@ -1282,6 +1283,7 @@ export function buildFormFromProduct(product) {
     sizes: sizeMode === "varied" ? getCatalogSizeOptions(product.sizes, sizeMode).join("\n") : "",
     subcategory: product.subcategory,
     customizable: Boolean(product.customizable),
+    customization_price: product.customization_price ?? "",
     variations: normalizeVariationList(product.variations).length
       ? normalizeVariationList(product.variations).map((variation) => ({
           availability_status: String(
@@ -1470,6 +1472,7 @@ export function buildProductPayload(form, { editingId, products }) {
     sizes: normalizedSizes,
     subcategory,
     customizable: Boolean(form.customizable),
+    customization_price: Boolean(form.customizable) ? toNum(form.customization_price, 0) : null,
     unit_cost: toNum(form.unit_cost, 0),
     variations: normalizedVariations
   };

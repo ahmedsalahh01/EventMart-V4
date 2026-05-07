@@ -265,6 +265,20 @@ function ProductForm({
           <Toggle name="active"       checked={form.active}       onChange={onChange} label="Active / Visible" />
         </div>
 
+        {form.customizable && (
+          <div className="customization-price-row">
+            <div className="field">
+              <label htmlFor="customization_price">Customization Price ({form.currency || "EGP"})</label>
+              <input
+                id="customization_price" name="customization_price" type="number"
+                step="0.01" min="0" placeholder="0"
+                value={form.customization_price} onChange={onChange}
+              />
+              <small>Enter 0 if customization is free.</small>
+            </div>
+          </div>
+        )}
+
         <div className="form-actions">
           <button className="btn primary" disabled={isSaving} type="submit">
             {isSaving ? (isEditing ? "Updating…" : "Saving…") : isEditing ? "Update Product" : "Save Product"}

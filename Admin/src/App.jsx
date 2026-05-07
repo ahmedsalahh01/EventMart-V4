@@ -156,7 +156,10 @@ function App() {
                 error={productsError}
                 isLoading={productsLoading}
                 onRefresh={refreshProducts}
+                orders={orders}
+                ordersLoading={ordersLoading}
                 products={products}
+                users={users}
               />
             }
           />

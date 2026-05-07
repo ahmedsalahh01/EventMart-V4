@@ -5,9 +5,9 @@ const GAP = 22;
 const INTERVAL_MS = 4000;
 const SLIDESHOW_MIN = 4;
 
-function getColumns(width) {
-  if (width >= 1024) return 3;
-  if (width >= 640)  return 2;
+function getColumns(vpWidth) {
+  if (vpWidth >= 1024) return 3;
+  if (vpWidth >= 640)  return 2;
   return 1;
 }
 
@@ -16,7 +16,6 @@ function FeaturedCarousel({ products }) {
   const timerRef    = useRef(null);
 
   const [index,  setIndex]  = useState(0);
-  const [step,   setStep]   = useState(0);
   const [cols,   setCols]   = useState(3);
   const [paused, setPaused] = useState(false);
 
@@ -24,37 +23,80 @@ function FeaturedCarousel({ products }) {
   const canSlide = total >= SLIDESHOW_MIN;
   const maxIndex = Math.max(0, total - cols);
 
-  // Measure slide width from live DOM so resize is handled correctly
-  const measure = useCallback(() => {
-    const vw = viewportRef.current?.offsetWidth;
-    if (!vw) return;
-    const c = getColumns(vw);
-    setCols(c);
-    setStep((vw - (c - 1) * GAP) / c + GAP);
+  // Read the actual rendered slide width from DOM — no JS calculation needed
+  function getStep() {
+    const slide = viewportRef.current?.firstElementChild;
+    return slide ? slide.offsetWidth + GAP : 0;
+  }
+
+  // Scroll viewport to a given index
+  const scrollTo = useCallback((idx, smooth = true) => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const left = idx * getStep();
+    if (smooth) {
+      vp.scrollTo({ left, behavior: "smooth" });
+    } else {
+      vp.scrollLeft = left;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync cols on mount and resize
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return undefined;
+    function update() {
+      setCols(getColumns(vp.clientWidth));
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(vp);
+    update();
+    return () => ro.disconnect();
   }, []);
 
+  // Clamp index when cols / total changes; reposition instantly
   useEffect(() => {
-    const ro = new ResizeObserver(measure);
-    if (viewportRef.current) ro.observe(viewportRef.current);
-    measure();
-    return () => ro.disconnect();
-  }, [measure]);
+    setIndex((prev) => {
+      const clamped = Math.min(prev, Math.max(0, total - cols));
+      scrollTo(clamped, false);
+      return clamped;
+    });
+  }, [cols, total, scrollTo]);
 
-  // Clamp index when cols or product count changes
+  // Keep dots in sync when user swipes / scrolls manually
   useEffect(() => {
-    setIndex((i) => Math.min(i, Math.max(0, total - cols)));
-  }, [cols, total]);
+    const vp = viewportRef.current;
+    if (!vp) return undefined;
+    let raf;
+    function onScroll() {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const step = getStep();
+        if (!step) return;
+        const snapped = Math.round(vp.scrollLeft / step);
+        setIndex(Math.max(0, Math.min(snapped, maxIndex)));
+      });
+    }
+    vp.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      vp.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [maxIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advance = useCallback(() => {
-    setIndex((i) => (i >= maxIndex ? 0 : i + 1));
-  }, [maxIndex]);
+    setIndex((prev) => {
+      const next = prev >= maxIndex ? 0 : prev + 1;
+      scrollTo(next);
+      return next;
+    });
+  }, [maxIndex, scrollTo]);
 
   const startTimer = useCallback(() => {
     clearInterval(timerRef.current);
     timerRef.current = setInterval(advance, INTERVAL_MS);
   }, [advance]);
 
-  // Auto-play: only when 4+ items and not paused/hovered
   useEffect(() => {
     if (!canSlide || paused) {
       clearInterval(timerRef.current);
@@ -64,20 +106,14 @@ function FeaturedCarousel({ products }) {
     return () => clearInterval(timerRef.current);
   }, [canSlide, paused, startTimer]);
 
-  // Use functional setter so rapid clicks never mis-read stale index
-  function handlePrev() {
-    setIndex((i) => (i <= 0 ? maxIndex : i - 1));
-    startTimer();
-  }
-
-  function handleNext() {
-    setIndex((i) => (i >= maxIndex ? 0 : i + 1));
+  function navigate(idx) {
+    setIndex(idx);
+    scrollTo(idx);
     startTimer();
   }
 
   if (!products.length) return null;
 
-  // Fewer than 4 featured items → plain grid, no carousel
   if (!canSlide) {
     return (
       <div className="fc-static-grid" style={{ "--fc-cols": Math.min(total, 3) }}>
@@ -86,66 +122,47 @@ function FeaturedCarousel({ products }) {
     );
   }
 
-  const translateX = index * step;
-  // Fallback basis before first measurement so cards aren't full-width
-  const slideBasis = step > 0 ? `${step - GAP}px` : "calc(33.333% - 15px)";
-
   return (
     <div
       className="fc-wrapper"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      {/* Left arrow */}
       <button
         type="button"
         className="fc-arrow fc-arrow--left"
         aria-label="Previous featured items"
-        onClick={handlePrev}
+        onClick={() => navigate(index <= 0 ? maxIndex : index - 1)}
       >
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
 
-      {/* Viewport — clips the scrolling track */}
+      {/*
+        .fc-viewport is now the flex container — slides are direct children.
+        flex-basis % is resolved against fc-viewport's clientWidth (definite block width),
+        so CSS alone handles column sizing without any JS measurement.
+      */}
       <div className="fc-viewport" ref={viewportRef}>
-        <div
-          className="fc-track"
-          style={{ transform: `translateX(-${translateX}px)` }}
-        >
-          {products.map((p) => (
-            <div
-              key={p.id}
-              className="fc-slide"
-              style={{ flexBasis: slideBasis }}
-            >
-              <ProductCard product={p} />
-            </div>
-          ))}
-        </div>
+        {products.map((p) => (
+          <div key={p.id} className="fc-slide">
+            <ProductCard product={p} />
+          </div>
+        ))}
       </div>
 
-      {/* Right arrow */}
       <button
         type="button"
         className="fc-arrow fc-arrow--right"
         aria-label="Next featured items"
-        onClick={handleNext}
+        onClick={() => navigate(index >= maxIndex ? 0 : index + 1)}
       >
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
 
-      {/* Progress bar auto-play indicator */}
-      {!paused && (
-        <div className="fc-progress" aria-hidden="true">
-          <div key={`${index}-${paused}`} className="fc-progress-bar" />
-        </div>
-      )}
-
-      {/* Dot indicators */}
       <div className="fc-dots" role="tablist" aria-label="Featured items navigation">
         {Array.from({ length: maxIndex + 1 }, (_, i) => (
           <button
@@ -155,7 +172,7 @@ function FeaturedCarousel({ products }) {
             aria-selected={i === index}
             aria-label={`Go to position ${i + 1}`}
             className={`fc-dot${i === index ? " fc-dot--active" : ""}`}
-            onClick={() => { setIndex(i); startTimer(); }}
+            onClick={() => navigate(i)}
           />
         ))}
       </div>
