@@ -856,7 +856,7 @@ function createPackagesRouter({ pool, removeManagedCustomizationFile = null, req
     }
   });
 
-  router.post("/packages/preview", requireAdminAuth, async (req, res) => {
+  router.post("/packages/preview", async (req, res) => {
     try {
       const draftPackage =
         req.body?.package && typeof req.body.package === "object"
