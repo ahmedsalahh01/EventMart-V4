@@ -1,37 +1,36 @@
 /* ── Theme tokens ──────────────────────────────────── */
 [data-theme-scope="about"] {
   --a-bg: var(--page-heading-bg);
-  --a-border: var(--page-hero-border);
-  --a-heading: var(--c-1);
-  --a-copy: var(--page-hero-copy);
-  --a-copy-strong: color-mix(in srgb, var(--c-1) 82%, var(--c-14));
-  --a-kicker: var(--page-accent-ink);
-  --a-card-bg: color-mix(in srgb, var(--c-2) 10%, transparent);
-  --a-card-border: var(--page-hero-border);
-  --a-card-shadow: 0 4px 24px -6px color-mix(in srgb, var(--c-9) 12%, transparent);
-  --a-stat-bg: color-mix(in srgb, var(--c-2) 14%, transparent);
-  --a-stat-border: var(--page-hero-border);
-  --a-step-num: var(--page-accent-ink);
-  --a-avatar-bg: var(--page-accent-soft);
-  --a-avatar-border: var(--page-accent-border);
-  --a-avatar-text: var(--page-accent-ink);
+  --a-border: color-mix(in srgb, #d7eef3 20%, transparent);
+  --a-heading: #e8f4f8;
+  --a-copy: color-mix(in srgb, #d7eef3 72%, #9bbfcc);
+  --a-copy-strong: color-mix(in srgb, #d7eef3 88%, white);
+  --a-kicker: #68eabc;
+  --a-card-bg: rgba(255, 255, 255, 0.055);
+  --a-card-border: color-mix(in srgb, #d7eef3 18%, transparent);
+  --a-card-shadow: 0 4px 28px -8px rgba(0, 0, 0, 0.45);
+  --a-stat-bg: rgba(255, 255, 255, 0.065);
+  --a-stat-border: color-mix(in srgb, #d7eef3 16%, transparent);
+  --a-step-num: #68eabc;
+  --a-avatar-bg: rgba(104, 234, 188, 0.14);
+  --a-avatar-border: rgba(104, 234, 188, 0.32);
+  --a-avatar-text: #68eabc;
   --a-btn-primary-bg: var(--page-accent-gradient);
-  --a-btn-primary-text: var(--c-1);
+  --a-btn-primary-text: #ffffff;
   --a-btn-ghost-bg: transparent;
-  --a-btn-ghost-border: var(--page-hero-border);
-  --a-btn-ghost-text: var(--c-1);
-  --a-shadow-strong: 0 8px 40px -8px color-mix(in srgb, var(--c-9) 22%, transparent);
+  --a-btn-ghost-border: color-mix(in srgb, #d7eef3 28%, transparent);
+  --a-btn-ghost-text: #e8f4f8;
+  --a-shadow-strong: 0 8px 40px -8px rgba(0, 0, 0, 0.55);
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="about"] {
   --a-bg: var(--page-heading-bg);
-  --a-card-bg: color-mix(in srgb, var(--dark-surface-2) 90%, transparent);
+  --a-card-bg: rgba(255, 255, 255, 0.04);
   --a-card-border: var(--dark-border-strong);
   --a-card-shadow: var(--dark-shadow-soft);
-  --a-stat-bg: color-mix(in srgb, var(--dark-surface-2) 92%, transparent);
+  --a-stat-bg: rgba(255, 255, 255, 0.05);
   --a-stat-border: var(--dark-border-soft);
   --a-btn-ghost-border: var(--dark-border-strong);
-  --a-copy-strong: color-mix(in srgb, var(--c-1) 90%, var(--c-14));
 }
 
 /* ── Page scaffold ─────────────────────────────────── */
@@ -147,7 +146,6 @@ body.about-snap-page {
 /* ── Hero section ──────────────────────────────────── */
 .about-hero {
   background: var(--a-bg);
-  border-bottom: 1px solid var(--a-border);
   min-height: calc(var(--app-viewport-height) - var(--nav-height));
   display: flex;
   align-items: center;
@@ -209,7 +207,7 @@ body.about-snap-page {
 
 /* ── Story / Steps section ─────────────────────────── */
 .about-story {
-  border-bottom: 1px solid var(--a-border);
+  background: var(--a-bg);
 }
 
 .about-steps {
@@ -224,9 +222,18 @@ body.about-snap-page {
   background: var(--a-card-bg);
   padding: 28px 24px;
   box-shadow: var(--a-card-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   flex-direction: column;
   gap: 10px;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.about-step-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(104, 234, 188, 0.32);
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(104, 234, 188, 0.12);
 }
 
 .about-step-number {
@@ -250,7 +257,7 @@ body.about-snap-page {
 
 /* ── Team section ──────────────────────────────────── */
 .about-team {
-  border-bottom: 1px solid var(--a-border);
+  background: var(--a-bg);
 }
 
 .about-team-grid {
@@ -265,17 +272,20 @@ body.about-snap-page {
   background: var(--a-card-bg);
   padding: 28px 24px;
   box-shadow: var(--a-card-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
 }
 
 .about-team-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--a-shadow-strong);
+  transform: translateY(-4px);
+  border-color: rgba(104, 234, 188, 0.32);
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(104, 234, 188, 0.12);
 }
 
 .about-avatar {
@@ -306,7 +316,21 @@ body.about-snap-page {
 
 /* ── CTA section ───────────────────────────────────── */
 .about-cta {
-  background: var(--a-bg);
+  background:
+    linear-gradient(to bottom, transparent 40%, #071a28 100%),
+    var(--a-bg);
+}
+
+html[data-interface-theme="dark"] .about-cta {
+  background:
+    linear-gradient(to bottom, transparent 40%, var(--brand-deep-1, #071a28) 100%),
+    var(--a-bg);
+}
+
+/* Remove footer gap on the about page so the fade connects seamlessly */
+.about-snap-page .footer {
+  margin-top: 0;
+  border-top: none;
 }
 
 .about-cta-inner {

@@ -1,45 +1,68 @@
 /* ── Theme tokens ──────────────────────────────────── */
 [data-theme-scope="profile"] {
-  --p-bg: var(--page-bg, var(--c-3));
-  --p-card-bg: var(--c-2);
-  --p-card-border: var(--c-4);
-  --p-shadow: 0 4px 24px -6px color-mix(in srgb, var(--c-9) 12%, transparent);
-  --p-heading: var(--c-1);
-  --p-kicker: var(--page-accent-ink);
-  --p-muted: var(--c-5);
-  --p-text: var(--c-1);
-  --p-field-bg: var(--c-3);
-  --p-field-border: var(--c-4);
-  --p-field-focus-border: var(--page-accent-solid);
-  --p-field-focus-ring: var(--page-accent-ring);
-  --p-divider: var(--c-4);
-  --p-primary-bg: var(--page-accent-gradient);
-  --p-primary-text: var(--c-1);
-  --p-ghost-bg: var(--page-accent-soft);
-  --p-ghost-border: var(--page-accent-border);
-  --p-ghost-text: var(--page-accent-ink);
-  --p-avatar-bg: var(--page-accent-soft);
-  --p-avatar-border: var(--page-accent-border);
-  --p-avatar-text: var(--page-accent-ink);
-  --p-stat-border: var(--c-4);
-  --p-info-bg: var(--c-3);
-  --p-info-border: var(--c-4);
-  --p-tab-border: var(--c-4);
-  --p-tab-active-bg: var(--c-2);
-  --p-tab-active-border: var(--page-accent-solid);
-  --p-progress-bg: color-mix(in srgb, var(--page-accent-solid) 10%, var(--c-3));
-  --p-progress-fill: var(--page-accent-gradient);
-  --p-status-bg: var(--page-accent-soft);
-  --p-status-border: var(--page-accent-border);
-  --p-status-text: var(--page-accent-ink);
-  --p-cancel-bg: color-mix(in srgb, var(--c-18) 10%, var(--c-2));
-  --p-cancel-border: color-mix(in srgb, var(--c-18) 18%, var(--c-4));
-  --p-cancel-text: var(--c-17);
-  --p-ok: var(--c-15);
-  --p-err: var(--c-18);
+  --p-bg: var(--c-3);
+  --p-card-bg: #ffffff;
+  --p-card-border: #e2e6ed;
+  --p-shadow: 0 4px 24px -6px rgba(0, 0, 0, 0.10);
+  /* ── Text — dark on light cards ── */
+  --p-heading: #0f1117;
+  --p-text: #1e2330;
+  --p-muted: #5a6278;
+  --p-kicker: #1d8a68;
+  /* ── Fields ── */
+  --p-field-bg: #f4f6f9;
+  --p-field-border: #d0d5e0;
+  --p-field-focus-border: #33aa83;
+  --p-field-focus-ring: rgba(51, 170, 131, 0.22);
+  --p-divider: #e2e6ed;
+  /* ── Buttons ── */
+  --p-primary-bg: linear-gradient(135deg, #1a6e52 0%, #33aa83 100%);
+  --p-primary-text: #ffffff;
+  --p-ghost-bg: rgba(51, 170, 131, 0.08);
+  --p-ghost-border: rgba(51, 170, 131, 0.28);
+  --p-ghost-text: #1d8a68;
+  /* ── Avatar ── */
+  --p-avatar-bg: rgba(51, 170, 131, 0.12);
+  --p-avatar-border: rgba(51, 170, 131, 0.3);
+  --p-avatar-text: #1d8a68;
+  /* ── Misc ── */
+  --p-stat-border: #e2e6ed;
+  --p-info-bg: #f4f6f9;
+  --p-info-border: #d0d5e0;
+  --p-tab-border: #e2e6ed;
+  --p-tab-active-bg: #ffffff;
+  --p-tab-active-border: #33aa83;
+  --p-progress-bg: rgba(51, 170, 131, 0.1);
+  --p-progress-fill: linear-gradient(90deg, #33aa83 0%, #68eabc 100%);
+  --p-status-bg: rgba(51, 170, 131, 0.1);
+  --p-status-border: rgba(51, 170, 131, 0.24);
+  --p-status-text: #1d8a68;
+  --p-cancel-bg: rgba(220, 53, 69, 0.08);
+  --p-cancel-border: rgba(220, 53, 69, 0.20);
+  --p-cancel-text: #c0392b;
+  --p-ok: #1d8a68;
+  --p-err: #c0392b;
 }
 
 html[data-interface-theme="dark"] [data-theme-scope="profile"] {
+  --p-heading: var(--c-1);
+  --p-text: color-mix(in srgb, var(--c-1) 88%, transparent);
+  --p-muted: var(--c-5);
+  --p-kicker: #68eabc;
+  --p-avatar-bg: rgba(104, 234, 188, 0.14);
+  --p-avatar-border: rgba(104, 234, 188, 0.3);
+  --p-avatar-text: #68eabc;
+  --p-ghost-bg: rgba(104, 234, 188, 0.08);
+  --p-ghost-border: rgba(104, 234, 188, 0.26);
+  --p-ghost-text: #68eabc;
+  --p-field-focus-border: #68eabc;
+  --p-field-focus-ring: rgba(104, 234, 188, 0.2);
+  --p-status-bg: rgba(104, 234, 188, 0.1);
+  --p-status-border: rgba(104, 234, 188, 0.22);
+  --p-status-text: #68eabc;
+  --p-tab-active-border: #68eabc;
+  --p-progress-bg: rgba(104, 234, 188, 0.1);
+  --p-progress-fill: linear-gradient(90deg, #33aa83 0%, #68eabc 100%);
   --p-card-bg: var(--dark-surface-1);
   --p-card-border: var(--dark-border-strong);
   --p-shadow: var(--dark-shadow-soft);
@@ -51,7 +74,6 @@ html[data-interface-theme="dark"] [data-theme-scope="profile"] {
   --p-tab-border: var(--dark-border-strong);
   --p-tab-active-bg: var(--dark-surface-1);
   --p-divider: var(--dark-border-strong);
-  --p-progress-bg: color-mix(in srgb, var(--page-accent-solid) 10%, var(--dark-surface-2));
   --p-cancel-bg: color-mix(in srgb, var(--c-18) 10%, var(--dark-surface-2));
   --p-cancel-border: color-mix(in srgb, var(--c-18) 20%, var(--dark-border-strong));
 }
@@ -156,7 +178,7 @@ html[data-interface-theme="dark"] [data-theme-scope="profile"] {
   font-size: 1.45rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--p-heading);
+  color: var(--p-kicker);
   line-height: 1;
 }
 
@@ -200,6 +222,7 @@ html[data-interface-theme="dark"] [data-theme-scope="profile"] {
   color: var(--p-heading);
   background: var(--p-tab-active-bg);
   border-color: var(--p-tab-border);
+  border-top: 2px solid var(--p-tab-active-border);
   border-bottom-color: var(--p-tab-active-bg);
   box-shadow: var(--p-shadow);
 }
