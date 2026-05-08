@@ -1352,6 +1352,7 @@ export function buildProductPayload(form, { editingId, products }) {
 
   const name = String(form.name || "").trim();
   const category = String(form.category || "").trim();
+  const subcategory = String(form.subcategory || "").trim();
 
   if (!name || !category) {
     throw new Error("Name and category are required.");
