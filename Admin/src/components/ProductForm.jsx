@@ -80,13 +80,13 @@ function ProductForm({
             <label htmlFor="category">Category *</label>
             <select id="category" name="category" required value={form.category} onChange={onChange}>
               <option value="">Select a category</option>
-              <option value="Lighting">💡 Lighting</option>
-              <option value="Sound">🔊 Sound</option>
-              <option value="Stage">🎭 Stage</option>
-              <option value="Furniture">🪑 Furniture</option>
-              <option value="Merchandise">🛍️ Merchandise</option>
-              <option value="Tech & UV">🔬 Tech &amp; UV</option>
-              <option value="Sound Systems">🎵 Sound Systems</option>
+              <option value="Lighting">Lighting</option>
+              <option value="Sound">Sound</option>
+              <option value="Stage">Stage</option>
+              <option value="Furniture">Furniture</option>
+              <option value="Merchandise">Merchandise</option>
+              <option value="Tech & UV">Tech &amp; UV</option>
+              <option value="Sound Systems">Sound Systems</option>
             </select>
           </div>
         </div>
