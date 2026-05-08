@@ -11,6 +11,21 @@ import "./../styles/shop.css";
 const PRIMARY_CATEGORIES = ["Lighting", "Sound", "Stage", "Furniture"];
 const EVENT_TYPES = ["Wedding", "Corporate", "Birthday", "Conference", "Concert", "Festival"];
 
+const CATEGORY_ICONS = {
+  "Lighting": "💡",
+  "Sound": "🔊",
+  "Stage": "🎭",
+  "Furniture": "🪑",
+  "Merchandise": "🛍️",
+  "Tech & UV": "🔬",
+  "Sound Systems": "🎵",
+};
+
+function categoryLabel(cat) {
+  const icon = CATEGORY_ICONS[cat];
+  return icon ? `${icon} ${cat}` : cat;
+}
+
 function normalizeQuery(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -176,7 +191,7 @@ function ShopPage() {
             className={`shop-v2-catpill${selectedCategory === "ALL" ? " is-active" : ""}`}
             onClick={() => updateParams({ category: "ALL" })}
           >
-            All
+            🗂️ All
           </button>
           {allCategories.map((category) => (
             <button
@@ -185,7 +200,7 @@ function ShopPage() {
               className={`shop-v2-catpill${selectedCategory === category ? " is-active" : ""}`}
               onClick={() => updateParams({ category })}
             >
-              {category}
+              {categoryLabel(category)}
             </button>
           ))}
         </nav>
@@ -220,7 +235,7 @@ function ShopPage() {
                     checked={selectedCategory === category}
                     onChange={() => updateParams({ category })}
                   />
-                  <span>{category}</span>
+                  <span>{categoryLabel(category)}</span>
                 </label>
               ))}
             </div>
