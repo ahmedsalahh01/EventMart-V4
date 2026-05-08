@@ -31,6 +31,9 @@ function PackageDetailPage() {
   const [packageGroupId] = useState(() => createPackageGroupId("package-detail"));
   const [uploadsByItemId, setUploadsByItemId] = useState({});
   const [uploadErrorsByItemId, setUploadErrorsByItemId] = useState({});
+  const [specialRequests, setSpecialRequests] = useState("");
+  const [globalFiles, setGlobalFiles] = useState([]);
+  const [globalFileError, setGlobalFileError] = useState("");
   const { token } = useAuth();
   const { requireAuth } = useRequireAuth();
   const { setItems } = useCart();
@@ -92,14 +95,30 @@ function PackageDetailPage() {
     setMessage("");
   }
 
-  function replacePackageCartItems(nextPreview, customizationUploadsByPackageItemId) {
+  function handleGlobalFileChange(fileList) {
+    const files = Array.from(fileList || []);
+    const validationMessage = files
+      .map((file) => validateCustomizationFile(file))
+      .find(Boolean) || "";
+    setGlobalFileError(validationMessage);
+    setGlobalFiles(validationMessage ? [] : files);
+  }
+
+  function replacePackageCartItems(nextPreview, customizationUploadsByPackageItemId, { specialRequests: requests = "", globalUploads = [] } = {}) {
     const cartItems = createCartItemsFromBuilderPreview(nextPreview, {
       customizationUploadsByPackageItemId
     });
 
+    const enrichedItems = cartItems.map((item) => ({
+      ...item,
+      package_meta: item.package_meta
+        ? { ...item.package_meta, specialRequests: requests, globalUploads }
+        : item.package_meta
+    }));
+
     setItems((current) => [
       ...current.filter((item) => item?.package_meta?.packageGroupId !== packageGroupId),
-      ...cartItems
+      ...enrichedItems
     ]);
   }
 
@@ -109,23 +128,21 @@ function PackageDetailPage() {
     const selectedUploads = Object.entries(uploadsByItemId).filter(([, files]) => Array.isArray(files) && files.length);
     const hasUploadErrors = Object.values(uploadErrorsByItemId).some(Boolean);
 
-    if (hasUploadErrors) {
+    if (hasUploadErrors || globalFileError) {
       setMessageTone("error");
-      setMessage("Please fix the package customization file errors before continuing.");
+      setMessage("Please fix the file errors before continuing.");
       return;
     }
 
-    if (selectedUploads.length && !token) {
-      if (!requireAuth({ returnTo: `/packages/${identifier}` })) {
-        return;
-      }
+    const hasAnyUploads = selectedUploads.length > 0 || globalFiles.length > 0;
+
+    if (hasAnyUploads && !token) {
+      if (!requireAuth({ returnTo: `/packages/${identifier}` })) return;
       return;
     }
 
     if (checkout && !token) {
-      if (!requireAuth({ returnTo: "/checkout" })) {
-        return;
-      }
+      if (!requireAuth({ returnTo: "/checkout" })) return;
     }
 
     setIsSaving(true);
@@ -160,7 +177,24 @@ function PackageDetailPage() {
         customizationUploadsByPackageItemId.set(packageItemId, uploadedAssets);
       }
 
-      replacePackageCartItems(preview, customizationUploadsByPackageItemId);
+      const globalUploadedAssets = [];
+      for (const file of globalFiles) {
+        const uploaded = await uploadCustomizationFile({
+          file,
+          packageId: pkg.id,
+          packageItemId: 0,
+          productId: "",
+          token,
+          uploadKind: "attachment"
+        });
+        globalUploadedAssets.push(uploaded);
+        uploadedTokens.push(uploaded.uploadToken);
+      }
+
+      replacePackageCartItems(preview, customizationUploadsByPackageItemId, {
+        specialRequests: specialRequests.trim(),
+        globalUploads: globalUploadedAssets
+      });
       setMessageTone("success");
       setMessage(checkout ? "Package saved to cart. Redirecting to checkout..." : "Package saved to your cart.");
 
@@ -333,7 +367,6 @@ function PackageDetailPage() {
 
           <div className="package-detail-item-grid">
             {pkg.items.map((item) => {
-              const selectedPreview = selectedItemMap.get(Number(item.id || item.productId));
               const selectedFiles = Array.isArray(uploadsByItemId[item.id]) ? uploadsByItemId[item.id] : [];
 
               return (
@@ -382,6 +415,52 @@ function PackageDetailPage() {
                 </article>
               );
             })}
+          </div>
+        </section>
+
+        <section className="package-shell-card package-detail-items-wide">
+          <div className="package-card-head">
+            <div>
+              <p className="package-eyebrow">Order Details</p>
+              <h2>Special requests &amp; attachments</h2>
+            </div>
+          </div>
+
+          <div className="package-detail-extra-fields">
+            <div className="package-detail-special-requests">
+              <span className="package-detail-upload-title">Special Requests</span>
+              <p className="package-detail-upload-copy">
+                Let us know any special instructions, preferences, or requirements for your event.
+              </p>
+              <textarea
+                className="package-detail-special-requests-input"
+                placeholder="e.g. Please set up early, prefer blue lighting theme, need extra tables near the stage..."
+                rows={4}
+                value={specialRequests}
+                onChange={(e) => setSpecialRequests(e.target.value)}
+              />
+            </div>
+
+            <label className="package-detail-upload-card">
+              <span className="package-detail-upload-title">Additional Attachments</span>
+              <span className="package-detail-upload-copy">
+                Attach reference photos, floor plans, logos, or any other files to help us prepare your event. Accepted: PNG, JPG, WEBP, PDF.
+              </span>
+              <input
+                accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+                multiple
+                onChange={(e) => handleGlobalFileChange(e.target.files)}
+                type="file"
+              />
+              <strong>{globalFiles.length ? `${globalFiles.length} file(s) selected` : "Choose files"}</strong>
+              {globalFileError ? (
+                <small className="package-detail-upload-error">{globalFileError}</small>
+              ) : globalFiles.length ? (
+                <small>{globalFiles.map((f) => f.name).join(", ")}</small>
+              ) : (
+                <small>Multiple files supported — uploaded when you add the package to cart</small>
+              )}
+            </label>
           </div>
         </section>
       </div>
