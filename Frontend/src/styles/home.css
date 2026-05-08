@@ -1719,8 +1719,8 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
 .fc-track { display: contents; }
 
 .fc-slide {
-  /* 3-column default: (100% of viewport − 2 gaps) ÷ 3 */
-  flex: 0 0 calc((100% - 2 * 22px) / 3);
+  /* 4-column default: (100% of viewport − 3 gaps) ÷ 4 */
+  flex: 0 0 calc((100% - 3 * 22px) / 4);
   min-width: 0;
 }
 
@@ -1822,6 +1822,11 @@ html[data-interface-theme="dark"] [data-theme-scope="home"] .hero-actions .btn-s
 @media (max-width: 1023px) {
   /* 2-column: (100% − 1 gap) ÷ 2 */
   .fc-slide { flex: 0 0 calc((100% - 22px) / 2); }
+}
+
+@media (max-width: 1279px) and (min-width: 1024px) {
+  /* 3-column on mid-size screens */
+  .fc-slide { flex: 0 0 calc((100% - 2 * 22px) / 3); }
 }
 
 @media (max-width: 639px) {

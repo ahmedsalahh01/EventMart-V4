@@ -6,7 +6,7 @@ const INTERVAL_MS = 4000;
 const SLIDESHOW_MIN = 4;
 
 function getColumns(vpWidth) {
-  if (vpWidth >= 1024) return 3;
+  if (vpWidth >= 1024) return 4;
   if (vpWidth >= 640)  return 2;
   return 1;
 }
@@ -16,7 +16,7 @@ function FeaturedCarousel({ products }) {
   const timerRef    = useRef(null);
 
   const [index,  setIndex]  = useState(0);
-  const [cols,   setCols]   = useState(3);
+  const [cols,   setCols]   = useState(4);
   const [paused, setPaused] = useState(false);
 
   const total    = products.length;
