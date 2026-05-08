@@ -31,7 +31,7 @@ function HeroSlideshow({ searchQuery, onSearchQueryChange, onSearchSubmit, shopP
       eyebrow: "Cairo & Greater Cairo",
       headline: "Same-day delivery in Cairo",
       subheadline: "Order before noon and we deliver the same day — setup support available on request.",
-      image: "/assets/Group.jpeg",
+      image: "/assets/pexels-trksami-20532119.jpg",
       align: "right",
       variant: "cta",
       ctaLabel: "Learn more",
