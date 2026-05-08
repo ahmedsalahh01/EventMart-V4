@@ -1066,7 +1066,6 @@ function normalizeProductPayload(body) {
   }
   if (!name) throw createHttpError(400, "Product name is required.");
   if (!category) throw createHttpError(400, "Category is required.");
-  if (!subcategory) throw createHttpError(400, "Subcategory is required.");
   if (!CURRENCY_REGEX.test(currency)) {
     throw createHttpError(400, "Currency must be a 3-letter ISO code like USD or EGP.");
   }
