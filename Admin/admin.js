@@ -801,8 +801,8 @@ function bindEvents() {
 
     try {
       const data = collectFormData();
-      if (!data.name || !data.category || !data.subcategory) {
-        window.alert("Name, category, and subcategory are required.");
+      if (!data.name || !data.category) {
+        window.alert("Name and category are required.");
         return;
       }
       await saveProduct(data);

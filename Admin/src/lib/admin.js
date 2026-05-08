@@ -1352,10 +1352,9 @@ export function buildProductPayload(form, { editingId, products }) {
 
   const name = String(form.name || "").trim();
   const category = String(form.category || "").trim();
-  const subcategory = String(form.subcategory || "").trim();
 
-  if (!name || !category || !subcategory) {
-    throw new Error("Name, category, and subcategory are required.");
+  if (!name || !category) {
+    throw new Error("Name and category are required.");
   }
 
   if (images.length > MAX_PRODUCT_IMAGES) {
