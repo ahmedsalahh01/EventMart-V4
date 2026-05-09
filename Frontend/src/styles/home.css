@@ -1988,7 +1988,7 @@ html[data-interface-theme="dark"] .quick-categories .section-mini-title {
   display: flex;
   gap: 14px;
   width: max-content;
-  animation: scrollTrack 30s linear infinite reverse;
+  animation: scrollTrack 12s linear infinite reverse;
 }
 
 .category-strip:hover .category-track,
