@@ -75,8 +75,7 @@ function HomePage() {
 
   const featuredProducts = products.filter((p) => p.featured && p.active !== false);
   const categoryList = homeCategories || [
-    "Sound Systems", "Merchandise", "Giveaways", "Lighting Systems",
-    "Wireless Microphones", "Stage Uplighting", "Promo Booth Kits", "LED Accent Lights"
+    "Lighting", "Sound", "Stage", "Furniture", "Merchandise", "Tech & UV"
   ];
 
   useEffect(() => {
