@@ -64,12 +64,13 @@ function Footer() {
         <section aria-label="Shop links">
           <h3 className="footer-heading">Shop</h3>
           <ul className="footer-links">
-            <li><Link to="/shop">All Products</Link></li>
+            <li><Link to="/shop">All</Link></li>
             <li><Link to="/shop?category=Lighting">Lighting</Link></li>
             <li><Link to="/shop?category=Sound">Sound</Link></li>
             <li><Link to="/shop?category=Stage">Stage</Link></li>
             <li><Link to="/shop?category=Furniture">Furniture</Link></li>
             <li><Link to="/shop?category=Merchandise">Merchandise</Link></li>
+            <li><Link to="/shop?category=Tech%20%26%20UV">Tech &amp; UV</Link></li>
           </ul>
         </section>
 
