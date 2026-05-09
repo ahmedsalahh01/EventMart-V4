@@ -648,7 +648,7 @@ html[data-interface-theme="dark"] .nav-packages-dropdown li a.active {
 }
 
 html[data-interface-theme="dark"] #themeIconSun {
-  display: block;
+  display: none;
 }
 
 html[data-interface-theme="dark"] #themeIconMoon {
