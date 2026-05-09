@@ -84,14 +84,12 @@ const CATEGORY_REQUIREMENTS_BY_EVENT = Object.freeze({
 });
 
 const HOME_CATEGORIES = Object.freeze([
-  "Sound Systems",
+  "Lighting",
+  "Sound",
+  "Stage",
+  "Furniture",
   "Merchandise",
-  "Giveaways",
-  "Lighting Systems",
-  "Wireless Microphones",
-  "Stage Uplighting",
-  "Promo Booth Kits",
-  "LED Accent Lights"
+  "Tech & UV"
 ]);
 
 module.exports = {
