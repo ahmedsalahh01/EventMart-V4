@@ -447,7 +447,7 @@ function AuthPage() {
   return (
     <>
       <Link to="/" className="auth-fixed-logo" aria-label="EventMart Home">
-        <img className="auth-fixed-logo-image" src="/assets/eventmart-navbar-logo.png" alt="" />
+        <img className="auth-fixed-logo-image" src="/assets/eventmart-navbar-logo.png" alt="EventMart" />
       </Link>
 
       <motion.main

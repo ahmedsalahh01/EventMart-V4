@@ -1,0 +1,128 @@
+.info-page {
+  width: min(860px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-top: calc(var(--nav-height, 88px) + 48px);
+  padding-bottom: 80px;
+}
+
+.info-page-inner {
+  display: grid;
+  gap: 36px;
+}
+
+.info-page-eyebrow {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-12, #0ea5c9);
+}
+
+.info-page-title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.info-page-lead {
+  margin: 0;
+  font-size: 1.12rem;
+  line-height: 1.7;
+  color: var(--sv2-text-soft, #555);
+  max-width: 680px;
+}
+
+.info-faq-list,
+.info-sections {
+  display: grid;
+  gap: 0;
+}
+
+.info-faq-item,
+.info-section {
+  padding: 28px 0;
+  border-bottom: 1px solid var(--sv2-border, #e5e7eb);
+  display: grid;
+  gap: 10px;
+}
+
+.info-faq-item:first-child,
+.info-section:first-child {
+  border-top: 1px solid var(--sv2-border, #e5e7eb);
+}
+
+.info-faq-item h2,
+.info-section h2 {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.info-faq-item p,
+.info-section p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.72;
+  color: var(--sv2-text-soft, #555);
+}
+
+.info-page-cta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+}
+
+.info-page-cta p {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--sv2-text-soft, #555);
+}
+
+.info-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--c-12, #0ea5c9);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.info-page-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+html[data-interface-theme="dark"] .info-page-lead,
+html[data-interface-theme="dark"] .info-faq-item p,
+html[data-interface-theme="dark"] .info-section p,
+html[data-interface-theme="dark"] .info-page-cta p {
+  color: rgba(190, 215, 235, 0.78);
+}
+
+html[data-interface-theme="dark"] .info-faq-item,
+html[data-interface-theme="dark"] .info-section {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-interface-theme="dark"] .info-faq-item:first-child,
+html[data-interface-theme="dark"] .info-section:first-child {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 600px) {
+  .info-page {
+    padding-top: calc(var(--nav-height, 88px) + 28px);
+    padding-bottom: 56px;
+  }
+}

@@ -19,6 +19,9 @@ import PackageDetailPage from "./pages/PackageDetailPage";
 import PackagesPage from "./pages/PackagesPage";
 import AuthCallbackPage from "./pages/AuthCallbackPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import FaqPage from "./pages/FaqPage";
+import RentalPolicyPage from "./pages/RentalPolicyPage";
+import ShippingInfoPage from "./pages/ShippingInfoPage";
 
 function App() {
   const location = useLocation();
@@ -66,6 +69,9 @@ function App() {
           />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/faq" element={<FaqPage />} />
+          <Route path="/rental-policy" element={<RentalPolicyPage />} />
+          <Route path="/shipping-info" element={<ShippingInfoPage />} />
           <Route path="/packages" element={<PackagesPage />} />
           <Route path="/packages/:identifier" element={<PackageDetailPage />} />
           <Route path="/package-builder" element={<PackageBuilderPage />} />

@@ -117,45 +117,45 @@ function OrderConfirmationPage() {
         <div className="order-confirmation-grid">
           <article>
             <span>Unique Order ID</span>
-            <strong>{order.orderId}</strong>
+            <strong>{order?.orderId || "—"}</strong>
           </article>
           <article>
             <span>Delivery Estimated Time</span>
-            <strong>{order.deliveryEstimate}</strong>
+            <strong>{order?.deliveryEstimate || "To be confirmed"}</strong>
           </article>
           <article>
             <span>Name</span>
-            <strong>{order.name}</strong>
+            <strong>{order?.name || "—"}</strong>
           </article>
           <article>
             <span>Phone Number</span>
-            <strong>{order.phoneNumber}</strong>
+            <strong>{order?.phoneNumber || "—"}</strong>
           </article>
           <article className="order-confirmation-wide">
             <span>Shipment Address</span>
-            <strong>{order.shipmentAddress}</strong>
+            <strong>{order?.shipmentAddress || "—"}</strong>
           </article>
         </div>
 
         <div className="order-confirmation-summary">
           <div>
             <span>Deposit status</span>
-            <strong>{formatStatusLabel(order.depositStatus)}</strong>
+            <strong>{formatStatusLabel(order?.depositStatus)}</strong>
           </div>
           <div>
             <span>Advance paid</span>
-            <strong>{formatMoney(order.depositPaid, order.currency)}</strong>
+            <strong>{formatMoney(order?.depositPaid, order?.currency)}</strong>
           </div>
           <div>
             <span>Total order value</span>
-            <strong>{formatMoney(order.total, order.currency)}</strong>
+            <strong>{formatMoney(order?.total, order?.currency)}</strong>
           </div>
         </div>
 
         <section className="order-confirmation-items">
           <h2>Confirmed items</h2>
           <div className="order-confirmation-item-list">
-            {order.items.map((item) => (
+            {(order?.items || []).map((item) => (
               <article key={item.id} className="order-confirmation-item">
                 <div>
                   <strong>{item.name}</strong>

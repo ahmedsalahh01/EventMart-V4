@@ -29,7 +29,7 @@ function Footer() {
       <div className="footer-inner">
         <section className="footer-brand-wrap" aria-label="EventMart company details">
           <Link to="/" className="footer-brand" aria-label="EventMart Home">
-            <img className="footer-brand-image" src="/assets/eventmart-footer-logo.png" alt="" />
+            <img className="footer-brand-image" src="/assets/eventmart-footer-logo.png" alt="EventMart logo" />
             <span className="footer-brand-wordmark" aria-hidden="true">
               Event<span className="footer-brand-accent">Mart</span>
             </span>
@@ -65,10 +65,11 @@ function Footer() {
           <h3 className="footer-heading">Shop</h3>
           <ul className="footer-links">
             <li><Link to="/shop">All Products</Link></li>
+            <li><Link to="/shop?category=Lighting">Lighting</Link></li>
+            <li><Link to="/shop?category=Sound">Sound</Link></li>
+            <li><Link to="/shop?category=Stage">Stage</Link></li>
+            <li><Link to="/shop?category=Furniture">Furniture</Link></li>
             <li><Link to="/shop?category=Merchandise">Merchandise</Link></li>
-            <li><Link to="/shop?category=Sound%20Systems">Sound Systems</Link></li>
-            <li><Link to="/shop?category=Stages">Stages</Link></li>
-            <li><Link to="/shop?category=Woodworks">Woodworks</Link></li>
           </ul>
         </section>
 
@@ -84,9 +85,9 @@ function Footer() {
         <section aria-label="Support links">
           <h3 className="footer-heading">Support</h3>
           <ul className="footer-links">
-            <li><Link to="/contact">FAQ</Link></li>
-            <li><Link to="/contact">Rental Policy</Link></li>
-            <li><Link to="/contact">Shipping Info</Link></li>
+            <li><Link to="/faq">FAQ</Link></li>
+            <li><Link to="/rental-policy">Rental Policy</Link></li>
+            <li><Link to="/shipping-info">Shipping Info</Link></li>
           </ul>
         </section>
       </div>

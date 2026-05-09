@@ -54,7 +54,7 @@ function Navbar() {
   return (
     <nav className={navClassName}>
       <NavLink to="/" className="brand-link" aria-label="EventMart Home">
-        <img className="brand-logo" src="/assets/eventmart-navbar-logo.png" alt="" />
+        <img className="brand-logo" src="/assets/eventmart-navbar-logo.png" alt="EventMart" />
       </NavLink>
 
       <ul className="navlist" aria-label="Main navigation" onMouseLeave={() => setHoveredPath(null)}>
@@ -108,7 +108,7 @@ function Navbar() {
 
       <div className="nav-actions">
         <button type="button" className="icon-btn" data-theme-toggle onClick={toggleTheme} aria-label="Toggle interface color">
-          <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: theme === "dark" ? "none" : "block" }}>
+          <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
             <path
               d="M12 3V5.2M12 18.8V21M3 12H5.2M18.8 12H21M5.64 5.64L7.2 7.2M16.8 16.8L18.36 18.36M18.36 5.64L16.8 7.2M7.2 16.8L5.64 18.36"
@@ -117,7 +117,7 @@ function Navbar() {
               strokeLinecap="round"
             />
           </svg>
-          <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: theme === "dark" ? "block" : "none" }}>
+          <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
               d="M20 14.2A8 8 0 1 1 9.8 4 6.4 6.4 0 0 0 20 14.2Z"
               stroke="currentColor"

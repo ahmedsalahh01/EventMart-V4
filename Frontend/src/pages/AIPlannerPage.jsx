@@ -377,12 +377,17 @@ function AIPlannerPage() {
         };
       }
     } catch (_error) {
-      // Fall back to local planner reply below.
+      return {
+        content: buildLocalPlannerReply(prompt, context, products),
+        structured: null,
+        isOffline: true
+      };
     }
 
     return {
       content: buildLocalPlannerReply(prompt, context, products),
-      structured: null
+      structured: null,
+      isOffline: true
     };
   }
 
@@ -390,7 +395,10 @@ function AIPlannerPage() {
     setIsTyping(true);
     try {
       const reply = await requestPlanner(prompt, context);
-      addMessage("assistant", reply.content, reply.structured);
+      const content = reply.isOffline
+        ? `${reply.content}\n\n_Note: AI service is temporarily unavailable — this is a local suggestion._`
+        : reply.content;
+      addMessage("assistant", content, reply.structured);
     } finally {
       setIsTyping(false);
     }

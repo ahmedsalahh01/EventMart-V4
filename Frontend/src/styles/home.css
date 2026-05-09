@@ -126,16 +126,19 @@ html[data-interface-theme="dark"] .deal-price span {
 
 html[data-interface-theme="dark"] .footer-copy,
 html[data-interface-theme="dark"] .footer-contact li,
-html[data-interface-theme="dark"] .footer-links a,
 html[data-interface-theme="dark"] .footer-bottom p {
-  color: color-mix(in srgb, var(--c-14) 84%, var(--c-5));
+  color: rgba(190, 215, 235, 0.78);
+}
+
+html[data-interface-theme="dark"] .footer-links a {
+  color: rgba(210, 232, 248, 0.92);
 }
 
 html[data-interface-theme="dark"] .footer-heading,
 html[data-interface-theme="dark"] .footer-brand,
 html[data-interface-theme="dark"] .footer-links a:hover,
 html[data-interface-theme="dark"] .footer-links a:focus-visible {
-  color: var(--c-1);
+  color: #ffffff;
 }
 
 [data-theme-scope="home"] {
@@ -2732,7 +2735,7 @@ html[data-interface-theme="dark"] .footer-brand {
 }
 
 html[data-interface-theme="dark"] .footer-copy {
-  color: var(--c-25);
+  color: rgba(190, 215, 235, 0.78);
 }
 
 .footer-contact {
@@ -2771,7 +2774,7 @@ html[data-interface-theme="dark"] .footer-contact svg {
 }
 
 html[data-interface-theme="dark"] .footer-heading {
-  color: var(--c-24);
+  color: rgba(235, 248, 255, 0.6);
 }
 
 .footer-links {
@@ -2792,12 +2795,12 @@ html[data-interface-theme="dark"] .footer-heading {
 }
 
 html[data-interface-theme="dark"] .footer-links a {
-  color: var(--c-25);
+  color: rgba(210, 232, 248, 0.92);
 }
 
 html[data-interface-theme="dark"] .footer-links a:hover,
 html[data-interface-theme="dark"] .footer-links a:focus-visible {
-  color: var(--c-24);
+  color: #ffffff;
 }
 
 .footer-bottom {
